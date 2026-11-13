@@ -4,6 +4,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.parseFragmentNotes
 import com.dynamicruntime.common.util.parseMarkdownFragments
 import com.dynamicruntime.common.util.parseOmnibusFragments
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The base layers of [fileIds], each read from `md-fragments/<fileId>.md` -- the ordinary case, and what
@@ -136,7 +137,7 @@ fun componentCopyNotes(sources: List<FragmentSource>): Pair<Map<String, Fragment
     for (source in sources) {
         val origin = "${MarkdownFragmentService.resourceDir}/${source.fileId}.md"
         if (source.isOverlay || source.client != null || source.origin != origin || source.fileId in notes) continue
-        val text = ContentResources.readText(MarkdownFragmentService.resourceDir, source.fileId) ?: continue
+        val text = fragmentText(source.fileId) ?: continue
         try {
             notes[source.fileId] = text.parseFragmentNotes()
         } catch (e: KdrException) {
@@ -147,5 +148,18 @@ fun componentCopyNotes(sources: List<FragmentSource>): Pair<Map<String, Fragment
 }
 
 /** Reads and parses `md-fragments/<resourceId>.md`, or null when the resource is absent. */
-private fun readFragmentResource(resourceId: String): Map<String, Map<String, String>>? =
-    ContentResources.readText(MarkdownFragmentService.resourceDir, resourceId)?.parseMarkdownFragments()
+private fun readFragmentResource(resourceId: String): Map<String, Map<String, String>>? = fragmentText(resourceId)?.parseMarkdownFragments()
+
+/**
+ * The text of `md-fragments/<resourceId>.md`, or null when it is absent, read from the classpath once per process: the
+ * layer's values and its copy notes (issue #1799) are both read from it, and a classpath resource does not change while
+ * the process runs. Fragment files are small, so keeping each one's text costs little.
+ */
+private fun fragmentText(resourceId: String): String? =
+    fragmentTexts.getOrPut(resourceId) { ContentResources.readText(MarkdownFragmentService.resourceDir, resourceId) ?: absentText }
+        .takeIf { it !== absentText }
+
+private val fragmentTexts = ConcurrentHashMap<String, String>()
+
+/** What [fragmentTexts] holds for an absent resource, told apart by identity, since a map of these holds no null. */
+private val absentText = String(CharArray(0))

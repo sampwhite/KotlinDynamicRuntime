@@ -4,6 +4,10 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import com.dynamicruntime.kdn.grantsdemo.grantsDemoConfigs
 import com.dynamicruntime.kdn.grantsdemo.grantsDemoDocs
@@ -93,6 +97,33 @@ class GrantsDemoDocsTest : StringSpec({
         problems.shouldBeEmpty()
     }
 
+    "a start that finds the demo unchanged adds no revision, and a changed bundle is written" {
+        val bound = cxt.mkSubContext("grantsDemoDocs", GrantsDemo.client)
+        val svc = GedraConfigService.get(cxt)
+        fun version(name: String) = svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, GrantsDemo.client, name))?.version
+        val before = grantsDemoConfigs(cxt).associate { it.name to version(it.name) }
+        grantsDemoConfigs(cxt).forEach { svc.publishedAsIs(bound, it) shouldBe true }
+        provisionGrantsDemo(cxt, skipUnchanged = true)
+        grantsDemoConfigs(cxt).associate { it.name to version(it.name) } shouldBe before
+        // The same bundle saying something else is not published as it is.
+        val changed = gedraConfig(cxt, GrantsDemo.siteWordsConfig, clientNamespace(GrantsDemo.client), GrantsDemo.client) {
+            fragmentOverlay(HFRAG.home) { namespace(HFRAG.homeNs) { key(HFRAG.brand, "Another Fund") } }
+        }
+        svc.publishedAsIs(bound, changed) shouldBe false
+    }
+
+    "every base layer a component declares inline is named, with why none of its keys is located" {
+        // A fragment file's keys are held to copy notes (copyNotesTest); a layer declared inline has no file to carry
+        // them, so a new one fails here until it is named below -- or becomes a file.
+        val inline = MarkdownFragmentService.registeredFragmentSources(cxt)
+            .filter { !it.isOverlay && it.client == null && it.origin != "${MarkdownFragmentService.resourceDir}/${it.fileId}.md" }
+            .map { it.fileId }.toSet()
+        withClue("Base layers declared inline, whose keys no copy note classifies; make each a fragment file, or name it " +
+            "in inlineBaseLayers with why a client does not reword its keys") {
+            (inline - inlineBaseLayers.keys).shouldBeEmpty()
+        }
+    }
+
     "every JSON block shows what the demo stores" {
         fun storedSlotsOf(bundle: String): Any? {
             val bound = cxt.mkSubContext("grantsDemoDocs", GrantsDemo.client)
@@ -103,6 +134,11 @@ class GrantsDemoDocsTest : StringSpec({
         checkDocBlocks(pages, ::storedSlotsOf).shouldBeEmpty()
     }
 })
+
+/** The base layers components declare inline, by file id, each with why none of its keys is one a client rewords. */
+private val inlineBaseLayers = mapOf(
+    WVF.helpFile to "the conference demo's workflow help lines, empty as shipped, which the reference flavor fills",
+)
 
 /** A copy key's address: its file, namespace, and key. */
 private data class CopyAddress(val fileId: String, val namespace: String, val key: String) {

@@ -159,8 +159,8 @@ fun String.parseOmnibusFragments(): Map<String, Map<String, Map<String, String>>
 
 /**
  * Reads the copy notes ([FragmentNotes]) of a fragment file's text (issue #1799). Refused, with a [MarkdownError]: a note
- * with nothing after it to be about, two notes on one key or namespace, a note not written `<page>: <place>` with a page
- * of [CPAGE.pages] or `none`, and a namespace's note that is not `none`.
+ * with nothing after it to be about, a note after other text on its line, two notes on one key or namespace, a note not
+ * written `<page>: <place>` with a page of [CPAGE.pages] or `none`, and a namespace's note that is not `none`.
  *
  * Comments are found as [parseMarkdownFragments] strips them, so a note is wherever a comment may be. It is about the
  * first key or namespace line after it.
@@ -183,7 +183,16 @@ fun String.parseFragmentNotes(): FragmentNotes {
             }
             val body = text.substring(i + 2, close)
             if (body.startsWith(FragmentNotes.notePrefix)) {
-                notes.add(cleaned.length to body.substring(FragmentNotes.notePrefix.length).replace(Regex("\\s+"), " ").trim())
+                val note = body.substring(FragmentNotes.notePrefix.length).replace(Regex("\\s+"), " ").trim()
+                // A note starts its line: one after a key's text on the same line would be taken for the next key's.
+                if (cleaned.substring(cleaned.lastIndexOf('\n') + 1).isNotBlank()) {
+                    throw mkMarkdownException(
+                        MarkdownError.misplacedNote,
+                        "A '/-where' note (\"$note\") follows other text on its line; write it on a line of its own, " +
+                            "directly before the key or namespace it is about.",
+                    )
+                }
+                notes.add(cleaned.length to note)
             }
             i = close + 2
         } else {
@@ -299,6 +308,9 @@ enum class MarkdownError : ProblemCode {
 
     /** A namespace's copy note named a page; only a key's may. */
     locatedNamespace,
+
+    /** A copy note followed other text on its line, so it would be taken for the next key's. */
+    misplacedNote,
 }
 
 /**

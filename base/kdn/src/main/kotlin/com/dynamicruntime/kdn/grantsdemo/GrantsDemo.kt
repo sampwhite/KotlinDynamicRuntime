@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.ClientJoinRole
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.report.RMETA
@@ -427,11 +428,17 @@ fun grantsDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo.c
 /**
  * Provisions the demo: each bundle written, published, and made live on every node, then an applicant, a reviewer, and
  * the fund's administrator to sign in as. [suffix] makes a fresh copy, `grantsdemo<suffix>` (see [SIM.suffix]). A rerun
- * rewrites the demo's configuration and keeps its users and forms.
+ * rewrites the demo's configuration and keeps its users and forms. With [skipUnchanged], as every start of a reference
+ * deployment provisions it, a bundle already published as it is written is left alone, adding no revision.
  */
-fun provisionGrantsDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
+fun provisionGrantsDemo(cxt: KdrCxt, suffix: String? = null, skipUnchanged: Boolean = false): SimulationReport {
     val client = GrantsDemo.client + Simulations.checkedSuffix(suffix)
-    for (config in grantsDemoConfigs(cxt, client)) Simulations.provisionConfig(cxt, config)
+    val configs = GedraConfigService.get(cxt)
+    val bound = cxt.mkSubContext("grantsDemo", client)
+    for (config in grantsDemoConfigs(cxt, client)) {
+        if (skipUnchanged && configs.publishedAsIs(bound, config)) continue
+        Simulations.provisionConfig(cxt, config)
+    }
     val admin = Simulations.provisionUser(cxt, "fund@$client.example", client, ROLE.admin, name = "Morgan Manager")
     val applicant = Simulations.provisionUser(cxt, "applicant@$client.example", client, ROLE.user, name = "Avery Applicant")
     val editor = listOf(ROLE.editor)

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.user.AFRAG
+import com.dynamicruntime.common.user.MAILNS
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
 
@@ -75,15 +76,11 @@ fun copyWhereText(where: String): String {
 }
 
 /**
- * The namespaces of the `mail` file that are mails (issue #1799): each with a `subject` and a `body`, as every mail has,
- * which `common` -- what every mail ends with -- has not. Pure, and covered under `jsNodeTest`.
+ * The namespaces of the `mail` file that are mails (issue #1799), as the kernel lists them ([MAILNS]) -- the list the
+ * server previews by -- and the client's copy has. Pure, and covered under `jsNodeTest`.
  */
 fun copyMailNamespaces(rows: List<CopyKeyRow>): Set<String> =
-    rows.filter { it.address.fileId == AFRAG.mail }.groupBy { it.address.namespace }
-        .filterValues { keys -> keys.map { it.address.key }.containsAll(listOf(mailSubjectKey, mailBodyKey)) }.keys
-
-private const val mailSubjectKey = "subject"
-private const val mailBodyKey = "body"
+    rows.filter { it.address.fileId == AFRAG.mail && it.address.namespace in MAILNS.all }.map { it.address.namespace }.toSet()
 
 /** What a mail preview says of whose words it shows (issue #1799). Pure, and covered under `jsNodeTest`. */
 fun mailPreviewModeText(mode: String): String =

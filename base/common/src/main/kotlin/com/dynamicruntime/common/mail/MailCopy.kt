@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.INVITE
+import com.dynamicruntime.common.user.MAILNS
 import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.MarkdownHooks
@@ -45,21 +46,18 @@ object MCOPY {
      */
     const val sentFrom = "sentFrom"
 
-    // The mails, one namespace each.
-    const val verifyCode = "verifyCode"
-    const val verifyCodePassword = "verifyCodePassword"
-    const val invitation = "invitation"
-    const val signInReminder = "signInReminder"
-    const val claimCode = "claimCode"
-    const val claimNoMatch = "claimNoMatch"
-    const val claimNoMatchInClient = "claimNoMatchInClient"
-    const val claimNoMatchNamed = "claimNoMatchNamed"
+    // The mails, one namespace each: the kernel's list (MAILNS), which the copy editor reads too (issue #1799).
+    const val verifyCode = MAILNS.verifyCode
+    const val verifyCodePassword = MAILNS.verifyCodePassword
+    const val invitation = MAILNS.invitation
+    const val signInReminder = MAILNS.signInReminder
+    const val claimCode = MAILNS.claimCode
+    const val claimNoMatch = MAILNS.claimNoMatch
+    const val claimNoMatchInClient = MAILNS.claimNoMatchInClient
+    const val claimNoMatchNamed = MAILNS.claimNoMatchNamed
 
     /** Every mail namespace, for a check that each has its subject and body. */
-    val mails: List<String> = listOf(
-        verifyCode, verifyCodePassword, invitation, signInReminder, claimCode, claimNoMatch, claimNoMatchInClient,
-        claimNoMatchNamed,
-    )
+    val mails: List<String> = MAILNS.all
 
     // The params.
     const val codeParam = "code"

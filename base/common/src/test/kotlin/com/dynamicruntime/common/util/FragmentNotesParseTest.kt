@@ -48,6 +48,8 @@ class FragmentNotesParseTest : StringSpec({
         codeOf("# @home\n/-where Home: -/\n# +title Hi") shouldBe MarkdownError.badNote
         codeOf("/-where Home: a namespace has no one place. -/\n# @home\n# +title Hi") shouldBe MarkdownError.locatedNamespace
         codeOf("# @home\n/-where Home: open") shouldBe MarkdownError.unterminatedComment
+        // After a key's text on its line, a note would be taken for the next key's.
+        codeOf("# @home\n# +title Welcome /-where Home: the title. -/\n# +intro Hi") shouldBe MarkdownError.misplacedNote
     }
 
     "every page of the list is one a note may name" {

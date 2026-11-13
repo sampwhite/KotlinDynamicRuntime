@@ -16,7 +16,8 @@ import java.io.File
  *
  * Reads the files from the tree, handed in by the `copyNotesTest` task (`./gradlew :base:common:copyNotesTest`), so a
  * module's file is judged whatever its own tests boot. An overlay (`_overlay.md`, `_omnibus.md`) changes words, and
- * has no notes of its own.
+ * has no notes of its own. Only the platform's files (base/common's and base/kdn's) may locate a key, since those are
+ * what `GrantsDemoDocsTest` holds the grants demo to.
  *
  * Theme: #CUSTX, #DOCDR.
  */
@@ -47,6 +48,23 @@ class CopyNotesTest : StringSpec({
                 "then asks for its words and a row on its page.",
         ) {
             unclassified.shouldBeEmpty()
+        }
+    }
+
+    "only the platform's own files say where a key is shown" {
+        // The grants demo rewords every located key, and its test (base:kdn) sees the platform's components alone:
+        // a key located in another module's file would escape it, so a located note there fails here instead.
+        val platform = listOf("base/common/", "base/kdn/")
+        val elsewhere = fragmentFiles().filter { file -> platform.none { file.relativeTo(repoRoot).path.startsWith(it) } }
+            .flatMap { file ->
+                val notes = file.readText().parseFragmentNotes()
+                notes.byKey.flatMap { (ns, keys) ->
+                    keys.filterValues { !FragmentNotes.isNotReworded(it) }.keys.map { "${file.relativeTo(repoRoot)}: $ns.$it" }
+                }
+            }
+        withClue("These keys say where they are shown, outside the platform's files the grants demo is held to. Locate " +
+            "keys only in base/common's or base/kdn's fragment files, or say `none` here.") {
+            elsewhere.shouldBeEmpty()
         }
     }
 })

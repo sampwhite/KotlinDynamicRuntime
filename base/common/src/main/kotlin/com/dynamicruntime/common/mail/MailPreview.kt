@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.mail
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.isSandboxClient
@@ -43,11 +42,8 @@ object MailPreview {
         return if (clients.known(client)?.sandbox == true && clients.isPresent(sandboxOf(client))) sandboxOf(client) else client
     }
 
-    /** [mail], one of [MCOPY.mails], for [client]'s people, with sample values; refused for anything that is not a mail. */
+    /** [mail], one of [MCOPY.mails] (the endpoint's choices hold a caller to them), for [client]'s people, with sample values. */
     fun preview(cxt: KdrCxt, client: String, mail: String): Preview {
-        if (mail !in MCOPY.mails) {
-            throw KdrException.mkInput("'$mail' is not a mail. The mails are ${MCOPY.mails.joinToString(", ")}.")
-        }
         val readsAs = readsAs(cxt, client)
         val owner = sandboxParentOf(readsAs) ?: readsAs
         val name = ClientService.get(cxt).known(owner)?.name ?: owner

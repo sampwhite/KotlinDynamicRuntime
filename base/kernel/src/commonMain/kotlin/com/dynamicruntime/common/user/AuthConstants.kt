@@ -192,6 +192,27 @@ object AFRAG {
 }
 
 /**
+ * The mails of the [AFRAG.mail] file, one namespace each (issue #773): the one list of them, which `MCOPY` in `base:common`
+ * names and the copy editor previews (issue #1799), so the server and the page agree on what is a mail.
+ */
+@Suppress("ConstPropertyName")
+object MAILNS {
+    const val verifyCode = "verifyCode"
+    const val verifyCodePassword = "verifyCodePassword"
+    const val invitation = "invitation"
+    const val signInReminder = "signInReminder"
+    const val claimCode = "claimCode"
+    const val claimNoMatch = "claimNoMatch"
+    const val claimNoMatchInClient = "claimNoMatchInClient"
+    const val claimNoMatchNamed = "claimNoMatchNamed"
+
+    val all: List<String> = listOf(
+        verifyCode, verifyCodePassword, invitation, signInReminder, claimCode, claimNoMatch, claimNoMatchInClient,
+        claimNoMatchNamed,
+    )
+}
+
+/**
  * Keys of the `error` namespace in the `auth` fragment file: the copy for auth error messages (issue #108).
  * The backend renders these from `KdrException`'s `KdrMsg` at the top-level handler -- the sentence lives here
  * (in `auth.md`), not duplicated in Kotlin. The `${...}`-bearing ones take the noted params.
