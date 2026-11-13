@@ -39,7 +39,7 @@ class PageCopyChecksTest : StringSpec({
                         enabledEnvironments = setOf(ENV.unit, ENV.local),
                     ),
                 )
-                // The client's own facts: one sent to the frontend, which a page may test, and one that is not.
+                // The client's own facts: one sent to the frontend and one not, neither of which a page sees.
                 cfact("pageShown", "Page", "A fact the frontend is sent.", toFrontend = true)
                 cfact("pageHidden", "Page", "A fact the frontend is not sent.", toFrontend = false)
                 fragmentOverlay(HFRAG.home) { namespace(HFRAG.homeNs) { key(HFRAG.intro, intro) } }
@@ -55,12 +55,13 @@ class PageCopyChecksTest : StringSpec({
             "only copy a component ships may place"
         shouldThrow<Exception> { write(fence("""{"id": "x", "copy": "home.noSuchKey"}""")) }.message.orEmpty() shouldContain
             "which the page's fragment file does not have"
-        shouldThrow<Exception> { write(fence("""{"id": "x", "copy": "home.title", "cfactExpression": "kdr:loggedIn"}""")) }
-            .message.orEmpty() shouldContain "which the frontend is never sent"
-        // The client's own facts count, declared in the configuration being written: by whether the frontend is sent them.
-        write(fence("""{"id": "x", "copy": "home.title", "cfactExpression": "pageShown"}"""))
-        shouldThrow<Exception> { write(fence("""{"id": "x", "copy": "home.title", "cfactExpression": "pageHidden"}""")) }
-            .message.orEmpty() shouldContain "'pageHidden', which the frontend is never sent"
+        shouldThrow<Exception> { write(fence("""{"id": "x", "copy": "home.title", "cfactExpression": "kdr:hasOperatorLevel"}""")) }
+            .message.orEmpty() shouldContain "which a page never sees"
+        // The client's own facts are about its forms, so a page never sees one (issue #1793), sent to the frontend or not.
+        for (fact in listOf("pageShown", "pageHidden")) {
+            shouldThrow<Exception> { write(fence("""{"id": "x", "copy": "home.title", "cfactExpression": "$fact"}""")) }
+                .message.orEmpty() shouldContain "'$fact', which a page never sees"
+        }
     }
 
     "copy a component ships is held to the same rules by the fragment check at boot" {

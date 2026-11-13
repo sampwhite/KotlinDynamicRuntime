@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.uiblock
 
 import com.dynamicruntime.common.cfact.CFactPredicate
+import com.dynamicruntime.common.cfact.CallerCfacts
 import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.cfact.parseCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
@@ -110,23 +111,31 @@ class UiBlockService : ServiceInitializer {
      * satisfy removed. Null when nothing registers the block.
      */
     fun resolve(cxt: KdrCxt, blockId: String, targetFacts: Set<String> = emptySet()): Map<String, Any?>? =
-        resolveAll(cxt, listOf(blockId), targetFacts)[blockId]
+        resolveAll(cxt, listOf(blockId), CallerCfacts.assemble(cxt, targetFacts))[blockId]
 
     /**
-     * Each of [blockIds] as this caller should see it, as [resolve] gives one (issue #1636) -- the caller's cfacts
-     * assembled once for every block merged for the same client, rather than once per block. What a response carrying
-     * several blocks reads them through: the shell config, which is polled, carries the menu and the home cards.
+     * Each of [blockIds] as this caller should see it, as [resolve] gives one (issue #1636), judged on [facts] -- the
+     * caller's cfacts assembled once for every block, rather than once per block. What a response carrying several
+     * blocks reads them through: the shell config, which is polled, carries the menu and the home cards, and sends the
+     * frontend the same [facts] (issue #1793). [facts] must be [cxt]'s own; a set assembled for another request is
+     * refused.
      */
-    fun resolveAll(cxt: KdrCxt, blockIds: List<String>, targetFacts: Set<String> = emptySet()): Map<String, Map<String, Any?>?> {
-        val presentByClient = mutableMapOf<String?, Set<String>>()
+    fun resolveAll(
+        cxt: KdrCxt,
+        blockIds: List<String>,
+        facts: CallerCfacts = CallerCfacts.assemble(cxt),
+    ): Map<String, Map<String, Any?>?> {
+        if (!facts.isFor(cxt)) {
+            throw KdrException("The cfacts UiBlocks are resolved on were assembled for another request than the one resolving them.")
+        }
         return blockIds.associateWith { blockId ->
             val merged = merged(cxt, blockId, cxt.client)
             if (!merged.found) return@associateWith null
             val client = merged.client
-            val registry = SchemaService.get(cxt).cfactsFor(client)
-            val present = presentByClient.getOrPut(client) { registry.assemble(cxt, targetFacts) }
-            filterByCFacts(merged.content, present) { expression ->
-                predicateCache.getOrPut("${client ?: ""}|$expression") { parseCFactOrAlways(expression, registry.names) }
+            filterByCFacts(merged.content, facts.present) { expression ->
+                predicateCache.getOrPut("${client ?: ""}|$expression") {
+                    parseCFactOrAlways(expression, SchemaService.get(cxt).cfactsFor(client).names)
+                }
             }
         }
     }

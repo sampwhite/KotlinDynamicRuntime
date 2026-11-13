@@ -48,6 +48,7 @@ What a test can see depends on where it is written.
 |---|---|---|
 | A menu entry's `cfactExpression` | Whether the entry is shown. | The request's: the caller and the node. |
 | A field's `g-visibleWhen`, in its schema | Whether the field is on the form. A write that would change a field kept off is refused. | The request's, and only those sent to the browser. |
+| A [page widget](page-widgets.md)'s `cfactExpression` | Whether the widget is drawn on the page. It is judged in the browser. | The request's, and only those sent to the browser. |
 | A task's `saveWhen` | Who may save the task. Without one, anyone who can see the form may. | The request's, the task's, those the task's functions give the person looking, and `kdr:isOwner`. |
 | An approval's `approveWhen` | Who may approve the task. Without one, a reviewer who does not own the form: `kdr:reviewer,~kdr:isOwner`. | The same as `saveWhen`. |
 | A filter a task's `ctaFilterByValue` function gives | Whom the task waits on while it is the workflow's next step. It narrows `saveWhen` and `approveWhen`, and never widens them. Its answer for the person looking is `kdr:passesCtaFilter`. | The request's, those the task's functions give the person looking, and `kdr:isOwner`: none of the task's or the form's, so a list of forms can test it without reading them. |
@@ -90,8 +91,10 @@ joins them.
 ## The platform's facts
 
 Every deployment declares these. The last column says whether a fact is sent to the browser with the page. A field's
-`g-visibleWhen` may name only a fact that is, and sees only the request's facts among them, so the caller's facts
-marked Yes are the ones it can test.
+`g-visibleWhen` and a page widget's `cfactExpression` may name only a fact that is, and see only the
+request's facts among them, so the caller's facts marked Yes are the ones they can test. Each is sent by a deliberate
+choice. A client's own facts are sent only where its declaration sets `toFrontend`, and are about its forms, so
+a page widget's condition may not name them.
 
 A component a deployment adds can declare facts under a name of its own, as the workflow assistant declares
 `assistant:on`. The **Client facts** page, for a client's operators and administrators, lists every fact the client
@@ -109,8 +112,8 @@ knows, its own included, with whether each is present for them now.
 
 | Fact | What makes it true | Reaches the page |
 |---|---|---|
-| `kdr:loggedIn` | True when the request carries an authenticated identity -- neither the anonymous profile nor the unauthenticated system one. | No |
-| `kdr:anonymous` | True when the request carries no authenticated identity. The positive form of `~kdr:loggedIn`, and preferred over it: a test written by exclusion admits every state invented later. | No |
+| `kdr:loggedIn` | True when the request carries an authenticated identity -- neither the anonymous profile nor the unauthenticated system one. | Yes |
+| `kdr:anonymous` | True when the request carries no authenticated identity. The positive form of `~kdr:loggedIn`, and preferred over it: a test written by exclusion admits every state invented later. | Yes |
 | `kdr:hasOperatorLevel` | True when the caller ranks at `operator` or above on the privilege ladder -- so an administrator satisfies it without holding `operator` at all. **Level only**: the `operator` section also requires `allClients`, so this is not the test that section applies -- `kdr:isDeploymentOperator` is. | No |
 | `kdr:isDeploymentOperator` | True when the caller may reach the `operator` section -- the deployment-wide surface, which takes the operator level **and** the `allClients` capability. A client-scoped administrator is not one, despite the ladder ranking them above operator. | No |
 | `kdr:isDeploymentAdmin` | True when the caller may reach the `admin` section -- the deployment-wide administrative surface, which takes the admin level **and** the `allClients` capability. A client-scoped administrator is not one. It is what may name another client on a scoped surface. | Yes |

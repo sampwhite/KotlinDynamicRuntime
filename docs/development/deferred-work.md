@@ -520,7 +520,9 @@ When one does:
 hides is refused, so the page and the API agree (issues #545, #830). A fact about the **form** -- one of a client's own,
 such as the demo's `isWorkshop` or `talkAccepted`, or a workflow's -- cannot gate a field: the schema check judges
 `g-visibleWhen` against the platform's facts alone, and a client's `toFrontend` therefore does nothing yet (#1561,
-deferred here 2026-11-03). The trigger is a client wanting a field on a form only while the form is in some state.
+deferred here 2026-11-03). A page's widget conditions do not use it either: they see only the facts about the request
+that are sent to the browser, and the shell config sends only those (#1793). The trigger is a client wanting a field on
+a form only while the form is in some state.
 When one does:
 
 - **A `visibleWhen` on a `g-layout` field entry**, a test over the facts the surface has: on a workflow's task, the set

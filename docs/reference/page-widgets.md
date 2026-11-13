@@ -31,7 +31,7 @@ text, so copy can show a fence as an example, as this page does, without drawing
 | `id` | The fence's name, unique in its page: a letter or underscore, then letters, digits, and underscores. The fence is drawn with the element id `page.<id>`, which a link can name. |
 | `widget` | The kind of widget to draw, one of [the kinds](#the-kinds) below. Left out, the fence draws only its `copy`, which is how a page shows copy under a condition. |
 | `copy` | Copy drawn before the widget, as `namespace.key` of the page's own fragment file. It is drawn as any other copy is, so it may pull other keys and fill placeholders. |
-| `cfactExpression` | Whether the fence is drawn: a test of [facts](facts.md), judged in the browser, so it may name only the facts sent to it. Left out, the fence is always drawn. |
+| `cfactExpression` | Whether the fence is drawn: a test of [facts](facts.md), judged in the browser, so it may name only the facts about the caller and the node that are sent to it. A fact about a form, a client's own included, never holds on a page. Left out, the fence is always drawn. |
 | `jumpLabel` | Puts a link to the fence, with these words, among the page's jump links. |
 
 Every other key is a parameter of the widget's kind, held to the kind's own list below.
@@ -51,7 +51,7 @@ written. A fence is refused when:
 - it gives a parameter the kind does not take, or one the kind's schema refuses;
 - it names neither a `widget` nor a `copy`, so it would draw nothing;
 - its `copy` is not a `namespace.key` the page's fragment file has;
-- its `cfactExpression` does not parse, or names a fact the browser is never sent, which would never hold;
+- its `cfactExpression` does not parse, or names a fact a page never sees, which would never hold;
 - one of the keys above holds something other than text.
 
 Where copy is drawn, a fence with a problem is left out and the rest of the page is drawn.

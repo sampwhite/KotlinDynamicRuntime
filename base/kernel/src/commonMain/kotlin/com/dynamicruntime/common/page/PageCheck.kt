@@ -7,15 +7,16 @@ import com.dynamicruntime.common.util.isVariableName
 /**
  * What a page document's fences are judged against (issue #1792): the [catalog] of widget kinds, whether the copy is
  * [shipped] (a component's or a flavor's) or a client's own, whether a `copy` key exists in the page's own fragment
- * file ([copyKeyExists]), the cfacts a condition may name at all ([knownCfacts]), and those sent to the frontend
- * ([frontendCfacts]), which are all a condition judged in the browser can see.
+ * file ([copyKeyExists]), the cfacts a condition may name at all ([knownCfacts]), and those a page can see
+ * ([pageCfacts]): the facts about the request that are sent to the frontend (issue #1793), which are all a condition
+ * judged in the browser, for a caller and not a form, can hold on.
  */
 class PageCheckScope(
     val catalog: PageWidgetCatalog,
     val shipped: Boolean,
     val copyKeyExists: (namespace: String, key: String) -> Boolean,
     val knownCfacts: Set<String>,
-    val frontendCfacts: Set<String>,
+    val pageCfacts: Set<String>,
 )
 
 /**
@@ -95,12 +96,13 @@ private fun copyKeyProblem(key: String, scope: PageCheckScope): String? {
     return if (scope.copyKeyExists(namespace, name)) null else "shows the ${PGW.copy} '$key', which the page's fragment file does not have."
 }
 
-/** What is wrong with a fence's condition [rule], or null: it parses, and names only cfacts sent to the frontend. */
+/** What is wrong with a fence's condition [rule], or null: it parses, and names only cfacts a page can see. */
 private fun conditionProblem(rule: String, scope: PageCheckScope): String? {
     val analysis = CFactParser.analyze(rule, scope.knownCfacts)
     analysis.problems.firstOrNull()?.let { return "has a ${PGW.cfactExpression} that does not parse: ${it.message}" }
-    val hidden = analysis.names - scope.frontendCfacts
+    val hidden = analysis.names - scope.pageCfacts
     if (hidden.isEmpty()) return null
-    return "has a ${PGW.cfactExpression} naming ${hidden.sorted().joinToString(", ") { "'$it'" }}, which the frontend is " +
-        "never sent, so it would never hold. A page's conditions are judged in the browser."
+    return "has a ${PGW.cfactExpression} naming ${hidden.sorted().joinToString(", ") { "'$it'" }}, which a page never " +
+        "sees, so it would never hold. A page's conditions are judged in the browser, on the facts about the caller and " +
+        "the node that are sent to it."
 }

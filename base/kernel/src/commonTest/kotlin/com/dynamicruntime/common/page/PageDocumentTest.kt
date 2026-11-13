@@ -67,7 +67,7 @@ class PageDocumentTest {
         PageWidgets.core, shipped,
         copyKeyExists = { namespace, key -> namespace == "home" && key in setOf("intro", "note") },
         knownCfacts = setOf("kdr:hasAdminLevel", "kdr:loggedIn"),
-        frontendCfacts = setOf("kdr:hasAdminLevel"),
+        pageCfacts = setOf("kdr:hasAdminLevel"),
     )
 
     private fun problems(doc: String, shipped: Boolean = true) = pageDocumentProblems(doc, scope(shipped))
@@ -97,7 +97,7 @@ class PageDocumentTest {
         assertTrue(problem("""{"id": "x", "widget": "cardsBlock"}""").contains("parameters it refuses"))
         assertTrue(problem("""{"id": "x", "copy": "intro"}""").contains("not a 'namespace.key'"))
         assertTrue(problem("""{"id": "x", "copy": "home.missing"}""").contains("does not have"))
-        assertTrue(problem("""{"id": "x", "copy": "home.intro", "cfactExpression": "kdr:loggedIn"}""").contains("never sent"))
+        assertTrue(problem("""{"id": "x", "copy": "home.intro", "cfactExpression": "kdr:loggedIn"}""").contains("which a page never sees"))
         assertTrue(problem("""{"id": "x", "copy": "home.intro", "cfactExpression": "kdr:nope"}""").contains("does not parse"))
         assertTrue(problem("""{"id": "x", "widget": "hero", "jumpLabel": 3}""").contains("has a jumpLabel that is not text"))
     }

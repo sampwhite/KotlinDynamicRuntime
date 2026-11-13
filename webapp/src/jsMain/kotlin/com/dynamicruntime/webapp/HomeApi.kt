@@ -155,6 +155,11 @@ class HomeConfig(
     val pageFragments: Map<String, FragmentRef> = emptyMap(),
     /** The home cards for this caller (issue #1636), in the order Home draws them; see [HomeCards]. */
     val cards: List<HomeCard> = emptyList(),
+    /**
+     * The caller's cfacts that are sent to the frontend (issue #1793), each name to whether it is present for them --
+     * the whole such vocabulary, so a test naming an absent one still parses. What a page's widget fences are judged on.
+     */
+    val cfacts: Map<String, Boolean> = emptyMap(),
 )
 
 /**
@@ -230,6 +235,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },
         timeZoneLabel = (config.state[HFLD.timeZoneLabel] as? String)?.ifBlank { null },
         cards = homeCardsFrom(config.state[HCARD.cards]),
+        cfacts = config.state[HFLD.cfacts].toJsonMapOrEmpty().mapValues { it.value == true },
     )
 }
 

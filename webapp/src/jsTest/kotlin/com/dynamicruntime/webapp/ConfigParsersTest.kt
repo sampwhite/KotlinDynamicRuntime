@@ -131,6 +131,20 @@ class ConfigParsersTest {
         assertEquals("", Copy.empty.explanation(PFRAG.storedConfigNs))
     }
 
+    /**
+     * The caller's frontend cfacts (issue #1793), what a page's fences are judged on: each to whether it holds, a value
+     * that is not `true` read as absent, and none from a backend that sends none.
+     */
+    @Test
+    fun homeConfigReadsTheCallersFrontendCfacts() {
+        val sent = mapOf("kdr:loggedIn" to true, "kdr:anonymous" to false, "kdr:hasAdminLevel" to "yes")
+        assertEquals(
+            mapOf("kdr:loggedIn" to true, "kdr:anonymous" to false, "kdr:hasAdminLevel" to false),
+            homeConfigFrom(uiConfig(state = mapOf(HFLD.cfacts to sent))).cfacts,
+        )
+        assertEquals(emptyMap(), homeConfigFrom(uiConfig()).cfacts)
+    }
+
     @Test
     fun homeConfigReadsLinksMenuLayoutAndUser() {
         val cfg = homeConfigFrom(
