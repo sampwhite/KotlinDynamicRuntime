@@ -79,14 +79,15 @@ external interface InputProps : PropsWithChildren {
     var autoComplete: String?
 
     /**
-     * The HTML `autocapitalize` hint a phone keyboard follows (`"characters"` for a verification code, issue #1785,
-     * [AC.capitalizeCharacters]). antd forwards it to the underlying `<input>`, as it does [autoComplete].
+     * The HTML `autocapitalize` hint a phone keyboard follows (`"none"` for an address, issue #1790,
+     * [AC.capitalizeNone]). antd forwards it to the underlying `<input>`, as it does [autoComplete].
      */
     var autoCapitalize: String?
 
     /**
      * The HTML `inputmode` hint, which keyboard a phone shows (`"email"` for an address, with `@` on its main layer,
-     * issue #1790). Only the keyboard: unlike `type="email"`, it brings no validation of its own.
+     * issue #1790; `"numeric"` for a verification code, issue #1805). Only the keyboard: unlike `type="email"`, it
+     * brings no validation of its own.
      */
     var inputMode: String?
 

@@ -165,6 +165,20 @@ fun ByteArray.toReadableChars(numBytes: Int = size): String {
 }
 
 /**
+ * Renders the first four bytes of [this] as [numDigits] decimal digits, zero-padded (issue #1805): a code a phone
+ * recognizes as one and offers to fill in. The bytes are read as an unsigned number and reduced modulo `10^numDigits`;
+ * the bias that leaves (2^32 is not a multiple of a million) is under one part in four thousand.
+ */
+fun ByteArray.toDigits(numDigits: Int): String {
+    require(numDigits in 1..9 && size >= 4) { "Digits need four bytes, and at most nine digits." }
+    var n = 0L
+    for (i in 0 until 4) n = (n shl 8) or (this[i].toLong() and 0xFF)
+    var modulus = 1L
+    repeat(numDigits) { modulus *= 10 }
+    return (n % modulus).toString().padStart(numDigits, '0')
+}
+
+/**
  * This project's standard unique id, used in preference to a GUID because it sorts by time -- handy for
  * troubleshooting and paging. A compact millisecond timestamp (instant.formatCompactId) followed by 4
  * bytes of randomness, all in search-friendly characters. (The date is not meant to be parsed back out.)

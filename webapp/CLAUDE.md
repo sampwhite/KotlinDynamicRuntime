@@ -275,7 +275,8 @@ Current UI-config endpoints:
   part shows bare. `forHtml` is bound by every render, for a body whose two parts want different words. The copy
   editor previews each mail as a client's copy renders it, by the same render with sample values
   (`/clientAdmin/client/copy/mailPreview`, issue #1799). The dev autofill (`fetchDevCode`) and the tests read the
-  code out of the text part's "verification code is <code>." -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
+  code with the kernel's `verifyCodeInMail`, out of the text part's "verification code is:" and the line after (issue
+  #1805) -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
   sample's acme and globex each overlay `common.footer` alone, so every mail about one of their users is
   signed by them (`SampleClients.kt`).
 

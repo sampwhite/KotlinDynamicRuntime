@@ -356,7 +356,7 @@ fun grantsDemoMailWords(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo
                 key(MCOPY.subject, "Your Riverbend sign-in code")
                 key(
                     MCOPY.body,
-                    $$"Your verification code is [${code}]{.code}.\n\n" +
+                    $$"Your verification code is:\n\n[${code}]{.code}\n\n" +
                         "Enter it on the Riverbend grant site to sign in. It expires in fifteen minutes.",
                 )
             }
@@ -364,7 +364,7 @@ fun grantsDemoMailWords(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo
                 key(MCOPY.subject, "Your Riverbend password code")
                 key(
                     MCOPY.body,
-                    $$"Your verification code is [${code}]{.code}.\n\n" +
+                    $$"Your verification code is:\n\n[${code}]{.code}\n\n" +
                         "Enter it to set or change your password for the Riverbend grant site. It expires in fifteen minutes.",
                 )
             }
@@ -399,7 +399,7 @@ fun grantsDemoMailWords(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo
                 key(
                     MCOPY.body,
                     $$"Your verification code for claiming the account [${address}]{.value} at the Riverbend Community Fund " +
-                        $$"as [${personaLabel}]{.value} is [${code}]{.code}.\n\n" +
+                        $$"as [${personaLabel}]{.value} is:\n\n[${code}]{.code}\n\n" +
                         "Enter it on the page where you asked for it. It expires in fifteen minutes.",
                 )
             }

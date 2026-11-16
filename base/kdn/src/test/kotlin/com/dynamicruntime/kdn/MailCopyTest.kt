@@ -27,6 +27,7 @@ import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.INVITE
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.verifyCodeInMail
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
@@ -34,6 +35,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 
 /**
@@ -68,6 +70,10 @@ class MailCopyTest : StringSpec({
                 // genuinely want different words (issue #795).
                 key(MCOPY.body, $$"Welcome to *Mail Co*, [${address}]{.value}. ${forHtml ? \"Accept with the link:\" : \"Open this link to accept:\"} ${url}")
             }
+            // A subject naming the code, which is masked as it is sent (issue #1805).
+            namespace(MCOPY.claimCode) {
+                key(MCOPY.subject, $$"${code} is your Mail Co code")
+            }
             namespace(MCOPY.common) {
                 key(MCOPY.footer, "Sent by the Mail Co desk.")
                 // Who it is from, naming the client (issue #1804).
@@ -98,19 +104,21 @@ class MailCopyTest : StringSpec({
             AEP.userSendVerify, mapOf(AFLD.loginId to address, AFLD.formAuthToken to tokenOf(browser)),
         )[EP.status] shouldBe null
         val sent = mail.lastEmailTo(address).shouldNotBeNull()
-        // The frontend's dev autofill and AuthFlowTest read the code out of exactly this phrase.
-        val code = Regex("verification code is (\\S+?)[.\\s]").find(sent.text).shouldNotBeNull().groupValues[1]
-        code.isNotEmpty() shouldBe true
-        // In the HTML part the code is set large and monospaced, in an anchor with no href so Gmail does not
-        // read it as a phone number; the text part keeps the bare phrase its readers parse.
-        sent.html.shouldNotBeNull() shouldContain "<p>Your verification code is <a style=\"font-family: Menlo"
-        sent.html!! shouldContain "\">$code</a>."
-        sent.text shouldContain "Your verification code is $code."
+        // The frontend's dev autofill reads the code as this does: six digits, on the line after the phrase (issue #1805).
+        val code = verifyCodeInMail(sent.text).shouldNotBeNull()
+        code shouldMatch Regex("[0-9]{6}")
+        sent.text shouldContain "Your verification code is:\n\n$code\n"
+        // Never in the subject, which a locked phone shows (issue #1805).
+        sent.subject shouldBe "Your verification code"
+        // In the HTML part the code is a paragraph of its own, set large and monospaced, in an anchor with no href so
+        // Gmail does not read it as a phone number.
+        sent.html.shouldNotBeNull() shouldContain "<p>Your verification code is:</p>"
+        sent.html!! shouldContain Regex("<p><a style=\"font-family: Menlo[^\"]*\">$code</a></p>")
         sent.html!! shouldContain "<body style=\""
         // Both parts reach the test-only read-back the frontend uses (for a caller with test access, issue #1149).
         val emails = results(browser.withTestAccess { browser.sendJsonGetRequest(TEP.simulatedEmails, mapOf(TSE.to to address)) })[TSE.emails]
             .toJsonListOfMaps()
-        emails.first()[TSE.html].toString() shouldContain "<p>Your verification code is"
+        emails.first()[TSE.html].toString() shouldContain "<p>Your verification code is:</p>"
         // Every mail ends with the shared footer, in both parts.
         sent.text shouldContain "sent automatically"
         sent.html!! shouldContain "sent automatically"
@@ -197,12 +205,21 @@ class MailCopyTest : StringSpec({
         sent.from shouldBe "\"Mail Co Desk\" <${MAIL.unsentFromAddress}>"
         sent.html.shouldNotBeNull() shouldContain "Welcome to <em>Mail Co</em>, <a style=\"font-weight: bold; color: inherit; text-decoration: none;\">$overlaid</a>. Accept with the link:"
         sent.html!! shouldContain "Sent by the Mail Co desk."
-        // The overlay named only the invitation, so the client's other mails keep the shipped wording -- with
-        // the client's own footer, since that is shared.
+        // The overlay did not name the code mail, so it keeps the shipped wording -- with the client's own footer, since
+        // that is shared.
         val rendered = MailCopy.render(cxt, overlayClient, MCOPY.verifyCode, mapOf(MCOPY.codeParam to "123456"))
-        rendered.text shouldContain "Your verification code is 123456."
+        verifyCodeInMail(rendered.text) shouldBe "123456"
         rendered.text shouldContain "Sent by the Mail Co desk."
         rendered.text shouldNotContain "Sent from"
+        // A client's subject naming the code shows the mask, never the code, which a locked phone would show; the body
+        // still carries it.
+        val claim = MailCopy.render(
+            cxt, overlayClient, MCOPY.claimCode,
+            mapOf(MCOPY.codeParam to "123456", MCOPY.addressParam to "a@mailco.test", MCOPY.clientNameParam to "Mail Co",
+                MCOPY.personaLabelParam to "Member"),
+        )
+        claim.subject shouldBe "${MCOPY.codeInSubject} is your Mail Co code"
+        verifyCodeInMail(claim.text) shouldBe "123456"
         // The overlay is the client's own: a user invited into another client reads the shipped copy, whoever
         // created them.
         val plain = "mailcopy-plain@other.test"
@@ -220,7 +237,7 @@ class MailCopyTest : StringSpec({
             mapOf(MCOPY.addressParam to address, MCOPY.clientParam to "acme", MCOPY.clientNameParam to "Acme *Corp*",
                 MCOPY.personaLabelParam to "Admin", MCOPY.codeParam to "123456"),
         )
-        rendered.text shouldContain "the account $address at Acme *Corp* as Admin is 123456."
+        rendered.text shouldContain "the account $address at Acme *Corp* as Admin is:\n\n123456\n"
         rendered.html shouldContain ">$address</a>"
         rendered.html shouldContain ">Acme *Corp*</a>"
         rendered.html shouldNotContain "<em>"

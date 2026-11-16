@@ -27,8 +27,8 @@ object MailPreview {
     /** The address a preview's mail is about: made up, so no preview shows a real person's. */
     const val sampleAddress = "pat@example.com"
 
-    /** A preview's code, shaped like a real one: six characters, capitals and digits. */
-    const val sampleCode = "K7M2QX"
+    /** A preview's code, shaped like a real one: six digits (issue #1805). */
+    const val sampleCode = "482916"
 
     /** The token a preview's invitation link carries, saying what it is in case anyone follows it. */
     const val sampleToken = "preview-not-a-real-invitation"

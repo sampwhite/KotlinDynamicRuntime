@@ -42,17 +42,14 @@ private val PasswordInput: ComponentType<InputProps> =
 object AC {
     const val oneTimeCode = "one-time-code"
 
-    /**
-     * The `autocapitalize` hint for a verification code (issue #1785): a phone keyboard starts in capitals, which every
-     * code is, though the server takes one typed in lower case too.
-     */
-    const val capitalizeCharacters = "characters"
-
     /** The `autocapitalize` hint for an address (issue #1790): no leading capital. */
     const val capitalizeNone = "none"
 
     /** The `inputmode` for an address (issue #1790): the keyboard with `@` and `.` on its main layer. */
     const val inputModeEmail = "email"
+
+    /** The `inputmode` for a verification code (issue #1805), which is six digits: a phone's number pad. */
+    const val inputModeNumeric = "numeric"
     const val newPassword = "new-password"
     const val currentPassword = "current-password"
     const val username = "username"
@@ -71,8 +68,8 @@ fun ChildrenBuilder.textField(
     autoComplete: String? = null,
     placeholder: String? = null,
     maxLength: Int? = null,
-    /** The `autocapitalize` hint a phone keyboard follows ([AC.capitalizeCharacters]); null leaves the browser's. */
-    autoCapitalize: String? = null,
+    /** The `inputmode` hint, which keyboard a phone shows ([AC.inputModeNumeric]); null leaves the browser's. */
+    inputMode: String? = null,
     /**
      * Whether the field takes an email address (issue #1790): a phone's email keyboard ([AC.inputModeEmail]), no leading
      * capital, and no autocorrect or spelling marks. The keyboard still has every letter and digit, so a field that also
@@ -95,9 +92,9 @@ fun ChildrenBuilder.textField(
             this.autoComplete = autoComplete
             placeholder?.let { this.placeholder = it }
             maxLength?.let { this.maxLength = it }
-            autoCapitalize?.let { this.autoCapitalize = it }
+            inputMode?.let { this.inputMode = it }
             if (email) {
-                inputMode = AC.inputModeEmail
+                this.inputMode = AC.inputModeEmail
                 this.autoCapitalize = AC.capitalizeNone
                 autoCorrect = "off"
                 spellCheck = false

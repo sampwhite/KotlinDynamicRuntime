@@ -475,7 +475,7 @@ val Profile = FC<Props> {
             // code field in AuthFlow.kt (issue #1790) for what was tried, and why it was left.
             textField(
                 t("password", "codeLabel", "Verification code"), code, disabled = busy,
-                autoComplete = AC.oneTimeCode, autoCapitalize = AC.capitalizeCharacters,
+                autoComplete = AC.oneTimeCode, inputMode = AC.inputModeNumeric,
             ) { code = it }
             textField(
                 t("password", "newPasswordLabel", "New password"), password, isPassword = true,

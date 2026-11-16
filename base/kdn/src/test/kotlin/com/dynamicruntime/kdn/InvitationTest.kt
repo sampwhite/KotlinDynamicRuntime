@@ -29,6 +29,7 @@ import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.verifyCodeInMail
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
@@ -330,7 +331,8 @@ class ClaimAccountTest : StringSpec({
     /** The code the server mailed, read from the mail the way the person would. */
     fun codeMailedTo(address: String): String {
         val text = MailService.get(cxt).lastEmailTo(address).shouldNotBeNull().text
-        return Regex("code for claiming the account .* is (\\S+?)\\.").find(text).shouldNotBeNull().groupValues[1]
+        text shouldContain "code for claiming the account"
+        return verifyCodeInMail(text).shouldNotBeNull()
     }
 
     "an invited user is claimed from the login page with the address, client and persona, and a mailed code" {

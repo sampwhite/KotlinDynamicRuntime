@@ -12,8 +12,8 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.decrypt
 import com.dynamicruntime.common.util.encrypt
 import com.dynamicruntime.common.util.hmacToBytes
-import com.dynamicruntime.common.util.toReadableChars
 import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.util.toDigits
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -132,11 +132,17 @@ class NodeService : ServiceInitializer {
      * and log in as them. Keeping it a method here, rather than a free function over the raw inputs, is what
      * makes the unkeyed form impossible to write by accident.
      *
-     * **Six characters** ([verifyCodeBytes], issue #1785), short enough to type on a phone: about 16.7 million codes,
-     * each living only as long as its form token (15 minutes) and refused after six wrong tries in that time.
+     * **Six digits** ([verifyCodeDigits], issue #1805), so a phone recognizes the mailed code and offers to fill it
+     * in, and short enough to type: a million codes, each living only as long as its form token (15 minutes). The
+     * guessing is limited by what was typed, not by the code: six wrong tries per 15 minutes for one address, whatever
+     * code each try was against (`AuthFormHandler`'s `verifyCodeOrThrow`). An attacker who keeps at the limit for a
+     * day has about a 0.06% chance against that one address -- on each node, since the counter is a node's own and a
+     * restart clears it (`AuthRateLimiter`), so a deployment of several nodes multiplies it. Six characters of the
+     * 16-letter alphabet (issue #1785) gave 16.7 million codes, so each guess was a sixteenth as likely to land, at the
+     * cost of codes no phone offers.
      */
     fun computeVerifyCode(formAuthToken: String, contactAddress: String): String =
-        (contactAddress + formAuthToken).hmacToBytes(activeKey()).toReadableChars(verifyCodeBytes)
+        (contactAddress + formAuthToken).hmacToBytes(activeKey()).toDigits(verifyCodeDigits)
 
     /** The instance's active encryption key, or a hard failure if startup has not loaded one yet. */
     private fun activeKey(): String = authKeys[instanceAuthConfigKey]
@@ -158,8 +164,8 @@ class NodeService : ServiceInitializer {
     companion object {
         const val serviceName = "NodeService"
 
-        /** The bytes of the HMAC a verification code is written from, two characters each (issue #1785). */
-        const val verifyCodeBytes = 3
+        /** The digits of a verification code (issue #1805), written from the HMAC's first four bytes. */
+        const val verifyCodeDigits = 6
 
         /**
          * Default lookup name for the active encryption key when `node.instance.authConfigKey` is not set.

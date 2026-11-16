@@ -1229,6 +1229,17 @@ code field in `AuthFlow.kt`).
   show the password, so Chrome never sees a code field beside a password field. It changes the registration and
   set-password flows and the backend steps behind them.
 
+## When a mail client or password manager reads the `OTP-Token` header
+
+A mailed code is offered for the field that asks for it when the phone finds it in the body, on its line after
+"verification code is:" (#1805). It stays out of the subject, which a locked phone shows. `draft-goto-otp-token`, an
+individual Internet-Draft from September 2026 that no working group had adopted, adds an `OTP-Token` header naming the
+code and the site it is for, so a client fills it in on that site and nowhere else.
+
+- **Send the header with every code mail** *(#1805, deferred here 2026-11-16).* `MailService.sendFragmentMail` would add
+  it beside the body, with the deployment's public URL as the origin. Worth doing once Apple Mail, Gmail, or a common
+  password manager reads it.
+
 ## When an administrator wants to see a form's whole workflow history
 
 Every act on a form's workflow leaves an event on its engagement's trail -- engaged, disengaged, approved, a lock

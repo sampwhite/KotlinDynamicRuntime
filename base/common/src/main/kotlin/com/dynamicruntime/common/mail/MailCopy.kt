@@ -67,6 +67,9 @@ object MCOPY {
 
     // The params.
     const val codeParam = "code"
+
+    /** What `${code}` reads as in a subject (issue #1805): never the code itself, which a locked phone would show. */
+    const val codeInSubject = "••••••"
     const val addressParam = "address"
     const val clientParam = "client"
     /** The persona as the claim page wants it typed: `admin`, `member B`. */
@@ -162,7 +165,10 @@ object MailCopy {
         val safe = sanitized.mapValues { (_, v) -> if (v is String) v.escapeMarkdown() else v }
         // The mail's dates read in the zone of the client it is about, at the moment it is rendered (issue #1321).
         val env = client?.let { ClientService.get(cxt).scriptEnvOf(cxt, it) }
-        val subject = copy(mail, MCOPY.subject).evalTemplate(sanitized, env = env)
+        // A subject never shows the code, which a locked phone would show (issue #1805): a client's wording that names
+        // `${code}` there gets the mask, so the mail still sends and says a code is inside.
+        val subjectParams = if (MCOPY.codeParam in sanitized) sanitized + (MCOPY.codeParam to MCOPY.codeInSubject) else sanitized
+        val subject = copy(mail, MCOPY.subject).evalTemplate(subjectParams, env = env)
         val body = copy(mail, MCOPY.body)
         // On a public test deployment every mail says so, beneath whatever footer the client signs with (issue #1150).
         val note = if (PublicTestDeployment.isOn(cxt.instanceConfig)) copy(MCOPY.common, MCOPY.testDeploymentNote) else null

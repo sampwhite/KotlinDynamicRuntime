@@ -421,7 +421,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
             // code"). The same holds for Profile's password change.
             textField(
                 t(ns, "codeLabel", "Verification code"), code, disabled = busy, autoComplete = AC.oneTimeCode,
-                autoCapitalize = AC.capitalizeCharacters,
+                inputMode = AC.inputModeNumeric,
             ) { code = it }
 
             // A password at this step is optional when registering (code login works without one) and required

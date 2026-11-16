@@ -43,8 +43,11 @@
 /-where none: a public test deployment's own warning. -/
 # +testDeploymentNote This deployment is for testing and development only, and its data may be reset at any time.
 
-/- The frontend's dev autofill and `AuthFlowTest` read the code out of "verification code is <code>." -- keep
-   that phrase. -/
+/- The code is on a line of its own in the body, where a phone looks for a code to offer (issue #1805). It is kept out
+   of the subject: a subject is shown on a locked phone and kept in the clear by mail relays and their logs, and NIST
+   SP 800-63B-4 says a code SHOULD NOT be shown while the device is locked. A subject that names `${code}` is sent with
+   a mask in its place. The frontend's dev autofill and the tests read it out of "verification code is:" and the line
+   after -- keep that phrase. -/
 # @verifyCode
 /-where Mail: the subject of the code sent to one of the client's people signing in by code. A registration's code
    uses the same key in the deployment's words, since no client is known yet. -/
@@ -52,7 +55,9 @@
 /-where Mail: the body of the code sent to one of the client's people signing in by code. A registration's code
    uses the same key in the deployment's words, since no client is known yet. -/
 # +body
-Your verification code is [${code}]{.code}.
+Your verification code is:
+
+[${code}]{.code}
 
 Enter it where you asked for it. It expires in fifteen minutes.
 
@@ -62,7 +67,9 @@ Enter it where you asked for it. It expires in fifteen minutes.
 # +subject Your verification code
 /-where Mail: the body of the code sent to one of the client's people setting or changing a password. -/
 # +body
-Your verification code is [${code}]{.code}.
+Your verification code is:
+
+[${code}]{.code}
 
 Enter it to set or change your password. It expires in fifteen minutes.
 
@@ -107,14 +114,17 @@ switch to this one after you sign in.
 
 
 /- The claim page's answers (issue #751). `InvitationTest` reads the code out of "code for claiming the account
-   ... is <code>." -- keep that phrase. The page always reports a code as sent; these say what actually matched,
+   ... is:" and the line after -- keep that phrase. The code is on a line of its own and out of the subject, as the
+   verification code's is (issue #1805). The page always reports a code as sent; these say what actually matched,
    as specifically as the inbox's owner is entitled to. -/
 # @claimCode
 /-where Mail: the subject of the code sent to someone claiming an account the client made for them. -/
 # +subject Claiming your account
 /-where Mail: the body of the code sent to someone claiming an account the client made for them. -/
 # +body
-Your verification code for claiming the account [${address}]{.value} at [${clientName}]{.value} as [${personaLabel}]{.value} is [${code}]{.code}.
+Your verification code for claiming the account [${address}]{.value} at [${clientName}]{.value} as [${personaLabel}]{.value} is:
+
+[${code}]{.code}
 
 Enter it on the page where you asked for it. It expires in fifteen minutes.
 

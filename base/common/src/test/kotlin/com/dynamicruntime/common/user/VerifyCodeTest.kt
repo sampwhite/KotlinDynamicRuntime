@@ -13,6 +13,9 @@ class VerifyCodeTest : StringSpec({
         normalizeVerifyCode("AF3-K9X") shouldBe "AF3K9X"
         normalizeVerifyCode("a f\t3-k9 x") shouldBe "AF3K9X"
         sameVerifyCode("AF3K9X", "af3-k9x") shouldBe true
+        // A code is six digits now (issue #1805), which normalizing leaves as typed, less the breaks.
+        normalizeVerifyCode("482 916") shouldBe "482916"
+        sameVerifyCode("482916", "482-916") shouldBe true
     }
 
     "a code differing in any character, or in length, is wrong" {

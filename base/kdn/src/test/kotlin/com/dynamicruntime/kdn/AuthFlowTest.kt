@@ -24,6 +24,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldMatch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.milliseconds
@@ -360,7 +361,7 @@ class AuthFlowTest : StringSpec({
         )["userId"] shouldBe userId
     }
 
-    "a code is six characters, and is accepted in any case with a space or a hyphen typed in it (issue #1785)" {
+    "a code is six digits, and is accepted with a space or a hyphen typed in it (issues #1785, #1805)" {
         val client = mkClient("10.17.85.1")
         val contact = "pia@example.com"
         registerByCode(client, contact, "piav")
@@ -368,9 +369,9 @@ class AuthFlowTest : StringSpec({
 
         val token = tokenOf(client)
         val code = codeFor(token, contact)
-        code.length shouldBe 6
-        // As a phone keyboard types it: lower case, broken up.
-        val typed = code.substring(0, 3).lowercase() + " -" + code.substring(3).lowercase()
+        code shouldMatch Regex("[0-9]{6}")
+        // Broken up, as someone copying it from a mail by hand might type it.
+        val typed = code.substring(0, 3) + " -" + code.substring(3)
         val resp = client.sendJsonPostRequest(
             "/auth/login/byCode", mapOf("loginId" to "piav", "formAuthToken" to token, "verifyCode" to typed),
         )
