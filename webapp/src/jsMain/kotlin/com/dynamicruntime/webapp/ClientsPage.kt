@@ -120,6 +120,8 @@ val ClientsPage = FC<Props> {
     // The overrides of every listed client (issue #917), for the cross-client view: read once the listing has
     // answered, one retrieve per client, keyed on the rows so a refresh re-reads them.
     val acrossView = routeParams().containsKey(HP.overrides)
+    // The New client form on the listing (issue #1820), open once asked for.
+    var creating by useState(false)
     var acrossRows by useState<List<Pair<String, ClientOverridesView>>?>(null)
     var acrossError by useState<DisplayError?>(null)
     // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown; and
@@ -298,7 +300,13 @@ val ClientsPage = FC<Props> {
         // The view across clients, and the listing, are the allClients administrator's: a client's own
         // administrator was shown their client above (issue #1082).
         acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError, acrossError)
-        current.canSeeAllClients -> clientsListing(rows, loadError)
+        current.canSeeAllClients -> clientsListing(rows, loadError, creating, onCreate = { creating = it }) { outcome ->
+            // Made: the listing re-reads, and the page opens the client's own page, which says how it loaded.
+            creating = false
+            bump()
+            navigate(listOf(HP.page to HMENU.pageClients, HP.client to outcome.client))
+            true
+        }
         // Whoever is left has no listing and no client to open: a `public` self-administrator, in the moment
         // before the overview's refusal arrives (drawn above, in its words) -- or its failure to load.
         else -> LoadStateCard {
@@ -2011,7 +2019,15 @@ private fun ChildrenBuilder.linkedField(label: String, value: String, href: Stri
  * #1082): the heading, a line saying whose clients these are, and the table -- or the empty state. A [loadError]
  * with rows on screen is a failed refresh: said above the rows, which stay.
  */
-private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, loadError: DisplayError?) {
+private fun ChildrenBuilder.clientsListing(
+    rows: List<ClientOverview>?,
+    loadError: DisplayError?,
+    creating: Boolean,
+    /** Opens or closes the New client form. */
+    onCreate: (Boolean) -> Unit,
+    /** A client was made through the form; see [ClientCreatePanelProps.onCreated]. */
+    onCreated: (ClientCreateOutcome) -> Boolean,
+) {
     div {
         className = ClassName("card wide")
         h1 { +"Clients" }
@@ -2023,6 +2039,21 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, loadErro
                 className = ClassName("wf-cell-link")
                 href = overridesAcrossHref()
                 +"Copy & menu across clients"
+            }
+            // Creating one (issue #1820): any client, on any code-defined template.
+            if (!creating) {
+                +" · "
+                Button {
+                    type = "link"
+                    onClick = { onCreate(true) }
+                    +"New client…"
+                }
+            }
+        }
+        if (creating) {
+            ClientCreatePanel {
+                this.onCreated = onCreated
+                onClose = { onCreate(false) }
             }
         }
         loadError?.let { errorText(if (rows == null) "Couldn't load the clients." else "Couldn't refresh the clients; showing what was loaded.", it) }

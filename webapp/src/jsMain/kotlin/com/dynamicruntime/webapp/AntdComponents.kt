@@ -97,6 +97,9 @@ external interface InputProps : PropsWithChildren {
     /** Whether the browser marks spelling in the field; false for an address (issue #1790). */
     var spellCheck: Boolean?
 
+    /** Text drawn inside the box before what is typed, and not part of the value: a customer's id prefix (issue #1820). */
+    var prefix: String?
+
     /**
      * React style object. antd's `Input` is `width: 100%`, so inside a flex row it takes whatever the
      * container has left -- which makes its width an accident of the panel rather than a decision, and is why

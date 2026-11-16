@@ -78,7 +78,8 @@ For the client configuration itself, the client has the following attributes.
     deployed in prod, will attempt to keep to prod style behaviors.
   * `template` - The client exists to help generate client definitions. It is a label for readers of the client
     list: which client may be built on which is decided by the create (see `extendsFromClientId`), and anyone may
-    build on a code-defined client marked `publicTemplate` (issue #1567).
+    build on a code-defined client marked `publicTemplate` (issue #1567) -- a customer's administrator on its
+    customer's own code-defined clients besides (issue #1820).
   * `demo` - The client exists to demo functionality, usually for sales. It will usually allow
     access to variant behaviors, such as relaxed security, and convenience endpoints for bulk-load delete
     of recently added content.
@@ -89,7 +90,8 @@ For the client configuration itself, the client has the following attributes.
   which is not built; see "Usage types, and what a caller is shown" below.) Because it gates a capability, **only
   the platform sets it** -- code, or an `allClients` administrator -- and never a client's own
   administrator (issue #1108). The same reasoning keeps who may build a client on which base to the platform: only
-  a client marked `publicTemplate` may be built on by anyone else (issue #1567).
+  a client marked `publicTemplate` may be built on by anyone else (issue #1567), and, by a customer's administrator,
+  a code-defined client of the customer's own (issue #1820).
 * `webResourcesId` - The **web resources package** the client presents itself with (issue #1301): the id of a
   package a component ships, whose **favicon** and **brand mark** the client's people see in place of the
   deployment's. Two clients may share a package, and a client built on a template presents the template's when it
@@ -147,8 +149,13 @@ For the client configuration itself, the client has the following attributes.
 * `extendsFromClientId` - A reference to another client. When done in code, it can be any reference.
  When done in configuration made in the app, it can only reference a code-defined client, and which one is the
  create's to judge (issue #1567): a platform operator may name any code-defined client that extends none itself and
- is not retired; a customer's administrator and a person making their own client may name only one marked
- `publicTemplate`, and only where it is enabled. Only a create sets it, and only the platform changes it after.
+ is not retired; a person making their own client may name only one marked `publicTemplate`, and only where it is
+ enabled; and an administrator of a customer's root client may name one of those, or one of the customer's own by its
+ id -- the customer's id, or `<customer>_<name>`, its root included -- where it is enabled (issue #1820). Whoever names
+ it, only the base's definition in code is built on, never what is configured on it. One list, `ClientService.basesFor`,
+ is what each create checks the base against, what the stored-write backstop holds a non-platform write to, and what the
+ New client forms offer (`/clientAdmin/client/createChoices`). Only a create sets it, and only the platform changes it
+ after.
  When this value is present when the client is loaded, it first clones in all the definitions from the other client and then applies
  any configuration in the current GedraConfig as extensions or overlay. This reference is usually done
  for three reasons. One, to build on a template to deduplicate the definitions of the clients. The other is

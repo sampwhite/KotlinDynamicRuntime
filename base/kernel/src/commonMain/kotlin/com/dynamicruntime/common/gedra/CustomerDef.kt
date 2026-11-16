@@ -154,6 +154,13 @@ fun customerIdFault(customerId: String): String? {
 fun clientIdPrefix(clientId: String): String = clientId.substringBefore(CUST.separator)
 
 /**
+ * Whether [clientId] is one of customer [customerId]'s by its id (issues #1107, #1820): the customer's own id, or
+ * `<customer>_<name>`, in the customer's case as written. The rule a client coming into being under the customer is
+ * held to, and the one that says which code-defined clients the customer's administrators may build on.
+ */
+fun isCustomersClientId(clientId: String, customerId: String): Boolean = clientIdPrefix(clientId) == customerId
+
+/**
  * Whether [clientId] is a **self-serve** client's (issues #1109, #1113): under the [CUST.free] prefix, which no
  * customer holds. What puts a client on the free plan -- not having no customer, which platform and test clients
  * have too.

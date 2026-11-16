@@ -13,8 +13,10 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.uiblock.UiBlockService
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.authHandler
@@ -387,6 +389,61 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         result.created.wireFields() + buildMap {
             result.userId?.let { put(CLD.userId, it) }
             result.userFailure?.let { put(CLD.userFailure, it) }
+        }
+    }
+
+    // --- what a client may be created with (issue #1820) -----------------------------------------------------------
+    type(CLD.createChoicesTypeName) {
+        type = SCT.kObject
+        description = "What the caller may create a client with (issue #1820): the lists the creates judge by."
+        property(
+            CLD.asPlatform,
+            "Whether the caller creates as the platform: any client, through '${ADEP.clientCreate}'. Otherwise the " +
+                "caller creates the customer's clients through '${UADEP.clientCreate}'.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(CLD.customerId, "The customer the caller creates clients for, as its root's administrator; absent for the platform.")
+        property(
+            CLD.templateChoices,
+            "The code-defined clients the caller may build one on. Building on one takes its definition in code alone, " +
+                "never what is configured on it.",
+            required = true,
+        ) {
+            type = SCT.array
+            items { choiceProperties() }
+        }
+        property(CLD.customerChoices, "The customers the platform may file a client under; absent for a customer's administrator.") {
+            type = SCT.array
+            items { choiceProperties() }
+        }
+    }
+
+    itemEndpoint(
+        UADEP.clientCreateChoices,
+        "What the caller may create a client with (issue #1820), for a form: the code-defined clients it may build one " +
+            "on and, for an administrator who sees every client, the customers it may file one under. For an " +
+            "administrator of a customer's root client, the templates are those marked for public use and the " +
+            "customer's own by their id. Refused for anybody else, as '${UADEP.clientCreate}' refuses them.",
+        HttpMethod.GET,
+        outputRef = CLD.createChoicesTypeName,
+        needsClientConfig = true,
+    ) { c, _ ->
+        AdminRules.requireClientAdministrator(c)
+        val clients = ClientService.get(c)
+        fun choice(value: String, name: String) = mapOf(SCH.value to value, SCH.label to clientLabel(value, name))
+        if (AdminRules.canSeeAllClients(c)) {
+            mapOf(
+                CLD.asPlatform to true,
+                CLD.templateChoices to clients.basesFor(anyBase = true, customerId = null).map { choice(it.clientId, it.name) },
+                CLD.customerChoices to clients.customers.values.map { choice(it.def.customerId, it.def.name) },
+            )
+        } else {
+            val customer = ClientDelegatedCreate.creatingCustomer(c)
+            mapOf(
+                CLD.asPlatform to false,
+                CLD.customerId to customer.customerId,
+                CLD.templateChoices to clients.basesFor(anyBase = false, customer.customerId).map { choice(it.clientId, it.name) },
+            )
         }
     }
 
@@ -786,4 +843,11 @@ internal fun SchTypeBuilder.copyKeyAddress() {
         property(COV.audience, "Who the file is for: delivered to the frontend, or pulled by the backend.", required = true) {
             options(FragmentAudience.entries)
         }
+}
+
+/** One choice of a create's list (issue #1820): what is sent, and what is shown. */
+private fun SchTypeBuilder.choiceProperties() {
+    type = SCT.kObject
+    property(SCH.value, "What the create is sent: the client's or customer's id.", required = true)
+    property(SCH.label, "What is shown for it: its name, with its id.", required = true)
 }

@@ -15,3 +15,14 @@ only their own. A refusal (403, 404) is shown in the endpoint's words. The way u
 id" row opens the customer's page where the caller may open it (`customerSummaryHref`) -- always for a deployment
 administrator, and on the root client's page (the overview row's `rootOf`) for its administrators -- and is plain
 text elsewhere.
+
+**New client** (issue #1820): under its Clients heading, a customer's page offers **New client…**, opening the
+Clients page's `ClientCreatePanel` (described there). For the customer's own root administrator it is the customer's
+create (`POST /clientAdmin/client/create`): the id is typed after the customer's fixed prefix (`acme_`), the templates
+are those marked for public use and the customer's own code-defined clients by id, its root included, and the client
+takes the rest from the root. Not offered on the free plan, which makes no clients (`customerOffersNewClient`); an
+administrator confined to an organization of the root is refused by `createChoices` in the create's words. For an
+administrator who sees every client it is the platform's form with this customer chosen. Once made, the customer's
+clients re-read and the form says so -- with **Switch to <client>** for a creator given an administrator user there
+(`clientCreatedSwitchable`), and what did not follow when the client is not carried here or the user could not be made
+(`clientCreatedText`).

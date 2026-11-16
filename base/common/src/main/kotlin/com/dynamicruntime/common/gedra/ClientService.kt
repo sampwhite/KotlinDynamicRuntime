@@ -212,25 +212,41 @@ class ClientService : ServiceInitializer {
     fun publicTemplates(): List<ClientDef> = baseClients().filter { it.publicTemplate && it.isEnabledIn(env) }
 
     /**
-     * Refuses [baseId] as the base of a client being created, unless it is one of [publicTemplates] -- or, for a
-     * platform operator's create ([anyBase]), one of [baseClients]. Asked before anything is written, so a refusal
-     * costs nothing. Null names no base.
+     * The bases a creator may name (issues #1567, #1820): every one of [baseClients] for a platform operator
+     * ([anyBase]); otherwise those enabled in this environment that are marked for public use or -- for a creator
+     * acting for customer [customerId] -- are the customer's own by their id ([isCustomersClientId]), its root
+     * included. With no customer, exactly [publicTemplates]. Only ever code-defined clients, and building on one takes
+     * its definition in code alone, never what is configured on it. The one list a create checks a base against and a
+     * form offers.
      */
-    fun requireBase(baseId: String?, anyBase: Boolean) {
-        if (baseId == null) return
+    fun basesFor(anyBase: Boolean, customerId: String?): List<ClientDef> =
         if (anyBase) {
-            if (baseClients().none { it.clientId == baseId }) {
-                throw KdrException.mkInput(
-                    "'$baseId' is not a client another can be built on: a base is a code-defined client that extends " +
-                        "none itself, and is not retired.",
-                )
+            baseClients()
+        } else {
+            baseClients().filter {
+                it.isEnabledIn(env) && (it.publicTemplate || (customerId != null && isCustomersClientId(it.clientId, customerId)))
             }
-        } else if (publicTemplates().none { it.clientId == baseId }) {
-            throw KdrException.mkInput(
-                "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
-                    "(${CLD.publicTemplate}) may be named.",
-            )
         }
+
+    /**
+     * Refuses [baseId] as the base of a client being created unless it is one of [basesFor] the same [anyBase] and
+     * [customerId]. Asked before anything is written, so a refusal costs nothing. Null names no base.
+     */
+    fun requireBase(baseId: String?, anyBase: Boolean, customerId: String? = null) {
+        if (baseId == null || basesFor(anyBase, customerId).any { it.clientId == baseId }) return
+        throw KdrException.mkInput(
+            when {
+                anyBase ->
+                    "'$baseId' is not a client another can be built on: a base is a code-defined client that extends " +
+                        "none itself, and is not retired."
+                customerId != null ->
+                    "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
+                        "(${CLD.publicTemplate}), or one of the customer '$customerId''s own, may be named."
+                else ->
+                    "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
+                        "(${CLD.publicTemplate}) may be named."
+            },
+        )
     }
 
     override fun onCreate(cxt: KdrCxt) {
