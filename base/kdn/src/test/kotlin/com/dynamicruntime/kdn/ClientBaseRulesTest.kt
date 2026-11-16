@@ -134,16 +134,23 @@ class ClientBaseRulesTest : StringSpec({
     val cuAdmin = TestUser.create(cxt, "admin@tplcu1820.test", level = ROLE.admin, userClient = cuRoot)
 
     "a customer's administrator also builds on a code-defined client of the customer's own, its root included" {
-        val built = listOf("${cuRoot}_kit1820" to cuKit, "${cuRoot}_root1820" to cuRoot, "${cuRoot}_pub1820" to ExtensionTemplateComponent.publicTemplate)
+        val built = listOf(
+            "${cuRoot}_kit1820" to cuKit, "${cuRoot}_root1820" to cuRoot, "${cuRoot}_pub1820" to ExtensionTemplateComponent.publicTemplate,
+            "${cuRoot}_cased1820" to ExtensionTemplateComponent.customerCased,
+        )
         for ((made, base) in built) {
             cuAdmin.postData(UADEP.clientCreate, mapOf(CLD.clientId to made, CLD.name to "Built $made", CLD.extendsFromClientId to base))[
                 CLD.present,
             ] shouldBe true
             ClientService.get(cxt).present(made).shouldNotBeNull().extendsFromClientId shouldBe base
         }
-        // Not a code client that is neither public nor the customer's, nor one retired, nor a client defined only in
-        // stored configuration -- another customer's root, here.
-        val refused = listOf(ExtensionTemplateComponent.template, ExtensionTemplateComponent.plainClient, ExtensionTemplateComponent.retiredTemplate, root)
+        // Not a code client that is neither public nor the customer's -- one under the customer's prefix but linked to
+        // no customer is not its own -- nor one retired, nor a client defined only in stored configuration (another
+        // customer's root, here).
+        val refused = listOf(
+            ExtensionTemplateComponent.template, ExtensionTemplateComponent.plainClient, ExtensionTemplateComponent.retiredTemplate,
+            ExtensionTemplateComponent.customerLoose, root,
+        )
         for (base in refused) {
             val body = mapOf(CLD.clientId to "${cuRoot}_no1820", CLD.name to "No", CLD.extendsFromClientId to base)
             cuAdmin.expectError(EXC.badInput, UADEP.clientCreate, body).toString() shouldContain "or one of the customer '$cuRoot''s own"
@@ -195,7 +202,9 @@ class ClientBaseRulesTest : StringSpec({
         val forCustomer = cuAdmin.getItem(UADEP.clientCreateChoices)
         forCustomer[CLD.asPlatform] shouldBe false
         forCustomer[CLD.customerId] shouldBe cuRoot
-        values(forCustomer, CLD.templateChoices) shouldContainExactlyInAnyOrder listOf(ExtensionTemplateComponent.publicTemplate, cuRoot, cuKit)
+        // The customer's own: linked to it and under its prefix, in whatever case the load held it.
+        values(forCustomer, CLD.templateChoices) shouldContainExactlyInAnyOrder
+            listOf(ExtensionTemplateComponent.publicTemplate, cuRoot, cuKit, ExtensionTemplateComponent.customerCased)
         forCustomer.containsKey(CLD.customerChoices) shouldBe false
         // A customer with no code-defined client of its own is offered the public ones alone.
         values(rootAdmin.getItem(UADEP.clientCreateChoices), CLD.templateChoices) shouldBe listOf(ExtensionTemplateComponent.publicTemplate)

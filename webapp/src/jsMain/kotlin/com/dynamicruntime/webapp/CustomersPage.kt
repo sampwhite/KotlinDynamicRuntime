@@ -48,8 +48,9 @@ val CustomersPage = FC<Props> {
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
     val named = routeParams()[HP.customer]
-    // The New client form (issue #1820), open once asked for.
+    // The New client form (issue #1820), open once asked for -- on this customer: another one starts with it closed.
     var creating by useState(false)
+    useEffect(named) { creating = false }
 
     useEffect(generation, named) {
         customersScope.launch {

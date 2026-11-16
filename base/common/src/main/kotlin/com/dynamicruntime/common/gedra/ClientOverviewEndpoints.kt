@@ -423,7 +423,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "What the caller may create a client with (issue #1820), for a form: the code-defined clients it may build one " +
             "on and, for an administrator who sees every client, the customers it may file one under. For an " +
             "administrator of a customer's root client, the templates are those marked for public use and the " +
-            "customer's own by their id. Refused for anybody else, as '${UADEP.clientCreate}' refuses them.",
+            "customer's own code-defined clients, linked to it and under its prefix. Refused for anybody else, as '${UADEP.clientCreate}' refuses them.",
         HttpMethod.GET,
         outputRef = CLD.createChoicesTypeName,
         needsClientConfig = true,

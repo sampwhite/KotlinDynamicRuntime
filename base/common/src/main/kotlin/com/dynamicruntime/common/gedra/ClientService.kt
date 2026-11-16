@@ -209,24 +209,31 @@ class ClientService : ServiceInitializer {
      * build on these and no other -- so a deployment running as `dev` offers no base that is enabled only where its
      * developers run.
      */
-    fun publicTemplates(): List<ClientDef> = baseClients().filter { it.publicTemplate && it.isEnabledIn(env) }
+    fun publicTemplates(): List<ClientDef> = basesFor(anyBase = false, customerId = null)
 
     /**
      * The bases a creator may name (issues #1567, #1820): every one of [baseClients] for a platform operator
      * ([anyBase]); otherwise those enabled in this environment that are marked for public use or -- for a creator
-     * acting for customer [customerId] -- are the customer's own by their id ([isCustomersClientId]), its root
-     * included. With no customer, exactly [publicTemplates]. Only ever code-defined clients, and building on one takes
-     * its definition in code alone, never what is configured on it. The one list a create checks a base against and a
-     * form offers.
+     * acting for customer [customerId] -- are the customer's own ([isCustomersBase]), its root included. With no
+     * customer, [publicTemplates]. Only ever code-defined clients, and building on one takes its definition in code
+     * alone, never what is configured on it. The one list a create checks a base against and a form offers.
      */
     fun basesFor(anyBase: Boolean, customerId: String?): List<ClientDef> =
         if (anyBase) {
             baseClients()
         } else {
             baseClients().filter {
-                it.isEnabledIn(env) && (it.publicTemplate || (customerId != null && isCustomersClientId(it.clientId, customerId)))
+                it.isEnabledIn(env) && (it.publicTemplate || (customerId != null && isCustomersBase(it, customerId)))
             }
         }
+
+    /**
+     * Whether code-defined [def] is customer [customerId]'s own, to build on (issue #1820): linked to the customer --
+     * the link is what says whose a client is, and a client moved to another customer keeps its id -- and under the
+     * customer's prefix, without regard to case, as a code client's prefix is held at load.
+     */
+    fun isCustomersBase(def: ClientDef, customerId: String): Boolean =
+        def.customerId == customerId && clientIdPrefix(def.clientId).equals(customerId, ignoreCase = true)
 
     /**
      * Refuses [baseId] as the base of a client being created unless it is one of [basesFor] the same [anyBase] and

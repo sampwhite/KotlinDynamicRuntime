@@ -19,7 +19,8 @@ text elsewhere.
 **New client** (issue #1820): under its Clients heading, a customer's page offers **New client…**, opening the
 Clients page's `ClientCreatePanel` (described there). For the customer's own root administrator it is the customer's
 create (`POST /clientAdmin/client/create`): the id is typed after the customer's fixed prefix (`acme_`), the templates
-are those marked for public use and the customer's own code-defined clients by id, its root included, and the client
+are those marked for public use and the customer's own code-defined clients (linked to it and under its prefix), its
+root included, and the client
 takes the rest from the root. Not offered on the free plan, which makes no clients (`customerOffersNewClient`); an
 administrator confined to an organization of the root is refused by `createChoices` in the create's words. For an
 administrator who sees every client it is the platform's form with this customer chosen. Once made, the customer's

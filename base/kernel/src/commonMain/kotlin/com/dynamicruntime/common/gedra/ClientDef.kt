@@ -676,7 +676,7 @@ object CLD {
     /**
      * The id of the options source behind a customer's create input's `extendsFromClientId` (issues #1567, #1820): the
      * code-defined clients the caller, an administrator of a customer's root, may build on -- those marked
-     * [ClientDef.publicTemplate], and the customer's own by their id.
+     * [ClientDef.publicTemplate], and the customer's own: linked to it and under its prefix.
      */
     const val customerTemplateOptions = "clientCustomerTemplateOptions"
 

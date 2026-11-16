@@ -150,8 +150,9 @@ For the client configuration itself, the client has the following attributes.
  When done in configuration made in the app, it can only reference a code-defined client, and which one is the
  create's to judge (issue #1567): a platform operator may name any code-defined client that extends none itself and
  is not retired; a person making their own client may name only one marked `publicTemplate`, and only where it is
- enabled; and an administrator of a customer's root client may name one of those, or one of the customer's own by its
- id -- the customer's id, or `<customer>_<name>`, its root included -- where it is enabled (issue #1820). Whoever names
+ enabled; and an administrator of a customer's root client may name one of those, or one of the customer's own --
+ linked to the customer (its `customerId`, since the link says whose a client is) and under its prefix, without regard
+ to case, its root included -- where it is enabled (issue #1820, `ClientService.isCustomersBase`). Whoever names
  it, only the base's definition in code is built on, never what is configured on it. One list, `ClientService.basesFor`,
  is what each create checks the base against, what the stored-write backstop holds a non-platform write to, and what the
  New client forms offer (`/clientAdmin/client/createChoices`). Only a create sets it, and only the platform changes it

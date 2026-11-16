@@ -531,6 +531,25 @@ class ExtensionTemplateComponent : ComponentDefinition {
             )
             trait("KitNoteEntry", "kitNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
         },
+        // Under the customer's prefix but linked to no customer: not the customer's, whatever its id says (issue #1820).
+        gedraConfig(cxt, "loose", "client.$customerLoose", customerLoose) {
+            defineClient(
+                ClientDef(
+                    clientId = customerLoose, name = "Loose kit", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+        },
+        // Linked to the customer under its prefix in another case, which the load holds without regard to case.
+        gedraConfig(cxt, "cased", "client.$customerCased", customerCased) {
+            defineClient(
+                ClientDef(
+                    clientId = customerCased, name = "Cased kit", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    customerId = customerRoot,
+                ),
+            )
+        },
         // Another, so the bundle editor's tests of its code layer (issue #1646) have one of their own.
         gedraConfig(cxt, "own", "client.$ownLayer", ownLayer) {
             defineClient(
@@ -556,5 +575,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
         const val ownLayer = "tplownlayer"
         const val customerRoot = "tplcu"
         const val customerKit = "tplcu_kit"
+        const val customerLoose = "tplcu_loose"
+        const val customerCased = "TPLCU_cased"
     }
 }

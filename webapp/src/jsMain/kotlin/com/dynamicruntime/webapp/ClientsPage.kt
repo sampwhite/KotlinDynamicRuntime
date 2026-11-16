@@ -120,8 +120,10 @@ val ClientsPage = FC<Props> {
     // The overrides of every listed client (issue #917), for the cross-client view: read once the listing has
     // answered, one retrieve per client, keyed on the rows so a refresh re-reads them.
     val acrossView = routeParams().containsKey(HP.overrides)
-    // The New client form on the listing (issue #1820), open once asked for.
+    // The New client form on the listing (issue #1820), open once asked for -- and closed by opening a client, so the
+    // listing is not found with it open on the way back.
     var creating by useState(false)
+    useEffect(openId, acrossView) { creating = false }
     var acrossRows by useState<List<Pair<String, ClientOverridesView>>?>(null)
     var acrossError by useState<DisplayError?>(null)
     // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown; and

@@ -16,6 +16,13 @@ import web.cssom.ClassName
 
 private val clientCreateScope = MainScope()
 
+/** The New client form's names (issue #1820). */
+@Suppress("ConstPropertyName")
+object NCP {
+    /** The form's panel id, and the record its More options belong to: there is one form on a page. */
+    const val panelId = "newClient"
+}
+
 external interface ClientCreatePanelProps : Props {
     /** The customer to file the client under, to start: the customer page's, for the platform. */
     var presetCustomer: String?
@@ -60,7 +67,7 @@ val ClientCreatePanel = FC<ClientCreatePanelProps> { props ->
 
     val loaded = choices
     val start = ClientCreateDraft(customerId = props.presetCustomer.orEmpty())
-    panel("newClient", "New client", kind = PanelKind.draft, dirty = created == null && draft != start) {
+    panel(NCP.panelId, "New client", kind = PanelKind.draft, dirty = created == null && draft != start) {
         when {
             choicesError != null -> {
                 errorText("Couldn't start a new client.", choicesError!!)
@@ -188,7 +195,7 @@ val ClientCreatePanel = FC<ClientCreatePanelProps> { props ->
                     }
                 }
                 MoreOptions {
-                    recordKey = "newClient"
+                    recordKey = NCP.panelId
                     inForce = clientCreateOptionsInForce(platform, draft)
                     div {
                         Checkbox {
