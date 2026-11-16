@@ -503,10 +503,10 @@ worth knowing before changing either.
 
 `kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a client's
 **file refs** are named files, kept in the file store or on the node's own disk. They have their own document,
-[`docs/design/file-refs.md`](../file-refs.md). It is also where the one change file refs make to the rules above is
-described: a file can go missing while nothing in the configuration changes, so a write's trial judges a ref's file
-again rather than trusting the last load, and a reload does not refuse for a file that went missing under a ref the
-node already serves.
+[`docs/design/config-file-refs.md`](../config-file-refs.md). It is also where the one change file refs make to the
+rules above is described: a file can go missing while nothing in the configuration changes, so a write's trial judges
+a ref's file again rather than trusting the last load, and a reload does not refuse for a file that went missing under
+a ref the node already serves.
 
 ### The boundary, so this does not get over-applied
 
@@ -574,7 +574,7 @@ is what gives the warning teeth.
 | Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership, `traitsFor`, and `$ref` bounded by construction (a client's schema holds only global and its own types) |
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
-| File refs: a client's named files, in the file store or on the node's own disk | **built** — see [`docs/design/file-refs.md`](../file-refs.md) |
+| File refs: a client's named files, in the file store or on the node's own disk | **built** — see [`docs/design/config-file-refs.md`](../config-file-refs.md) |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Stored configuration forgiven at load: a fault dropped at its finest grain, and kept on the client's `issues` list | **built** — #839–#841 |
 | Strict at write: the trial reload, and the slot gate before it | **built** — #843, #1051, #1052 |

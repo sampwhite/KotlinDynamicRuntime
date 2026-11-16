@@ -15,10 +15,15 @@ object RDL {
 
 /**
  * Every link in the repository's documentation resolves (issue #1294): every Markdown file at the repository's root,
- * `webapp/CLAUDE.md`, and everything under `docs/`, `examples/`, and `.claude/skills/`. A link names a page or file that
- * exists in the repository, and a `#section` that is a heading of the page it names -- as GitHub mints heading anchors,
- * which the app's renderer matches (`headingSlug`). An outside address, a `mailto:`, and a page of the app (`/wa/...`,
- * or `#page=...` from before paths) are left alone.
+ * `webapp/CLAUDE.md`, and everything under `docs/`, `examples/`, and `.claude/skills/` -- and the copy every module ships
+ * (its `md-fragments`, issue #1809), whose explanations link the documents by repository path. A link names a page or
+ * file that exists in the repository, and a `#section` that is a heading of the page it names -- as GitHub mints heading
+ * anchors, which the app's renderer matches (`headingSlug`). An address of another kind (`https:`, `mailto:`, an image
+ * copy names as `img:` or `ref:`), a page of the app (`/wa/...`, or `#page=...` from before paths), and, in copy, a link
+ * to an element of the page drawing it (`#…`) are left alone.
+ *
+ * A client's own copy, stored in its configuration, is not checked: see `docs/development/deferred-work.md`, "When a
+ * client links a document from its own copy".
  *
  * The documents link to each other by relative paths, which a move breaks without a word; this is what makes a
  * broken one fail the build. Links inside code -- fenced blocks and inline code spans -- are not links.
@@ -48,7 +53,10 @@ class RepoDocLinksTest : StringSpec({
             for ((line, target) in links(doc)) {
                 val where = "${doc.relativeTo(repoRoot)}, line $line"
                 val appPage = target.startsWith("/wa/") || target.startsWith("#") && target.contains("=")
-                if (target.contains("://") || target.startsWith("mailto:") || appPage) continue
+                // In copy, a link to the same page's `#id` names an element of the page drawing it (a card, a
+                // part), not a heading of the fragment file.
+                val pageAnchor = isCopy(doc) && target.startsWith("#")
+                if (schemeRegex.containsMatchIn(target) || appPage || pageAnchor) continue
                 val path = target.substringBefore('#')
                 val anchor = target.substringAfter('#', "").ifEmpty { null }
                 val file = when {
@@ -70,6 +78,15 @@ class RepoDocLinksTest : StringSpec({
 })
 
 private val linkRegex = Regex("""\[[^]]*]\(([^)\s]+)\)""")
+
+/**
+ * A target that is an address of another kind, not a path: an outside address (`https:`), a `mailto:`, or an image
+ * copy names by where it comes from (`img:`, `ref:`), which the copy checks hold to what exists.
+ */
+private val schemeRegex = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*:""")
+
+/** Whether [doc] is a fragment file of copy a module ships, rather than a document. */
+private fun isCopy(doc: File): Boolean = doc.parentFile?.name == "md-fragments"
 
 /** Each Markdown link of [doc] outside code, with its line number. */
 private fun links(doc: File): List<Pair<Int, String>> {

@@ -821,7 +821,7 @@ object HDOC {
     const val gedraWorkflow = "gedra-workflow"
     const val uiBlock = "ui-block"
     const val reporting = "reporting"
-    const val fileRefs = "file-refs"
+    const val configFileRefs = "config-file-refs"
     const val sandboxes = "sandboxes"
     const val schemaDialect = "schema-dialect"
     /** Every code a refused value is reported with, and how to give one a message (issue #1559). Generated. */

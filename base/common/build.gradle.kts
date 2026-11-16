@@ -89,7 +89,7 @@ val embedDocs = tasks.register<Copy>("embedDocs") {
         "docs/design/gedra/states.md" to "gedra-states",
         "docs/design/ui-block.md" to "ui-block",
         "docs/design/reporting.md" to "reporting",
-        "docs/design/file-refs.md" to "file-refs",
+        "docs/design/config-file-refs.md" to "config-file-refs",
         "docs/design/sandboxes.md" to "sandboxes",
         "docs/design/user-search.md" to "user-search",
         "docs/design/api-keys.md" to "api-keys",
@@ -250,11 +250,16 @@ val docLinksTest = tasks.register<Test>("docLinksTest") {
     filter.includeTestsMatching(docLinksTestClass)
     jvmArgumentProviders.add(
         RepoDocsArgument(
-            // Every Markdown file at the repository's root, `webapp/CLAUDE.md`, and the Markdown of the trees.
+            // Every Markdown file at the repository's root, `webapp/CLAUDE.md`, the Markdown of the trees, and the copy
+            // every module ships (issue #1809): its explanations link the documents too.
             docs = files(
                 repoRoot.asFile.listFiles { f -> f.isFile && f.name.endsWith(".md") }.orEmpty(),
                 repoRoot.file("webapp/CLAUDE.md"),
                 docTrees.map { tree -> fileTree(repoRoot.dir(tree)) { include("**/*.md") } },
+                fileTree(repoRoot) {
+                    include("**/src/main/resources/md-fragments/*.md")
+                    exclude("**/build/**", "**/node_modules/**", "**/.gradle/**")
+                },
             ),
             linkTargets = files(docTrees.map { tree -> fileTree(repoRoot.dir(tree)) { exclude("**/*.md") } }),
         ),

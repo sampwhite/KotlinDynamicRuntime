@@ -6,6 +6,57 @@ overlays and merge (issue #457, `UiBlockService`), the backend's cfact resolutio
 (#788), the boot checks, and the menu editor exist, and a workflow task's `display` is resolved by the same walk. What
 is still ahead says so where it appears: fragment references inside a block, and the two boot checks they would need.
 
+The document has two parts. **[Using UI blocks](#using-ui-blocks)** is a guide: what a block is, how a client changes
+one, and how a component declares one or adds to another's. **[The design](#the-design)** is the record of why blocks
+are built as they are.
+
+## Using UI blocks
+
+### What a block is
+
+A **UI block** is a structure a page draws, kept as data: a list of items, each with an id, its words, what it does
+when chosen, and a condition deciding who is offered it. The platform has two today: the menu (`homeMenu`) and Home's
+cards (`homeCards`). Several layers contribute to one: the platform declares it, a module of the deployment may add to
+it, and a client changes it for itself, each layer naming only the items it changes, by their ids.
+
+A page places a block with a widget: Home's page draws the cards with `cardsBlock` fences, which say which of the
+block's cards go where ([Page widgets](../reference/page-widgets.md#cardsblock)).
+
+### Changing one for a client
+
+A client changes the menu and Home's cards with an overlay in its configuration (the `kdr:uiBlockDef` slot), or the
+menu with the Clients page's **Menu** panel. [Menu and home cards](../reference/menu-and-home-cards.md) describes both,
+with every item the platform ships.
+
+### Declaring one in a component
+
+A component declares a block from its `uiBlocks`, with `uiBlock`: the block's id, and which of its arrays merge by
+which key (`arrayKeys`, the menu's items by `id`). Inside, `items` lists an array's items, each written with
+`menuItem` or `homeCard`, the shapes a menu item and a card take, so a misspelled key cannot compile. The items are
+numbered in the order they are written, 100 apart. The platform's own two are the worked examples: `homeMenuBlock` in
+[`HomeEndpoints.kt`](../../base/common/src/main/kotlin/com/dynamicruntime/common/home/HomeEndpoints.kt) and
+`homeCardsBlock` in
+[`HomeCardsBlock.kt`](../../base/common/src/main/kotlin/com/dynamicruntime/common/home/HomeCardsBlock.kt).
+
+### Adding to another component's block
+
+A component adds to a block it does not own with `uiBlockOverlay`, naming each item it adds and its `displayOrder`,
+since an overlay's items are not numbered for it. The workflow assistant puts its page beside Reports and its cards on
+Home this way, in `uiBlocks` in
+[`AssistantComponent.kt`](../../assistant/src/main/kotlin/com/dynamicruntime/assistant/AssistantComponent.kt). Its
+items name a fact that exists only while its module is loaded, which is why they are its own and not the platform's.
+
+### What is checked
+
+Every block is checked when the node starts, and a client's overlays again when its configuration is written: an
+overlay names a block somebody registered, every fact a condition names is declared, every call names a function the
+application has, with that function's number of arguments, and nesting is one level, under a header with no action. A
+fault costs only the layer it is in, as [Checked at boot](#checked-at-boot) describes.
+
+## The design
+
+The sections from here on are the design record.
+
 ## What it is
 
 A **UiBlock** is a registered piece of **declared presentation structure**: JSON describing part of a user

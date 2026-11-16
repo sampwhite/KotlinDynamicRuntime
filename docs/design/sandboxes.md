@@ -2,10 +2,76 @@
 
 A **sandbox** is a second client linked to a client. It runs the client's *latest* configuration, drafts included,
 against users and data of its own. It is where a client's administrator sees an unpublished change working before
-publishing it to the client's people. This document says what a sandbox is, why it is built as a client, what it runs,
-who may enter it and with what authority, and how it changes the way edits and publishing behave.
+publishing it to the client's people.
 
-**Status: built**, under the tracking issue #925:
+The document has two parts. **[Using a sandbox](#using-a-sandbox)** is a guide: how to turn a sandbox on, try a change
+in it, and publish. **[The design](#the-design)** is the record of how a sandbox is built and why: what it runs, who
+may enter it and with what authority, and how it changes the way edits and publishing behave.
+
+## Using a sandbox
+
+### What it is for
+
+A change to a client's configuration (a new workflow, a trait, wording on a page) reaches the client's people as soon
+as it takes effect. A sandbox lets the client's administrator see the change working first, on real forms, before
+anyone else does. The client's people go on seeing only what has been published, until a person publishes the change.
+
+The sandbox is a client of its own, `acme:sandbox` beside `acme`, with its own users and its own forms. So forms filled
+in while trying a change are the sandbox's, and never mix with the client's.
+
+### Turning it on
+
+On the Clients page, the client's **Sandbox and publishing** panel offers **Add a sandbox**, and **Remove the sandbox**
+once there is one. A client a visitor makes for themselves is made with one. Turning a sandbox on makes the client run
+only what it has published; removing it makes every change take effect as it is saved again. A removed sandbox keeps
+its users and forms, and has them back if it is added again.
+
+### Trying a change
+
+1. **Make the change.** In a client with a sandbox, every change to its configuration is a **draft**, whether it is made
+   on the client's own pages or from inside the sandbox: in the Clients page's editors, in the bundle editor, or by the
+   workflow assistant. Design View works only inside the sandbox, where its change can be seen. The result of each save
+   says it was saved as a draft.
+2. **Open the sandbox.** **Open sandbox** in the app bar switches to the person's own user in the sandbox, made the
+   first time. The page is tinted, and the client's name reads "Acme Sandbox", so it is plain where you are.
+3. **Try it.** The sandbox runs every draft at once. Open the New form, fill in a form, and step it through the
+   workflow, as the client's people would.
+4. **Go back.** **Back to Acme** in the app bar returns to the person's user in the client.
+
+### Publishing
+
+A draft reaches the client's people when it is published, from the sandbox's **Sandbox and publishing** panel. Its
+**Configuration** table lists the client's bundles, and marks each one with unpublished changes. Select them, or
+**Select all unpublished**, and **Publish selected**. Bundles published together are checked together, so a change
+spread over two bundles goes live as one.
+
+A publish is checked against the **client's** forms, not the sandbox's: a change that looks fine in the sandbox may
+still leave forms the client stores holding data it no longer accepts. **Check impact** says what publishing would do
+to them, and a publish that would affect them is refused with that report, until it is published anyway with
+**Publish anyway**.
+
+### Who may open it, and as whom
+<!-- Theme: #SBXAU -->
+
+An administrator of the client may open its sandbox, and so may an administrator of every client. Inside, a person
+acts with the standing they have in the client: an administrator there administers the sandbox too, and nobody gains
+standing in the client from what they do in the sandbox. A user made in the sandbox itself acts with its own roles,
+except that `admin` takes effect only while the same person administers the client, and nobody acts there as an
+administrator of every client. [Users and data](#users-and-data) has the whole rule.
+
+### What is not drafted
+
+- **A workflow's parameters** (its time windows, who sees it, and whether it is on) are in force at once in whichever
+  of the two they are set: set in the sandbox, they are the sandbox's own, and the client's are set in the client.
+- **The favicon and the brand mark** are not configuration: the sandbox shows the client's.
+- **Users and forms** are each client's own.
+
+[Making changes](../reference/making-changes.md) lists every kind of change and how it is made, and
+[What a client is](../reference/what-a-client-is.md) where the sandbox fits in a client as a whole.
+
+## The design
+
+The sections from here on are the design record. **Status: built**, under the tracking issue #925:
 
 | Phase | Issue |
 |---|---|
@@ -173,7 +239,8 @@ user's roles or organization be edited. A user who would act with nothing is pas
 made in the parent's name, by the parent's administrator the sandbox user acts as, and is refused if there is none. The
 parent is then reloaded, and so the sandbox shows the change. This covers the `/clientAdmin/config/…` endpoints
 (bundles, write, patch, publish, revert, impact, traits, reload, and the tier), and the edits a page makes for the
-client: copy, menu, the definition's presentation, file refs, and Design View's shared edits.
+client: copy, menu, the definition's presentation, named images (configuration file refs), and Design View's shared
+edits.
 
 **For a client with a sandbox, every such edit is a draft, from either side.** An edit made on the client's own page
 is a draft too, and the sandbox is where it shows. Each result says whether it was saved live or as a draft (`mode`).
@@ -185,7 +252,8 @@ Some things are deliberately not drafted:
 
 - **The sandbox's own definition** is derived, so it cannot be edited.
 - **Web assets** (the favicon and brand mark) are not configuration. A sandbox shows its parent's and may change none.
-  [File refs](file-refs.md) are configuration, and are drafted like the rest.
+  [Named images](config-file-refs.md), the client's configuration file refs, are configuration, and are drafted
+  like the rest.
 - **Design View** on a client with a sandbox refuses the client's own page and points to the sandbox, where a change
   can be seen.
 
@@ -197,7 +265,7 @@ the drafts' existing problems and do not refuse an unrelated write. A **publish*
 are served, so it is judged against the client alone. A problem the sandbox already has refuses the publish that would
 bring it to them. The trial is described in
 [`config-and-data.md`](gedra/config-and-data.md#what-is-checked-and-what-a-failure-does), and how it treats a file
-that has gone missing in [`file-refs.md`](file-refs.md#refs-into-the-file-store).
+that has gone missing in [`config-file-refs.md`](config-file-refs.md#refs-into-the-file-store).
 
 **The impact report** (#935) exists because of the sandbox. A change tried in the sandbox meets only the sandbox's data,
 so it can look fine there and still break the client's stored forms when published. A publish therefore judges the
@@ -207,8 +275,9 @@ candidate against the *client's* rows, and asked from inside a sandbox, the repo
 
 - **Reports.** A sandbox holds its parent's reports, under generated type names of its own. The nightly history job
   skips sandboxes. A snapshot can still be taken by hand. See [`reporting.md`](reporting.md).
-- **File refs.** A sandbox's files are its parent's, kept under the parent, and it previews refs the parent has only
-  drafted. See [`file-refs.md`](file-refs.md#inheritance-sandboxes-and-what-is-stored).
+- **Named images (configuration file refs).** A sandbox's files are its parent's, kept under the parent, and it
+  previews refs the parent has only drafted. See
+  [`config-file-refs.md`](config-file-refs.md#inheritance-sandboxes-and-what-is-stored).
 - **Time zone.** A sandbox's is its parent's.
 - **The Clients page and the overview** list a sandbox beside its parent (`sandboxOf`, `hasSandbox`), show "the
   configuration it runs" as the parent's, and offer publishing "from its sandbox, after previewing it there", with the

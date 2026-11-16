@@ -6,10 +6,70 @@ traits — and facts about the form, its workflows and its owner — to the top 
 per form, or one row per group of forms. It is what an administrator asks for when the question is "for every form,
 what is X", or "how many forms have each X, and what do their Ys add up to".
 
-Built in slices under #975: cursor paging (#976), report paths (#977), evaluating them (#978), report definitions
-(#979), the registry that checks them when configuration loads (#980), and the endpoints that run them (#981). Two
-later efforts added most of what follows them: history under #1033 (#1034–#1037), and the typed per-report endpoints
-under #1083 (#1086, #1088, and #1128).
+The document has two parts. **[Using reports](#using-reports)** is a guide: how to make a report, run it, and keep its
+history. **[The design](#the-design)** is the record of how reports are built and why.
+
+## Using reports
+
+### What a report is
+
+A report answers a question about every form of a client, in one of two shapes:
+
+- **A row per form**, its columns the values asked for: who audited each site, and when.
+- **Totals by a column**: the forms grouped by one column's value, each group with how many forms it holds and its
+  other columns rolled up, such as a sum of amounts or the latest date. A totals report may also say which **chart**
+  its groups open on, a bar or a pie.
+
+Each column names where its value comes from with a **path**: a field of a form's trait (`form.expense.amount`), the
+form's standing in a workflow (`workflow.review.category`), its owner (`user.email`), or the form itself
+(`meta.createdAt`). [Report paths](../reference/report-paths.md) lists every one.
+
+### Making one
+
+The **Reports page**'s **New report** makes a report from a few choices, with no paths to write:
+
+1. **The kind:** a row per form, or totals by a column.
+2. **A name**, from which the report's id is made, and **a description** for whoever picks it from the list.
+3. **The columns**, each picked from a list grouped by where its value comes from: the form itself, each trait's
+   fields, and each workflow's standing and approvals. Where a form may hold several values, say which: all of them,
+   how many, or the first, or for a trait kept per year (or by any key), the entry for one key.
+4. For a totals report, whether to **keep a daily snapshot**, and the **chart** it opens on.
+
+It is one-way: a report made there is changed afterwards in the bundle editor, where it is an entry of the
+`kdr:reportDef` slot in the client's `reports` bundle. The page removes one, though, with **Remove this report** under
+it. In a client with a sandbox, New
+report is offered in the sandbox, where the report is a draft until it is published. The workflow assistant makes one
+the same way, with its `create_report` tool.
+
+A report can also be written as JSON from the start, in the bundle editor. [The conference demo's reports
+page](../demo-client/reports.md) explains one, key by key.
+
+### Running it
+<!-- Theme: #RDSCP -->
+
+The **Reports page** lists the client's reports, and runs the one opened in one of its views: **Per form**, a row per
+form, each opening its form; or **Grouped**, a row per group, with its **Chart** above them. A viewer may change **Group
+by** and **Must have** for this run only; the report keeps its own. **Download CSV** saves the whole run as one file.
+
+A program runs it with `GET /clientAdmin/report/run`, and lists the reports with `GET /clientAdmin/reports`.
+
+A report shows only forms the person running it could open elsewhere: an administrator confined to one organization
+sees that organization's forms and the client's own.
+
+### Its history
+
+A run answers "now". A report that keeps a daily snapshot is run every night, as the client's whole, and the Reports
+page's **History** view charts its groups day by day. **Snapshot now** takes one by hand, for any report. One snapshot
+is kept per day, for 400 days by default, and a removed report's snapshots are kept.
+
+[Making changes](../reference/making-changes.md) says how each change to a report is made, and by which editor or tool.
+
+## The design
+
+The sections from here on are the design record. Built in slices under #975: cursor paging (#976), report paths
+(#977), evaluating them (#978), report definitions (#979), the registry that checks them when configuration loads
+(#980), and the endpoints that run them (#981). Two later efforts added most of what follows them: history under #1033
+(#1034–#1037), and the typed per-report endpoints under #1083 (#1086, #1088, and #1128).
 
 ## A report
 

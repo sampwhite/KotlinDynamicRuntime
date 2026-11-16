@@ -1,13 +1,67 @@
-# File refs
+# Named images: configuration file refs
 
-A client's **file refs** are its named files: an image its copy shows by name, with the bytes kept in the file store
-or on the node's own disk. This document says what a ref is, where its bytes may be, who may name them, how a
-configuration holding refs is judged, and how a ref reaches a browser.
+A client's **named images** are images its copy shows by name, with the bytes kept in the file store or on the node's
+own disk. Each is a **configuration file ref**: an entry of the client's configuration naming a file. In this document
+"ref" means one of these.
 
-**Status: built** (issues #1153, #1154, #1164, #1169, #1170, #1171, #1176, #1180, #1186, #1188, #1190, #1191, #1192).
-Images are the only kind of file a ref may name today. What is not built is listed at the end, and each item has an
-entry in [`docs/development/deferred-work.md`](../development/deferred-work.md) under the condition that should reopen
-it.
+They are not the file references a form's data may one day hold, such as a trait whose field names an uploaded file.
+Those would be part of a form, as its other data is, where these are part of the client's configuration
+(`GedraDataType.fileRef` is reserved for the data kind).
+
+The document has two parts. **[Using named images](#using-named-images)** is a guide: how to add an image, show it in
+the client's copy, and replace or remove it. **[The design](#the-design)** is the record of what a ref is, where its
+bytes may be, who may name them, how a configuration holding refs is judged, and how a ref reaches a browser.
+
+## Using named images
+
+### What a named image is
+
+A **named image** is an image with a name the client chooses, such as `logo` or `floorPlan`. The client's copy, its
+pages and its forms' words, shows the image by that name, so replacing the image needs no change to the copy. It is
+part of the client's configuration: in a client with a sandbox, a new or replaced image is a draft until it is
+published, as any other change is.
+
+The client's **favicon** and **brand mark** are uploaded on the same panel, but they are not named images, nor
+configuration: they take effect at once and have no draft.
+
+### Adding one
+
+On the Clients page, the client's **Images** panel lists its named images under **Files**. Add one by uploading a file,
+with its name and a short description of what it shows. Where the deployment has opened a directory of files to
+clients, a named image may be a file there instead of an upload.
+
+An image may be PNG, JPEG, WebP, ICO, or SVG, at most 2 MB, and the bytes decide its kind: a file whose bytes are not
+the kind it claims is refused, and so is an SVG holding anything that could run. A client may have 200 named
+images.
+
+A program adds one with `POST /clientAdmin/client/files/upload`; [Using the
+API](../api-guide.md#add-an-image-the-clients-copy-can-show) has the recipe.
+
+### Showing it in copy
+
+Copy names the image by its name, never by its file, with `ref:`:
+
+```markdown
+![Our logo](ref:logo)
+```
+
+The copy editor offers to insert a named image into the copy it is editing. An image the page cannot show, such as
+one the client does not have, is drawn as its alt text, and a mail always shows the alt text.
+[Copy](../reference/copy.md) describes images in copy, and where an image floats beside the words.
+
+### Replacing, rewording, and removing
+
+Each named image's row offers **Replace** (a new file under the same name, so the copy shows it with no edit),
+**Reword** (its description), and **Remove**. In a client with a sandbox, one a draft removed offers **Put back** until the draft is
+published. A removed image's file is kept, since earlier published configuration still names it.
+
+## The design
+
+The sections from here on are the design record. In them a **ref** is always a configuration file ref, never a file
+a form's data names. **Status: built** (issues #1153, #1154, #1164, #1169, #1170, #1171,
+#1176, #1180, #1186, #1188, #1190, #1191, #1192). Images are the only kind of file a ref may name today. What is not
+built is listed at the end, and each item has an entry in
+[`docs/development/deferred-work.md`](../development/deferred-work.md) under the condition that should reopen it.
 
 The rules here grew out of the configuration rules in
 [`docs/design/gedra/config-and-data.md`](gedra/config-and-data.md), where these sections first lived (issue #1294).
@@ -16,8 +70,8 @@ is the first slot whose entries name something outside the configuration.
 
 ## What a ref is, and what it is not
 
-A ref is an entry in the `kdr:fileRefDef` slot of a client's configuration. The entry names the file by an id of the
-client's choosing, and says where the bytes are by its `source`:
+A ref (a configuration file ref) is an entry in the `kdr:fileRefDef` slot of a client's configuration. The entry names
+the file by an id of the client's choosing, and says where the bytes are by its `source`:
 
 | `source` | Where the bytes are | Fields |
 |---|---|---|
@@ -63,8 +117,8 @@ The copy says *which* image, so replacing the image needs no edit to the copy. A
 its alt text, never as an empty image. Mail never shows a ref; it always shows the alt text.
 
 **Copy naming a ref the client lacks is a problem of the copy.** It is judged when the client loads, at a reload, and
-in a write's trial (`reportCopyNamingNoRef`). The copy is kept, and the image is drawn as its alt text. A ref that
-exists but whose file is missing is a problem of the ref instead, described below.
+in a write's trial (`FileRefService.reportCopyProblems`). The copy is kept, and the image is drawn as its alt text. A
+ref that exists but whose file is missing is a problem of the ref instead, described below.
 
 **The address carries the hash:** `/<staticRoot>/<appId>/ref/<refId>:<hash>`, where the static root is `/st` unless
 the deployment sets another. Two things make the address work:
@@ -92,11 +146,11 @@ it to preview another client's refs, and offers to insert a ref's image into the
 ## Refs into the file store
 <!-- Theme: #CFGFG -->
 
-`kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a
-client's **file ref** is a named file, and its entry says where the bytes are by its `source`. Most are in the
-**file store** -- `{ refId, source: "store", hash, description? }`, the SHA-256 of the file's bytes, kept in
-bucket `web-assets` at `clients/<client>/refs/<hash>` -- and those are what the points below describe. A ref may
-instead name a **local file**, which the section after covers.
+`kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a client's
+**configuration file ref** is a named file, and its entry says where the bytes are by its `source`. Most are in the
+**file store** -- `{ refId, source: "store", hash, description? }`, the SHA-256 of the file's bytes, kept in bucket
+`web-assets` at `clients/<client>/refs/<hash>` -- and those are what the points below describe. A ref may instead
+name a **local file**, which the section after covers.
 
 - **The hash is the pointer.** The key is derived from it and never stored, so an entry names exactly one sequence
   of bytes, an object is written once and never rewritten, and a draft cannot change what a published revision
@@ -264,6 +318,8 @@ before "Show all", and copies a ref's address (issue #1190). Where the client's 
 the section is read-only.
 
 ## Inheritance, sandboxes, and what is stored
+
+Every ref here is a configuration file ref, a named image of the client's.
 
 **A template passes on only its source refs** (issue #1170). A client built on a template takes clones of the
 template's *source* configurations, so it inherits the template's `local` and `clientLocal` refs. Since a `store` ref

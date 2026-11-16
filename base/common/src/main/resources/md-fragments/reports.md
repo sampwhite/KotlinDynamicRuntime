@@ -18,6 +18,9 @@ A report reads the client's forms in one of three views.
 
 **Must have** leaves out the forms with no value in the columns chosen there.
 
+[Using reports](/docs/design/reporting.md#using-reports) says more: making a report, running it, and keeping its
+history.
+
 /-where none: the Reports page's explanations, an administrator's page. -/
 # @newReport
 # +whatIsThis
