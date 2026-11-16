@@ -359,6 +359,8 @@ fun addCoreCFacts(collector: SchemaCollector) {
             CFACTS.publicMember, CFGRP.caller,
             "True when the caller is signed in to the `public` placeholder client: a visitor who registered, who may " +
                 "create a client of their own there. A visitor who has not signed in acts in `public` too, and is not one.",
+            // Delivered to the frontend (issue #1794): Home's document shows the walk-through's note only to such a visitor.
+            toFrontend = true,
         ),
     ) { it.userProfile.isLoggedIn && it.client == CL.public }
     // Not a cheap fact like its neighbors: it reads the identity, though from its cache, and only for a `public` member.

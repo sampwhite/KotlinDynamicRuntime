@@ -6,15 +6,11 @@ import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
-import react.ChildrenBuilder
 import react.FC
-import react.Key
 import react.Props
 import react.dom.html.ReactHTML.aside
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
-import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.main
 import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
@@ -29,9 +25,11 @@ private val homeScope = MainScope()
 /**
  * The home page — assembled from data rather than hardcoded. It fetches its UI-config (the "construction
  * manifest") and builds itself from it:
- *  - Its **copy** comes from the `home` Markdown fragment file the config names (nothing here is a literal);
+ *  - Its **page** is a document in the `home` Markdown fragment file the config names (`page.home`, issue #1794):
+ *    Markdown with widget fences, drawn in order by the generic [PageView], so what Home shows and in what order is
+ *    copy, which a client or a deployment overlays;
  *  - Its **layout** comes from the config's feature flags — the document links may be shown as a top menu
- *    bar, a left nav bar, inline in the body, any combination, or not at all;
+ *    bar, a left nav bar, inline in the body (the page's `docLinks` widget), any combination, or not at all;
  *  - Its **links** come from the config's state, each naming a Markdown document to open.
  *
  * Selecting a link goes to that document's own page ([DocsPage], issue #554) -- Home no longer renders a
@@ -98,7 +96,7 @@ val Home = FC<Props> {
     )
     val cards = visibleHomeCards(allCards, reads)
 
-    // An address naming a section (`/wa#home.own-client`, after a jump link and a reload, say) scrolls to it once the
+    // An address naming a part of the page (`/wa#page.ownClient`, after a jump link and a reload, say) scrolls to it once the
     // page is drawn (issue #1576): the browser looks for it as the page loads, before Home has fetched what it draws.
     // Drawn means the copy too, which arrives after the config and adds the intro above the sections.
     val hashScrolled = useRef(false)
@@ -141,94 +139,13 @@ val Home = FC<Props> {
                 className = ClassName("home-main")
                 when {
                     error != null -> errorText("Couldn't load this page.", error!!)
-                    // The welcome page: copy from the fragment file, and optionally the links inline.
-                    current != null -> {
-                        // On a test instance, for a caller with test access (issue #1183): becoming someone first.
-                        if (appConfig().hasTestAccess) TestAccessCard {}
-                        // The hero: the brand mark beside the wordmark. The wordmark is "copy" like everything
-                        // else here, so a deployment that names no brand simply gets no hero.
-                        copy.opt(HFRAG.homeNs, HFRAG.brand)?.let { brandName ->
-                            div {
-                                className = ClassName("home-hero")
-                                img {
-                                    className = ClassName("home-hero-mark")
-                                    // The client's own mark where it has set one (issue #1130), as the bar draws.
-                                    src = markUrlFor(config)
-                                    // Decorative: the wordmark beside it carries the name.
-                                    alt = ""
-                                }
-                                div {
-                                    className = ClassName("home-hero-name")
-                                    +brandName
-                                }
-                            }
-                        }
-                        copy.opt(HFRAG.homeNs, HFRAG.title)?.let { h1 { +it } }
-                        // Jump links to what this page offers further down (issue #1576), from the copy, keeping only
-                        // those whose section is drawn for this caller -- none outside the public home page.
-                        // And to the cards that ask to be named there (issue #1636): the assistant's, which may sit below
-                        // a long introduction, beside "Start here".
-                        // A card that is the page's call to action leads the row as its own button (issue #1698), and is
-                        // left out of what the links count as drawn, so a link the copy writes to it gives way to the button.
-                        val jumpButtons = homeCardJumpButtons(cards)
-                        val drawn = (if (isPublicHome(current.user)) publicHomeSections(current) else emptySet()) +
-                            cards.filterNot { it.leadsJumpRow }.map { homeCardElementId(it.id) }
-                        // Named apart from the Markdown components' `source` below, which a local `source` would shadow.
-                        val jumpSource =
-                            withCardJumpLinks(copy.opt(HFRAG.homeNs, HFRAG.jumpLinks), homeCardJumpLinks(cards, reads.assistantView))
-                        val jumpLinks = jumpLinksFor(jumpSource, drawn)
-                        if (jumpButtons.isNotEmpty() || jumpLinks != null) {
-                            nav {
-                                className = ClassName("home-jump-links")
-                                asDynamic()["aria-label"] = "On this page"
-                                for ((label, page) in jumpButtons) {
-                                    Button {
-                                        key = page.unsafeCast<Key>()
-                                        type = "primary"
-                                        onClick = { navigate(listOf(HP.page to page)) }
-                                        +label
-                                    }
-                                }
-                                jumpLinks?.let { Markdown { source = it; linkResolver = copyLinks } }
-                            }
-                        }
-                        // A card that is what the caller came to do comes before the introduction (issue #1723), the rest
-                        // after it; one list split in two, so a card is drawn in exactly one place.
-                        val (aboveIntro, belowIntro) = cards.partition { it.aboveIntro }
-                        HomeCards {
-                            this.cards = aboveIntro
-                            this.reads = reads
-                            this.copy = copy
-                        }
-                        copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it; linkResolver = copyLinks } }
-                        // A note beneath the intro (issue #1221), empty as shipped: room for a component's own word on
-                        // a deployment -- a flavor's, say -- without its competing with whoever rewords the intro.
-                        copy.opt(HFRAG.homeNs, HFRAG.note)?.takeIf { it.isNotBlank() }?.let {
-                            div {
-                                className = ClassName("home-note")
-                                Markdown { source = it; linkResolver = copyLinks }
-                            }
-                        }
-                        // The home cards (issue #1636): what this caller can do next, as the backend decided for them.
-                        HomeCards {
-                            this.cards = belowIntro
-                            this.reads = reads
-                            this.copy = copy
-                        }
-                        // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
-                        // has not signed in, though they act in `public` too -- what they can do next.
-                        if (isPublicHome(current.user)) {
-                            PublicHome {
-                                // Qualified: Home's own `config` and `copy` are state, and a bare name here would set
-                                // them -- during render, which loops.
-                                this.config = current
-                                this.configAt = configAt
-                                this.copy = copy
-                            }
-                        }
-                        if (layout?.inlineLinks == true) {
-                            renderInlineLinks(links, copy)
-                        }
+                    // The page document (issue #1794): Home is the page `home`, drawn by the generic renderer, which
+                    // knows nothing of Home -- its order is its document's, and what each part shows, its widget's.
+                    current != null && copy.opt(HFRAG.pageNs, HFRAG.pageHome) != null -> PageView {
+                        // Qualified: a bare `document` is the browser's, and Home's own `config` and `copy` are state,
+                        // which a bare name here would set -- during render, which loops.
+                        this.document = copy.opt(HFRAG.pageNs, HFRAG.pageHome)!!
+                        this.data = PageData(current, configAt, copy, cards, reads, copyLinks)
                     }
                     else -> p {
                         className = ClassName("subtitle")
@@ -237,21 +154,5 @@ val Home = FC<Props> {
                 }
             }
         }
-    }
-}
-
-/** The links as inline body content (the third presentation). */
-private fun ChildrenBuilder.renderInlineLinks(links: List<HomeLink>, copy: Copy) {
-    copy.opt("nav", "title")?.let { h2 { +it } }
-    if (links.isEmpty()) {
-        p {
-            className = ClassName("type-hint")
-            +copy.t("nav", "emptyNote", "")
-        }
-        return
-    }
-    div {
-        className = ClassName("home-inline-links")
-        docLinks(links)
     }
 }

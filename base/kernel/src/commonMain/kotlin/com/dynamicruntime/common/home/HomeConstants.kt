@@ -266,11 +266,10 @@ object HFLD {
 }
 
 /**
- * The ids of the public home page's sections (issue #1576): what the home copy's jump links (`home.jumpLinks`) point
- * at, as `#home.demos`. Fixed here rather than taken from a heading's text, since the headings are copy and are
- * reworded. Each has a dot, which the id Markdown gives a heading never has (`headingSlug`), so a heading in the copy
- * above -- an intro's "Demos", say -- cannot take a section's id. In the kernel (issue #1636) so a home card's text,
- * written on the backend, can link to one.
+ * The ids the public home page's sections had (issue #1576), which the home copy's jump links pointed at, as
+ * `#home.demos`. Home is drawn from its page document now (issue #1794), each part in an element `page.<id>`, so no
+ * element has these ids; they are kept only for the webapp's `publicHomeSections` and its tests, and go with them
+ * (issue #1795).
  */
 @Suppress("ConstPropertyName")
 object HSEC {
@@ -527,10 +526,18 @@ object HFRAG {
     const val note = "note"
 
     /**
-     * The home page's jump links (issue #1576), a Markdown list under the title: links to its sections by their ids
-     * (`#home.demos`), of which the page keeps those it draws for the caller, and any other link as written.
+     * The home page's jump links (issues #1576, #1794): the copy of its `jumpLinks` fence, Markdown links that lead the
+     * row under the title, before the links to the page's parts that have a jumpLabel. A link to a part (`#page.demos`)
+     * is kept only where that part is drawn for the caller; any other link as written.
      */
     const val jumpLinks = "jumpLinks"
+
+    /**
+     * The home file's namespace for page documents (issue #1794), and the key of Home's: Markdown with widget fences,
+     * which the page renderer draws in order.
+     */
+    const val pageNs = "page"
+    const val pageHome = "home"
 
     /**
      * The home file's namespace for what the site says of itself where it is linked from elsewhere (issue #1688): its

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.content.ComponentImageService
+import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.clientConfigurationMarkdown
 import com.dynamicruntime.common.gedra.sandboxParentOf
@@ -12,6 +13,7 @@ import com.dynamicruntime.common.content.DOCORDER
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
@@ -51,6 +53,7 @@ import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.util.genericZoneLabel
+import com.dynamicruntime.common.util.parseMarkdownFragments
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -144,11 +147,6 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             HCARD.actionFirst,
             "Whether the card is the page's call to action: its button and links before its words, and in place of a link to " +
                 "it under Home's title, a button doing what its button does.",
-        ) { type = SCT.boolean }
-        property(
-            HCARD.aboveIntro,
-            "Whether Home draws the card above its introduction, as what the caller came to do, rather than among the cards " +
-                "below it.",
         ) { type = SCT.boolean }
         property(HCARD.links, "Further links, drawn under the card's text.") {
             type = SCT.array
@@ -764,7 +762,7 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         listed = false, generate = ::copyMarkdown),
     MarkdownDocDef(HDOC.pageWidgets, "Page widgets", "docs/reference/page-widgets.md",
         "How a page written as copy places widgets with fences, what the checks refuse, and every kind of widget -- made from the kinds.",
-        listed = false, generate = ::pageWidgetsMarkdown),
+        listed = false, generate = ::pageWidgetsReference),
     MarkdownDocDef(HDOC.reportPaths, "Report paths", "docs/reference/report-paths.md",
         "How a report column names where its value comes from, and every attribute a path can end in, with its kind.",
         listed = false, generate = ::reportPathsMarkdown),
@@ -888,3 +886,14 @@ fun sitePolicyFaults(config: (String) -> Any?, docs: List<MarkdownDocDef>): List
         config(key).toOptStr()?.takeIf { it !in declared }?.let { "'$key' names the document '$it', which no component declares." }
     }
 }
+
+/**
+ * The page widgets reference with Home's document as shipped as its worked example (issue #1794): the `home` file's
+ * `page.home`, read from the file itself, so the example cannot part from what Home draws.
+ */
+fun pageWidgetsReference(): String = pageWidgetsMarkdown(shippedHomeDocument())
+
+/** Home's document as the `home` file ships it, before any overlay; null when the file or the key is absent. */
+fun shippedHomeDocument(): String? =
+    ContentResources.readText(MarkdownFragmentService.resourceDir, HFRAG.home)?.parseMarkdownFragments()
+        ?.get(HFRAG.pageNs)?.get(HFRAG.pageHome)
