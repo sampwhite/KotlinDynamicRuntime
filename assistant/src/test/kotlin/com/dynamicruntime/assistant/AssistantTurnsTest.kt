@@ -1069,7 +1069,7 @@ class AssistantTurnsTest : StringSpec({
         AssistantTools.readableDoc(cxt, "menu-and-home-cards").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "roles-and-access").shouldNotBeNull()
         // The design notes that open with a guide (issue #1809), kept as files rather than generated.
-        for (note in listOf(HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock)) {
+        for (note in listOf(HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock, HDOC.clientDefinition)) {
             AssistantTools.readableDoc(cxt, note).shouldNotBeNull().shouldContain("## Using ")
         }
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()

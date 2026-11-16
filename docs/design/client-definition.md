@@ -24,6 +24,59 @@ the plan as it was written before any of that, kept for its reasoning.
 
 The code says `GedraConfigOrigin.stored` and `GedraConfigOrigin.source`; the UI says "Configured" and "Code".
 
+The document has two parts. **[Using a client's definition](#using-a-clients-definition)** is a guide: what a
+definition holds, who changes each part, and where. **[The design](#the-design)** is the record of how clients were
+designed and why.
+
+## Using a client's definition
+
+### What it holds
+
+A client's **definition** is one entry, in the `kdr:clientDef` slot of its configuration. Its fields fall into four
+kinds, by what they are for:
+
+- **Who it is.** Its id (`clientId`), which never changes and is part of the id of everything the client stores; its
+  name, which its people read; and a description, a note for whoever administers it.
+- **How it behaves for its people.** Its time zone, which its dates are read and shown in; the user labels it
+  suggests, each with a note saying who should carry it; how long a sign-in lasts; and whether a change to its
+  configuration reaches its forms at once or only by hand.
+- **What it takes in.** The platform's traits it includes, and whether it has a sandbox.
+- **Where it stands with the platform.** Its customer, what it is for (`usageType`) and whose it is (`audience`), the
+  environments it runs in, the template it is built on, the domains that reach it, the images it presents itself with,
+  who may join it from the public client and as what, and whether it is retired. These carry authority over the client,
+  or move what it holds or where it runs, so only the platform sets them.
+
+The [client configuration reference](../reference/client-configuration.md#kdrclientdef) lists every field with its type,
+and a table there says, for each, who may change it and what a client another client makes starts with. The conference
+demo's [client page](../demo-client/client.md) shows a whole definition, field by field.
+
+### Changing it
+
+On the Clients page, **Definition** shows every field, grouped as **About**, **How it behaves**, and **Platform**, with
+**Where it runs**. **Edit definition** opens the fields its administrator may change: the name, the description, the
+time zone, the user labels and their notes, how long a sign-in lasts, and whether a change reaches its forms only by
+hand. Every other field stays in the rows, saying who sets it. The traits it includes are changed in the **Traits**
+editor, and its sandbox with **Add a sandbox** or **Remove the sandbox**.
+
+A change is checked, then takes effect as any change to the client's configuration does: at once, or as a draft in a
+client with a sandbox, until it is published. A program, or the workflow assistant, makes the same change with
+`POST /clientAdmin/client/definition/set`, sending only the fields that change, dry-run first.
+
+A **client defined in code** has its definition in code, changed with a release, and it offers no **Edit definition**.
+Its administrator may still add or remove its sandbox, which is stored as a change to the code's definition.
+
+### Making a client
+
+A client is made by the platform, by a customer's administrator for that customer, or by a visitor to the public
+client for themselves, and may be built on a template the platform marks as one anyone may build on. A client another
+client makes starts from its maker: its maker chooses its name, the template it is built on, and whether it has a
+sandbox, it takes its customer, time zone, and where it runs from the client that made it, and it starts with no
+labels, no included traits, and no join roles of its own. The reference's table says this field by field.
+
+## The design
+
+The sections from here on are the design record.
+
 ## How to read it
 
 **The specification** states what a client definition holds. It began as a statement written to drive

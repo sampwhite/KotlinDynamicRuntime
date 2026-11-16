@@ -40,6 +40,8 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
 
     /** A guide to writing a slot's entries, linked from its section, for a slot whose entries need more than its fields. */
     private val slotGuides: Map<String, String> = mapOf(
+        CCT.clientDef to "What each part of a definition is for, and how it is changed: " +
+            "[Using a client's definition](../design/client-definition.md#using-a-clients-definition).",
         CCT.uiBlockDef to "To write one for the menu or Home's cards, see [Menu and home cards](menu-and-home-cards.md).",
     )
 
@@ -365,8 +367,45 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
             } else {
                 line("An entry is ${typeText(data)}.")
             }
+            if (slot == CCT.clientDef) clientFieldPolicies()
         }
     }
+
+    /**
+     * Who sets each field of a client's definition (issue #1810), from [ClientFieldPolicies]: what a client another
+     * client makes starts with, and who changes the field afterward. Made from the policies the writes enforce, so the
+     * table cannot say a field is the client's that a write would refuse it.
+     */
+    private fun clientFieldPolicies() {
+        line()
+        line(
+            "**Who sets each field.** A client made by another (a customer's, or a person's own) starts each field as " +
+                "the second column says, and the third says who may change it afterward. An administrator of every " +
+                "client may change any field.",
+        )
+        line()
+        line("| Field | A client another makes starts with | Changed afterward by |")
+        line("|---|---|---|")
+        for ((field, policy) in ClientFieldPolicies.byField) {
+            val atCreate = when (policy.atCreate) {
+                ClientFieldAtCreate.creator -> "Its maker's choice"
+                ClientFieldAtCreate.parent -> "The making client's value"
+                ClientFieldAtCreate.cleared -> "Nothing, or off"
+            }
+            val edit = when (policy.edit) {
+                ClientFieldEdit.definitionEditor -> "Its administrator, on the Clients page's **Definition** panel"
+                ClientFieldEdit.ownSurface -> "Its administrator, " + (ownSurfaces[field] ?: "with a control of its own")
+                ClientFieldEdit.platform -> "The platform only"
+            }
+            line("| `$field` | $atCreate | $edit |")
+        }
+    }
+
+    /** Where a client's administrator changes a field kept out of the definition editor ([ClientFieldEdit.ownSurface]). */
+    private val ownSurfaces: Map<String, String> = mapOf(
+        CLD.sandbox to "with **Add a sandbox** or **Remove the sandbox**",
+        CLD.includedTraits to "in the **Traits** editor",
+    )
 
     private fun typeSections() {
         if (sectioned.isEmpty()) return
