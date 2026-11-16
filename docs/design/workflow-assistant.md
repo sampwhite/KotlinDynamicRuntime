@@ -160,7 +160,7 @@ else is refused, and a drift test holds each tool to its endpoint.
 
 | Tool | Does | Through |
 |---|---|---|
-| `read_doc` | the configuration reference, the schema dialect, or a demo-client page | code: documents are not endpoints |
+| `read_doc` | a reference generated from the code -- the configuration, the schema dialect, the menu and home cards, roles and access, and the rest -- or a demo page | code: documents are not endpoints |
 | `list_configs` | the client's bundles | `GET /clientAdmin/config/bundles` |
 | `read_config` | one bundle, in portable form | `GET /clientAdmin/config/bundle` |
 | `read_config_entries` | one bundle's entries, with each one's `updatedAt` | `GET /clientAdmin/config/entries` |

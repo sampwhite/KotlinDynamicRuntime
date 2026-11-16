@@ -236,6 +236,8 @@ Keyed by `fileId`.
 
 One UiBlock overlay this client contributes, keyed by the block id.
 
+To write one for the menu or Home's cards, see [Menu and home cards](menu-and-home-cards.md).
+
 Keyed by `blockId`.
 
 | Field | Type | Required | What it is |

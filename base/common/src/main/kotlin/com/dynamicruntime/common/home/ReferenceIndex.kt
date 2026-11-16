@@ -38,9 +38,10 @@ fun referenceIndexMarkdown(): String {
     return $$"""# Reference
 
 These pages list what the runtime reads and offers: every schema keyword, validation code, expression function, fact,
-copy role, report path, form layout key, role, and configuration slot, and every environment variable and endpoint.
-Each is generated from the code it describes, so it says what the runtime does, not what it was once meant to do. A
-copy of each is committed beside the code, and the build's `check` fails while one is behind it.
+copy role, report path, form layout key, role, configuration slot, core menu item, and home card. Two more list every
+environment variable and every endpoint. Each is generated from the code it describes, so it says what the runtime
+does, not what it was once meant to do. A copy of each is committed beside the code, and the build's `check` fails while
+one is behind it.
 
 Read a guide first for how the pieces fit together: [Start here](../start-here.md) says which, by what you want to do.
 

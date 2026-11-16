@@ -38,6 +38,11 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
      */
     private val sectioned = LinkedHashMap<String, SchType>()
 
+    /** A guide to writing a slot's entries, linked from its section, for a slot whose entries need more than its fields. */
+    private val slotGuides: Map<String, String> = mapOf(
+        CCT.uiBlockDef to "To write one for the menu or Home's cards, see [Menu and home cards](menu-and-home-cards.md).",
+    )
+
     fun write(): String {
         for (data in slotData.values) {
             if (isSlotDataType(data)) data.properties.values.forEach { collect(it.valueType) } else collect(data)
@@ -346,6 +351,10 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
             line("### $slot")
             line()
             types.getValue(shapes.entryTypes.getValue(slot)).description?.let {
+                line(it)
+                line()
+            }
+            slotGuides[slot]?.let {
                 line(it)
                 line()
             }

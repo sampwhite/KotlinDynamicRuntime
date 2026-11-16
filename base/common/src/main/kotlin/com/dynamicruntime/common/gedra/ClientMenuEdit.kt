@@ -100,7 +100,7 @@ object ClientMenuEdit {
                 audience = HomeMenuAudiences.of(condition)?.name,
                 audiences = if (shipped == null) emptyList() else HomeMenuAudiences.choicesFor(baseCondition),
                 stored = stored[id]?.let { it.containsKey(HFLD.label) || it.containsKey(UIB.cfactExpression) } ?: false,
-                deploymentOnly = shipped != null && HomeMenuAudiences.of(baseCondition)?.deployment == true,
+                deploymentOnly = shipped != null && HomeMenuAudiences.deploymentOnly(baseCondition),
             )
         }
     }

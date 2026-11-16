@@ -73,7 +73,7 @@ class StrUtilTest {
         assertEquals("", joinAsPhrase(emptyList()))
         assertEquals("Audit review", joinAsPhrase(listOf("Audit review")))
         assertEquals("Audit review and Site follow-up", joinAsPhrase(listOf("Audit review", "Site follow-up")))
-        assertEquals("A, B or C", joinAsPhrase(listOf("A", "B", "C"), last = "or"))
+        assertEquals("A, B, or C", joinAsPhrase(listOf("A", "B", "C"), last = "or"))
     }
 
     @Test

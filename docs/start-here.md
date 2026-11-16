@@ -90,13 +90,15 @@ For a program, or an AI assistant, given a site's address and an API key.
    task, and which forms a workflow takes.
 8. **[Copy](reference/copy.md),** for the Markdown that pages, mails, and labels are written in, and the fragment files
    copy is kept in.
-9. **[Report paths](reference/report-paths.md),** for how a report's columns name where their values come from, and
-   every attribute a path can end in.
-10. **[Form layouts](reference/form-layouts.md),** for what a type's layout may hold: each field's copy, which fields
+9. **[Menu and home cards](reference/menu-and-home-cards.md),** for how a client's menu and the cards on its home
+   page are changed, and every item the platform ships.
+10. **[Report paths](reference/report-paths.md),** for how a report's columns name where their values come from, and
+    every attribute a path can end in.
+11. **[Form layouts](reference/form-layouts.md),** for what a type's layout may hold: each field's copy, which fields
     a form shows and in what order, the form's wording, and how a client's layout changes the shared one.
-11. **[Roles and access](reference/roles-and-access.md),** for what each role grants, who may call each part of the
+12. **[Roles and access](reference/roles-and-access.md),** for what each role grants, who may call each part of the
     API, whose data a caller reads, and how to ask a site why a call is refused.
-12. **[The reference index](reference/README.md),** for every reference in one place, with the two a site does not
+13. **[The reference index](reference/README.md),** for every reference in one place, with the two a site does not
     serve: the environment variables, and every endpoint with who may call it.
 
 Most of this documentation was written by an AI and reviewed by people;

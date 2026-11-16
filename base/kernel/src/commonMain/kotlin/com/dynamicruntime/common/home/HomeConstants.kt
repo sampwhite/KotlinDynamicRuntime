@@ -834,6 +834,8 @@ object HDOC {
     const val reportPaths = "report-paths"
     /** What a type's `g-layout` may hold, and how a client's layout merges with the shared one (issue #1609). Generated. */
     const val formLayouts = "form-layouts"
+    /** How a client's menu and Home's cards are changed, and the core items (issue #1767). Generated. */
+    const val menuAndHomeCards = "menu-and-home-cards"
     /** What each role grants, who may call each section, and whose data a caller reads (issue #1610). Generated. */
     const val rolesAndAccess = "roles-and-access"
     const val clientConfiguration = "client-configuration"

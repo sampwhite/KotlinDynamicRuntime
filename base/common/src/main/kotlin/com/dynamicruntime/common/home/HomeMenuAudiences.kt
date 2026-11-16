@@ -9,11 +9,9 @@ import com.dynamicruntime.common.cfact.CFACTS
  * still named, since the items shipped for it are listed, and may be chosen for those items alone. [deployment] says
  * that it is the deployment's own -- people a client's own are never among -- which the Clients page's menu editor
  * reads to list, by default, only the items a client's people may be offered (issue #1397).
- */
-/**
- * One audience: a menu condition and what a person calls it. [retired] is one the shipped menu no longer draws for but a
- * client's stored menu edit may still hold (issue #1432): it keeps its name, so the edit is not shown as custom, and is
- * never offered.
+ *
+ * [retired] is one the shipped menu no longer draws for but a client's stored menu edit may still hold (issue #1432): it
+ * keeps its name, so the edit is not shown as custom, and is never offered.
  */
 class MenuAudience(
     val condition: String,
@@ -47,6 +45,7 @@ class MenuAudience(
  *   (issue #1114), inside the root client.
  * - `#always` differs from "everyone" only on an edge node, which is not a distinction of people at all.
  */
+@Suppress("ConstPropertyName")
 object HomeMenuAudiences {
     val all: List<MenuAudience> = listOf(
         MenuAudience(CFACTS.app, "Everyone", offered = true),
@@ -115,6 +114,53 @@ object HomeMenuAudiences {
     fun of(condition: String?): MenuAudience? = byCondition[CFACT.orAlways(condition)]
 
     /**
+     * Whether [condition] draws for an audience that is the deployment's own ([MenuAudience.deployment], issue #1397) --
+     * its operators, a test instance, a debug session -- which a client's people are never among. The menu editor marks
+     * such an item, and the menu guide leaves it out (issue #1767).
+     *
+     * A condition the table names is judged by its audience. One it does not -- a card's, or an item written with its
+     * facts in another order or with one more -- is the deployment's own when it requires one of [deploymentFacts]: a
+     * top-level part, not negated, of a condition that is not an "either". So the rule does not rest on every item's
+     * condition being written exactly as the table writes it.
+     */
+    fun deploymentOnly(condition: String?): Boolean =
+        of(condition)?.deployment ?: requiredFacts(condition).any { it in deploymentFacts }
+
+    /**
+     * The facts only the deployment's own audiences require: each a deployment audience's condition requires and no
+     * other audience's does -- `kdr:isDeploymentOperator`, `kdr:hasTestAccess`, and the like, but not `kdr:app`.
+     */
+    val deploymentFacts: Set<String> by lazy {
+        val (deployment, others) = all.partition { it.deployment }
+        deployment.flatMap { requiredFacts(it.condition) }.toSet() - others.flatMap { requiredFacts(it.condition) }.toSet()
+    }
+
+    /**
+     * The facts [condition] requires: its top-level parts joined by `,`, each a plain fact name, not negated. None for a
+     * condition whose top level is an "either" (`|`), which requires no one part; a grouped part (`(a|b)`) requires none
+     * of its own facts either.
+     */
+    private fun requiredFacts(condition: String?): List<String> {
+        if (condition == null) return emptyList()
+        val parts = mutableListOf<String>()
+        var depth = 0
+        var start = 0
+        for ((i, c) in condition.withIndex()) {
+            when (c) {
+                '(' -> depth++
+                ')' -> depth--
+                '|' -> if (depth == 0) return emptyList()
+                ',' -> if (depth == 0) {
+                    parts += condition.substring(start, i)
+                    start = i + 1
+                }
+            }
+        }
+        parts += condition.substring(start)
+        return parts.map { it.trim() }.filter { it.isNotEmpty() && it[0] != '~' && it[0] != '(' && it[0] != '#' }
+    }
+
+    /**
      * The audiences an item **shipped under [shippedCondition]** may be shown to: every [offered]
      * one, and the item's own when it is not among them -- so an item can always be put back where it
      * shipped, and an audience that is the deployment's own is not handed to every other item. The one answer to
@@ -128,5 +174,5 @@ object HomeMenuAudiences {
     }
 
     /** What an item's own condition is called when the table has no name for it: the one it shipped under. */
-    val asShipped: String = "As shipped"
+    const val asShipped: String = "As shipped"
 }
