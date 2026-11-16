@@ -18,7 +18,7 @@ class ReferenceIndexTest : StringSpec({
         val references = servedReferences()
         references.map { it.docId } shouldContainExactlyInAnyOrder listOf(
             HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.pageWidgets, HDOC.reportPaths,
-            HDOC.formLayouts, HDOC.menuAndHomeCards, HDOC.rolesAndAccess, HDOC.clientConfiguration,
+            HDOC.formLayouts, HDOC.menuAndHomeCards, HDOC.rolesAndAccess, HDOC.clientConfiguration, HDOC.makingChanges,
         )
         for (doc in references) {
             (doc.generate != null) shouldBe true

@@ -50,7 +50,9 @@ For a person who sets up a client and looks after it: its forms and workflows, i
    its people use it, and checks each one off once it is done.
 3. **The Clients page's "What is this?" links.** Each panel of the page explains itself: the sandbox and publishing,
    the workflows, the menu, the words and images a client shows, and the rest.
-4. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
+4. **[Making changes](reference/making-changes.md),** for each kind of change to a client: the editor that makes it,
+   and why an editor is preferred to writing the configuration as JSON.
+5. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
    client's whole configuration as JSON. It lists every part of the configuration and what each holds.
 
 ## Build on it
@@ -80,25 +82,27 @@ For a program, or an AI assistant, given a site's address and an API key.
 3. **[The walk-through, part 3](walk-through.md#part-3-for-developers),** in which the site's workflow assistant
    writes a workflow's JSON and says what it does, or you save it in the bundle editor, then add an approval step to
    it; and a key lets a program, or an AI outside the site, make a change through the API.
-4. **[The client configuration reference](reference/client-configuration.md),** for every part of a client's
+4. **[Making changes](reference/making-changes.md),** for each kind of change to a client, the editor and endpoint that
+   make it, and the site's workflow assistant's tool. Read it before writing a client's configuration as JSON.
+5. **[The client configuration reference](reference/client-configuration.md),** for every part of a client's
    configuration.
-5. **[Validation messages](reference/validation-messages.md),** for every code a refused value is reported with, what
+6. **[Validation messages](reference/validation-messages.md),** for every code a refused value is reported with, what
    each means, and how to give one a message of your own.
-6. **[Expressions](reference/expressions.md),** for the `${…}` language that copy, columns, layouts, and computed values
+7. **[Expressions](reference/expressions.md),** for the `${…}` language that copy, columns, layouts, and computed values
    are written in, and its functions.
-7. **[Facts](reference/facts.md),** for the yes-or-no facts that decide who sees a menu entry or a field, who may save a
+8. **[Facts](reference/facts.md),** for the yes-or-no facts that decide who sees a menu entry or a field, who may save a
    task, and which forms a workflow takes.
-8. **[Copy](reference/copy.md),** for the Markdown that pages, mails, and labels are written in, and the fragment files
+9. **[Copy](reference/copy.md),** for the Markdown that pages, mails, and labels are written in, and the fragment files
    copy is kept in.
-9. **[Menu and home cards](reference/menu-and-home-cards.md),** for how a client's menu and the cards on its home
-   page are changed, and every item the platform ships.
-10. **[Report paths](reference/report-paths.md),** for how a report's columns name where their values come from, and
+10. **[Menu and home cards](reference/menu-and-home-cards.md),** for how a client's menu and the cards on its home
+    page are changed, and every item the platform ships.
+11. **[Report paths](reference/report-paths.md),** for how a report's columns name where their values come from, and
     every attribute a path can end in.
-11. **[Form layouts](reference/form-layouts.md),** for what a type's layout may hold: each field's copy, which fields
+12. **[Form layouts](reference/form-layouts.md),** for what a type's layout may hold: each field's copy, which fields
     a form shows and in what order, the form's wording, and how a client's layout changes the shared one.
-12. **[Roles and access](reference/roles-and-access.md),** for what each role grants, who may call each part of the
+13. **[Roles and access](reference/roles-and-access.md),** for what each role grants, who may call each part of the
     API, whose data a caller reads, and how to ask a site why a call is refused.
-13. **[The reference index](reference/README.md),** for every reference in one place, with the two a site does not
+14. **[The reference index](reference/README.md),** for every reference in one place, with the two a site does not
     serve: the environment variables, and every endpoint with who may call it.
 
 Most of this documentation was written by an AI and reviewed by people;

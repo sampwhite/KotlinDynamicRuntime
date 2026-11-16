@@ -81,8 +81,8 @@ object TOOL {
 
     /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
     val docs = listOf(
-        HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy,
-        HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards, HDOC.rolesAndAccess,
+        HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts,
+        HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards, HDOC.rolesAndAccess,
     )
 
     /** How deep a tool's input may nest before it is refused rather than walked. */
@@ -255,7 +255,8 @@ object AssistantTools {
             listOf(
                 AssistantTool(
                     ATOOL.readDoc,
-                    "Reads a reference document as Markdown: '${HDOC.clientConfiguration}' (every config slot and its fields), " +
+                    "Reads a reference document as Markdown: '${HDOC.makingChanges}' (for each kind of change, the tool to make it " +
+                            "with -- read it before choosing one), '${HDOC.clientConfiguration}' (every config slot and its fields), " +
                             "'${HDOC.schemaDialect}' (how a trait's data type is written), '${HDOC.validationMessages}' (the codes " +
                             "a refused value is reported with, and how a schema gives one a message), '${HDOC.expressions}' (the " +
                             $$"${…} language of copy, columns, layouts, and computed values), '$${HDOC.facts}' (the facts a menu entry, " +

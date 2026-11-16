@@ -249,9 +249,11 @@ conversation. The prompt names the client by its id alone, so renaming a client 
 
 **The New form** (#1569). The prompt says what the creation workflow is -- the workflow whose entry is `creation`,
 whose one task's traits are exactly what the New form page asks for -- that a client has at most one, that a trait a
-new workflow wants may go on it or on the new workflow's own task, and how a starter made from a template is stored
-(an overlay, `fromTemplate`, which the assistant reads first and writes back with only the task's traits changed, since
-a written entry replaces the old one whole). It says the core details workflow is also at most one, for what a form
+new workflow wants may go on it or on the new workflow's own task, and that a starter made from a template (an
+overlay, `fromTemplate`) is changed with `save_template_workflow` (issue #1766), not `patch_config`, which writes a
+field it gives whole -- the workflow's whole `definition` -- and so would lose what the overlay keeps. For each kind of
+change, the tool to use is the [Making changes](../reference/making-changes.md) guide's (issue #1807), which `read_doc`
+reads. It says the core details workflow is also at most one, for what a form
 carries and edits after it exists. And it says what kind of client this is, and where its creation workflow comes
 from (`AssistantPrompt.clientLine`), since that decides who changes the New form:
 
