@@ -36,12 +36,16 @@ enum class PageWidgetPlacement(val words: String) {
  * A kind of widget a page's fence may draw (issue #1792): its [name] (a fence's `widget`), what it draws
  * ([description]), whose copy may place it ([placement]), the [surfaces] it draws on, and its parameters ([params], the
  * Sch DSL over the kind's parameter object). What a surface does with a kind it cannot draw is to leave the fence out.
+ *
+ * A fence's `copy` is drawn before its widget, unless the kind [drawsCopy] (issue #1794): then the widget draws it
+ * itself, in its own place -- the page's title as its heading, or the jump links' own links leading their row.
  */
 class PageWidgetKind(
     val name: String,
     val description: String,
     val placement: PageWidgetPlacement,
     val surfaces: Set<PageSurface>,
+    val drawsCopy: Boolean = false,
     val params: SchTypeBuilder.() -> Unit = {},
 ) {
     /** The name of this kind's parameter type, under [PGW.namespace]. */
@@ -93,9 +97,18 @@ object PageWidgets {
         PageWidgetPlacement.anyCopy, setOf(PageSurface.app, PageSurface.site),
     )
 
+    val pageTitle = PageWidgetKind(
+        "pageTitle", "The page's title, its fence's copy drawn as the page's one top-level heading. Nothing when the copy is blank.",
+        PageWidgetPlacement.anyCopy, setOf(PageSurface.app, PageSurface.site, PageSurface.mail), drawsCopy = true,
+    )
+
     val jumpLinks = PageWidgetKind(
-        "jumpLinks", "A row of links to the page's drawn fences that have a jumpLabel, and to the cards that ask for one.",
-        PageWidgetPlacement.anyCopy, setOf(PageSurface.app, PageSurface.site),
+        "jumpLinks",
+        "A row of links to what the page draws further down: led by its fence's copy, links written in Markdown (a " +
+            "list, or a row on one line), then a link to each drawn fence that has a jumpLabel, and to each card that " +
+            "asks for one. A link to a fence or a card not drawn for the caller is left out, and with no link left, so " +
+            "is the row.",
+        PageWidgetPlacement.anyCopy, setOf(PageSurface.app, PageSurface.site), drawsCopy = true,
     )
 
     val cardsBlock = PageWidgetKind(
@@ -140,7 +153,8 @@ object PageWidgets {
     )
 
     /** Every core kind, in the order the reference lists them. */
-    val coreKinds: List<PageWidgetKind> = listOf(hero, jumpLinks, cardsBlock, joinableDemos, createOwnClient, testAccess, docLinks)
+    val coreKinds: List<PageWidgetKind> =
+        listOf(hero, pageTitle, jumpLinks, cardsBlock, joinableDemos, createOwnClient, testAccess, docLinks)
 
     /** The catalog of the core kinds, compiled once. A benign race on first use compiles it twice. */
     private var compiled: PageWidgetCatalog? = null

@@ -138,14 +138,50 @@ anyway leaves the card in place with a note naming which (`imageUploadsNote`) an
 client exists, and the image is added from My client. The client's own note is labeled "Internal note" here, to keep
 it apart from the home page's.
 
-**Home's copy resolves links as a document's do** (issue #1510). The intro and the note are drawn with the shell's
-`copyLinkResolver`, as `PublicHome`'s sections are, so `[start here](/docs/start-here.md)` opens the in-app document
-rather than asking the server for `/docs/...`, which is a 404. Both the shared intro and the `reference` flavor's
-point to "Start here" that way.
+**Home's copy resolves links as a document's do** (issue #1510). Every part of the page is drawn with the shell's
+`copyLinkResolver`, which the renderer passes to each (`PageData.copyLinks`), so `[start here](/docs/start-here.md)`
+opens the in-app document rather than asking the server for `/docs/...`, which is a 404. Both the shared intro and the
+`reference` flavor's point to "Start here" that way.
+
+## Home is a page document (issue #1794)
+
+Home draws nothing of its own between the app bar and the footer: it is the page `home`, a document kept as copy (the
+`home` file's `page.home`, `HFRAG.pageNs`/`HFRAG.pageHome`), drawn by the generic renderer (`PageView.kt`), which
+knows nothing of Home. The model, its fences, and its checks are the kernel's (`page/`, issue #1792), and the page
+widgets reference (`docs/reference/page-widgets.md`) lists every kind and shows Home's document as its worked example,
+read from `home.md` as the reference is generated (`pageWidgetsReference`).
+
+- **The order of the page is the order of its document.** As shipped: `testAccess`, `hero`, the title (`pageTitle`,
+  whose copy is `home.title`), `jumpLinks`, the cards above the introduction (`cardsBlock` with `ids: ["checklist"]`),
+  the intro and the note (fences with copy alone), the rest of the cards (`except: ["checklist"]`), the walk-through's
+  note, the demos (`joinableDemos`), creating your own client (`createOwnClient`), and the inline document links
+  (`docLinks`). A client or a flavor rewords the title, the intro, and the note by their own keys, as before, and
+  rearranges the page only by overlaying `page.home`.
+- **Each widget decides from its own data whether it draws** (`AppWidget.shows`), so who sees what needs no
+  conditions: the demos only for a public member where joining is offered, the create card only for a public member,
+  the test card only with test access, a cards block only with a card to draw. The one condition in the document is the
+  walk-through's note, `kdr:publicMember`, which the shell config sends for it (`state.cfacts`, issue #1793).
+- **What is drawn is planned first** (`PagePlan.kt`, pure and covered by `PagePlanTest`). The document is read once per
+  copy (`parsePage`, memoized in `PageView`): Markdown between fences, and a fence's copy, get the frontend template
+  pass, so a part pulls a key with `${@t("ns.key")}` (`publicHome.demos` pulls the demos' title, intro, and note, so
+  their overlays keep working). Copy the pass cannot fill in, such as a literal `${` written before pages were drawn this
+  way, is drawn as written, said once in the console. Then, on each render, `selectParts` leaves out a fence whose kind
+  the app does not draw, whose condition fails (one that does not parse fails), or whose widget has nothing to show,
+  never failing the page; the checks at boot and at a client's write are where it is reported. Last, a widget that reads
+  the rest of the page settles on the planned page (`AppWidget.showsOnPage`, through a `PageScene`): the jump row drops
+  out with no link to hold, and a card is drawn by the first cards block that names it (`pageCardsByFence`), so a block
+  left with none drops out too. The renderer names no kind.
+- **Each drawn fence is its own element**, `page.<id>`, which a jump link names, classed `page-part page-part-<id>`
+  and `page-widget-<kind>`: the note's box is `.page-part-note`, the demos' spacing `.page-widget-joinableDemos`.
+- **A page's top-level heading is a `pageTitle` fence**, since a line beginning with `#` and a space ends a value in a
+  fragment file. A kind that draws its copy itself (`PageWidgetKind.drawsCopy`: the title, the jump row) is passed it
+  rather than having it drawn above.
+- **Only the home cards reach the page.** `cardsBlock` draws the block the shell config resolves (`HCARD.block`); a
+  page naming another draws nothing there until the second page (#1796) needs one resolved.
 
 ## Home cards (issue #1636)
 
-Under its copy (the intro and the note) and above the public home page's sections, Home draws the **home cards** the
+Where the page document places them (two `cardsBlock` fences, above), Home draws the **home cards** the
 shell config sends this caller (`state.cards`, `HomeCards.kt`): a panel each, with its title, its Markdown text (links
 resolved as the intro's are), a row of links, and a primary button. The backend decides which cards a caller gets,
 from cfacts, as it decides the menu: the cards are a registered UiBlock (`homeCardsBlock`), so a component adds its own
@@ -214,9 +250,11 @@ none of its own.
   (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. Hiding it is Home's alone (issue
   #1757): the link says the list stays on the client's page (`CHKV.hideNote`), whose Getting started panel shows while
   a step is left and offers **Show on Home again** (`showChecklistOnHome`), which brings the card back. It is drawn above the home page's
-  introduction (`HCARD.aboveIntro`, issue #1723), since a new client lands here after it is made, and until its
+  introduction (issue #1723), since a new client lands here after it is made, and until its
   administrator writes their own words the introduction is the site's, which on a phone put the list below the first
-  screen. The client page opens on the same steps for the same person (issue #1700, the Clients page's file).
+  screen. The page document places it there (issue #1794): a `cardsBlock` fence naming it by its id, above the intro,
+  where a card flag (`aboveIntro`) once did. The client page opens on the same steps for the same person (issue #1700, the Clients
+page's file).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.
@@ -258,56 +296,46 @@ none of its own.
 
 ## The public home page (issue #1324)
 
-For a caller **signed in** to `public` (`isPublicHome`), Home draws `PublicHome` under its hero and intro: what a
-person can do next on a teaching site, in two sections, each worded by `home.md`'s `@publicHome` keys (the
-`reference` flavor rewords `demosIntro` for its teaching site).
+For a caller **signed in** to `public` (`isPublicHome`, the `kdr:publicMember` fact), Home's document draws, under its
+cards, what a person can do next on a teaching site, each worded by `home.md`'s `@publicHome` keys (the `reference`
+flavor rewords `demosIntro` for its teaching site):
 
-1. **Try a demo**, only where the shell config says joining is offered (`state.joinOffered`) -- absent rather than
-   empty elsewhere, and the page never asks: a card per client `GET /user/self/joinable` lists, its roles, an
-   **Open as** switch for each role joined (`joinedRoles`), and **Join…** to the Join page while a role remains
-   (`hasRoleToJoin`; one an administrator disabled is neither).
-2. **Your own client**: `CreateOwnClientCard`.
+1. **The walk-through's note** (`publicHome.walkThrough`, issue #1429), a fence with copy alone under the condition
+   `kdr:publicMember`. Empty as shipped, so nothing shows; the `reference` flavor links its walk-through.
+2. **Try a demo** (`joinableDemos`, `JoinableDemos` in `PublicHome.kt`), only where the shell config says joining is
+   offered (`state.joinOffered`) -- absent rather than empty elsewhere, and the page never asks: under its fence's copy
+   (`publicHome.demos`, pulling `demosTitle`, `demosIntro`, and `demosNote`), a card per client `GET /user/self/joinable`
+   lists, its roles, an **Open as** switch for each role joined (`joinedRoles`), and **Join…** to the Join page while a
+   role remains (`hasRoleToJoin`; one an administrator disabled is neither).
+3. **Your own client** (`createOwnClient`): `CreateOwnClientCard`.
 
 There is no list of the person's other users (issue #1672): the account menu switches between them, and a demo's card
 opens each role joined. It was a third section, drawn between these two once a person had a second user, and was
 removed because it offered only switches the page and the menu already had.
 
-Which of the two are drawn is `publicHomeSections(config)`, and the page draws by it. Each section's container has a
-fixed id from `HSEC` (`home.demos`, `home.own-client`), never one taken from its heading, since the
-heading is copy. The dot is deliberate: the id Markdown gives a heading (`headingSlug`) never has one, so a heading in
-the copy above (an intro's "Demos", say) cannot take a section's id.
+### Jump links under the title (issues #1576, #1794)
 
-### Jump links under the title (issue #1576)
+The demos and the create card sit below the hero, title, intro, and cards, so the `jumpLinks` widget draws a row of
+links to what the page draws further down, directly under the title (`nav.home-jump-links`, `pageJumpRow`):
 
-The sections sit below the hero, title, intro, and note, so Home draws a row of links to them directly under the title
-(`nav.home-jump-links`). The links are copy, `home.jumpLinks` in `home.md`'s `@home`: a Markdown list, shipped as one
-link per section by its id (`[Try a demo](#home.demos)`). A flavor or a client rewords, reorders, or extends it like
-any other copy.
+- **A button for each card that is the page's call to action** (`homeCardJumpButtons`): Register opens the Register
+  page (issue #1698).
+- **Its fence's copy, `home.jumpLinks`**, Markdown links that lead the row: empty as shipped; the `reference` flavor's
+  are Register and **Start here** (`/docs/start-here.md`), so its visitors who have not signed in see those two.
+- **A link to each drawn fence with a `jumpLabel`** ("Try a demo", "Your own client", literal in the document), and to
+  each drawn card that asks for one (`homeCardJumpLinks`), added in the copy's style (`withCardJumpLinks`).
 
-Copy cannot say who sees what, so `jumpLinksFor(source, drawn)` (`JumpLinks.kt`) filters it against
-`publicHomeSections`:
-
-- A list item whose every link is an anchor (`#id`) for a section not drawn is dropped, with its continuation lines
-  and any items nested under it. So there is no "Try a demo" where joining is not offered.
-- Anywhere else (a row written on one line, `[A](#home.demos) · [B](#home.own-client)`, or an item that also links
-  elsewhere), such a link is removed with the separator after it when a separator or the line's end follows it, and
-  is otherwise left as its words with no link, so a sentence still reads.
-- Every other link is kept as written, including one to a document (`/docs/...`), a page (`/wa/...`), or outside the
-  site. Links resolve as the intro's do (`copyLinkResolver`, which leaves an anchor alone).
-- With no link left (an image is not one), or the key blank, no row is drawn. That is how a client's copy removes it.
-
-Outside the public home page (a visitor who has not signed in, or any other client's Home), the drawn set is empty, so
-only links to something other than a section would show; the shipped list shows nothing there. The `reference` flavor
-puts **Register** (`#home.card.register`, the Register card, issue #1652) and **Start here** (`/docs/start-here.md`)
-before the shipped links, so its visitors who have not signed in see those two -- Register as a button opening the
-Register page (issue #1698).
+A link to a fence or a card not drawn for this caller is left out (`jumpLinksFor`, against the drawn element ids:
+`page.<id>` and `home.card.<id>`), and so is the row with no link left. A link written to anything else (a document, a
+page, outside the site) is kept. `publicHomeSections` and the `HSEC` ids the jump links once named (`#home.demos`) are
+no longer read by the page, and go in #1795, as does the copy filtering.
 
 The anchors need no routing: a Markdown anchor is the browser's to follow (#1125), `scroll-padding-top` stops it below
-the app bar, and Back returns from it. An address that names a section on arrival (a reload after a jump) is scrolled
+the app bar, and Back returns from it. An address that names a part on arrival (a reload after a jump) is scrolled
 to by Home once it has drawn the page, since the browser looks for the element before Home has fetched what it draws.
-Content that arrives later above the section (the demo cards) is left to the browser's scroll anchoring, which keeps
-the section in place in Chrome and Firefox; Safari has none.
+Content that arrives later above the part (the demo cards) is left to the browser's scroll anchoring, which keeps
+the part in place in Chrome and Firefox; Safari has none.
 
 A component's props set inside its builder must be qualified when the calling component has state of the same name:
-`PublicHome { this.config = current }`. A bare `config = current` resolves to Home's own state, sets it during render,
-and loops (React #301).
+`PageView { this.data = ... }`. A bare `config = current` resolves to Home's own state, sets it during render,
+and loops (React #301); a bare `document` is the browser's.

@@ -30,14 +30,18 @@ text, so copy can show a fence as an example, as this page does, without drawing
 |---|---|
 | `id` | The fence's name, unique in its page: a letter or underscore, then letters, digits, and underscores. The fence is drawn with the element id `page.<id>`, which a link can name. |
 | `widget` | The kind of widget to draw, one of [the kinds](#the-kinds) below. Left out, the fence draws only its `copy`, which is how a page shows copy under a condition. |
-| `copy` | Copy drawn before the widget, as `namespace.key` of the page's own fragment file. It is drawn as any other copy is, so it may pull other keys and fill placeholders. |
+| `copy` | Copy drawn before the widget, as `namespace.key` of the page's own fragment file, unless the kind draws it itself in its own place, as a page's title does. It is drawn as any other copy is, so it may pull other keys and fill placeholders. |
 | `cfactExpression` | Whether the fence is drawn: a test of [facts](facts.md), judged in the browser, so it may name only the facts about the caller and the node that are sent to it. A fact about a form, a client's own included, never holds on a page. Left out, the fence is always drawn. |
 | `jumpLabel` | Puts a link to the fence, with these words, among the page's jump links. |
 
 Every other key is a parameter of the widget's kind, held to the kind's own list below.
 
 Long copy belongs in its own key, named by `copy`, rather than inside the JSON: copy is changed one key at a time,
-so words kept in their own key can be reworded without restating the page.
+so words kept in their own key can be reworded without restating the page. The Markdown between fences may pull a key
+too, with `${@t("namespace.key")}`, as any copy may.
+
+A line that begins with `#` and a space ends a value in a fragment file, so a page's top-level heading is a
+`pageTitle` fence rather than a Markdown line. A smaller heading (`##`) is written as Markdown.
 
 ## What the checks refuse
 
@@ -71,7 +75,8 @@ A kind says where it can be drawn. A surface meeting a fence whose kind it canno
 | Kind | What it draws | Who may place it | Drawn on |
 |---|---|---|---|
 | [`hero`](#hero) | The brand mark beside the wordmark (the home copy's brand). Nothing when the copy names no brand. | Any copy, a client's included | `app`, `site` |
-| [`jumpLinks`](#jumplinks) | A row of links to the page's drawn fences that have a jumpLabel, and to the cards that ask for one. | Any copy, a client's included | `app`, `site` |
+| [`pageTitle`](#pagetitle) | The page's title, its fence's copy drawn as the page's one top-level heading. Nothing when the copy is blank. | Any copy, a client's included | `app`, `site`, `mail` |
+| [`jumpLinks`](#jumplinks) | A row of links to what the page draws further down: led by its fence's copy, links written in Markdown (a list, or a row on one line), then a link to each drawn fence that has a jumpLabel, and to each card that asks for one. A link to a fence or a card not drawn for the caller is left out, and with no link left, so is the row. | Any copy, a client's included | `app`, `site` |
 | [`cardsBlock`](#cardsblock) | A UiBlock of cards, resolved for the caller as the home cards are: every card the block gives them, or those named. | Any copy, a client's included | `app` |
 | [`joinableDemos`](#joinabledemos) | The demo clients a visitor signed in to the public client may join, each with its roles, Open as, and Join. Nothing where joining is not offered. | Copy a component ships | `app` |
 | [`createOwnClient`](#createownclient) | The card that creates a person's own client, or opens the one they made. Only for a caller signed in to the public client. | Copy a component ships | `app` |
@@ -84,9 +89,19 @@ The brand mark beside the wordmark (the home copy's brand). Nothing when the cop
 
 It takes no parameters.
 
+### pageTitle
+
+The page's title, its fence's copy drawn as the page's one top-level heading. Nothing when the copy is blank.
+
+It draws its fence's `copy` itself, as described above, rather than before it.
+
+It takes no parameters.
+
 ### jumpLinks
 
-A row of links to the page's drawn fences that have a jumpLabel, and to the cards that ask for one.
+A row of links to what the page draws further down: led by its fence's copy, links written in Markdown (a list, or a row on one line), then a link to each drawn fence that has a jumpLabel, and to each card that asks for one. A link to a fence or a card not drawn for the caller is left out, and with no link left, so is the row.
+
+It draws its fence's `copy` itself, as described above, rather than before it.
 
 It takes no parameters.
 
@@ -123,6 +138,49 @@ It takes no parameters.
 Links to the documents the deployment lists.
 
 It takes no parameters.
+
+## Home, a worked example
+
+The app's home page is a page document: the `home` file's `page.home` key, as shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one condition is on the walk-through's note, which only such a visitor is shown. A client or a deployment rewords the title, the introduction, and the note by their own keys, and rearranges the page by overlaying this one.
+
+````markdown
+```kdr-ui
+{"id": "testAccess", "widget": "testAccess"}
+```
+```kdr-ui
+{"id": "hero", "widget": "hero"}
+```
+```kdr-ui
+{"id": "title", "widget": "pageTitle", "copy": "home.title"}
+```
+```kdr-ui
+{"id": "jumpLinks", "widget": "jumpLinks", "copy": "home.jumpLinks"}
+```
+```kdr-ui
+{"id": "firstCards", "widget": "cardsBlock", "block": "homeCards", "ids": ["checklist"]}
+```
+```kdr-ui
+{"id": "intro", "copy": "home.intro"}
+```
+```kdr-ui
+{"id": "note", "copy": "home.note"}
+```
+```kdr-ui
+{"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"]}
+```
+```kdr-ui
+{"id": "walkThrough", "copy": "publicHome.walkThrough", "cfactExpression": "kdr:publicMember"}
+```
+```kdr-ui
+{"id": "demos", "widget": "joinableDemos", "copy": "publicHome.demos", "jumpLabel": "Try a demo"}
+```
+```kdr-ui
+{"id": "ownClient", "widget": "createOwnClient", "jumpLabel": "Your own client"}
+```
+```kdr-ui
+{"id": "docs", "widget": "docLinks"}
+```
+````
 <!-- kdr-generated: end -->
 ## About this file
 

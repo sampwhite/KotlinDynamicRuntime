@@ -6,10 +6,10 @@ import com.dynamicruntime.common.context.UserProfile
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
@@ -17,7 +17,6 @@ import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
-import web.dom.ElementId
 
 private val publicHomeScope = MainScope()
 
@@ -28,9 +27,9 @@ private val publicHomeScope = MainScope()
 fun isPublicHome(user: UserProfile): Boolean = user.isLoggedIn && user.client == CL.public
 
 /**
- * The sections the public home page draws for [config] (issue #1576), by their [HSEC] ids: Try a demo where joining is
- * offered, and Your own client always. The page draws by it, and the jump links are kept by it ([jumpLinksFor]), so a
- * link and its section cannot disagree. Pure.
+ * The sections the public home page drew for [config] (issue #1576), by their [HSEC] ids: Try a demo where joining is
+ * offered, and Your own client always. Home is drawn from its page document now (issue #1794), whose widgets each decide
+ * whether they draw, so nothing reads this but its tests; it goes with the sections' ids (issue #1795). Pure.
  */
 fun publicHomeSections(config: HomeConfig): Set<String> = buildSet {
     if (config.joinOffered) add(HSEC.demos)
@@ -46,7 +45,7 @@ fun removedRoles(demo: JoinableView): List<JoinRoleView> = demo.roles.filter { i
 /** Whether [demo] has a role the caller may still join -- one not held, and not taken away by an administrator. Pure. */
 fun hasRoleToJoin(demo: JoinableView): Boolean = demo.roles.any { it.userId == null && !it.removed }
 
-external interface PublicHomeProps : Props {
+external interface JoinableDemosProps : Props {
     var config: HomeConfig
 
     /**
@@ -55,31 +54,22 @@ external interface PublicHomeProps : Props {
      * demos as the demo's user, which is refused ([useCardRead] says the same of Home's cards).
      */
     var configAt: Int
-    var copy: Copy
 }
 
 /**
- * The public home page (issue #1324), under Home's hero and intro, for a person signed in to `public`: what they can
- * do next on a teaching site, in two parts, under the deployment's word on where to begin when it has one
- * (`walkThrough`, issue #1429).
- *
- * 1. **Try a demo**, where the deployment offers joining ([HomeConfig.joinOffered], issue #1248): a card per demo
- *    client, its roles, and for each role joined an **Open as** switch; **Join…** leads to the Join page, which says
- *    what a shared space means before anyone joins. Absent, not empty, where joining is not offered.
- * 2. **Your own client**: the self-serve create (issue #1228), or a way to open the one made.
+ * The demo clients a visitor signed in to `public` may join (issues #1248, #1324), the `joinableDemos` page widget
+ * (issue #1794): a card per demo client, its roles, and for each role joined an **Open as** switch; **Join…** leads to
+ * the Join page, which says what a shared space means before anyone joins. The page draws it only where the deployment
+ * offers joining ([HomeConfig.joinOffered]); its heading and introduction are its fence's copy, above it.
  */
-val PublicHome = FC<PublicHomeProps> { props ->
+val JoinableDemos = FC<JoinableDemosProps> { props ->
     val config = props.config
-    val copy = props.copy
     var demos by useState<List<JoinableView>?>(null)
     var demosError by useState<DisplayError?>(null)
     var busy by useState(false)
     // A failed switch, and the demo's client id it was asked from, so it is said on that demo's card.
     var switchError by useState<Pair<String, DisplayError>?>(null)
     val bump = useRefreshBump()
-    // The copy's links, as a document's are: `/docs/...` to the in-app document, `/wa/...` under the live app root.
-    val copyLinks = useShellFacts().copyLinkResolver()
-    val sections = publicHomeSections(config)
 
     useEffect(props.configAt, config.joinOffered) {
         if (!config.joinOffered) return@useEffect
@@ -108,78 +98,44 @@ val PublicHome = FC<PublicHomeProps> { props ->
         }
     }
 
-    div {
-        className = ClassName("public-home")
-
-        // A deployment's word on where to begin -- the reference flavor's link to its walk-through (issue #1429).
-        copy.opt("publicHome", "walkThrough")?.takeIf { it.isNotBlank() }?.let { text ->
-            div {
-                className = ClassName("public-home-section")
-                Markdown { source = text; linkResolver = copyLinks }
+    demosError?.let { errorText("Couldn't read the demo clients.", it) }
+    val loaded = demos
+    if (loaded == null && demosError == null) p { className = ClassName("subtitle"); +"Loading…" }
+    for (demo in loaded.orEmpty()) {
+        div {
+            key = demo.client.unsafeCast<Key>()
+            className = ClassName("card public-demo")
+            h3 { +demo.name }
+            demo.description?.let { p { className = ClassName("subtitle"); +it } }
+            ul { for (role in demo.roles) li { roleLine(role) } }
+            // A role an administrator took away is said here, as the Join page says it, not left as a card with nothing
+            // to do.
+            for (role in removedRoles(demo)) {
+                p {
+                    className = ClassName("subtitle")
+                    +"One of ${demo.name}'s administrators has disabled your ${role.label} user."
+                }
             }
-        }
-
-        if (HSEC.demos in sections) {
             div {
-                className = ClassName("public-home-section")
-                id = ElementId(HSEC.demos)
-                copy.opt("publicHome", "demosTitle")?.let { h2 { +it } }
-                copy.opt("publicHome", "demosIntro")?.let { Markdown { source = it; linkResolver = copyLinks } }
-                // A component's word on a demo it offers (issue #1692), here rather than under every client's intro.
-                copy.opt("publicHome", "demosNote")?.takeIf { it.isNotBlank() }?.let { Markdown { source = it; linkResolver = copyLinks } }
-                demosError?.let { errorText("Couldn't read the demo clients.", it) }
-                val loaded = demos
-                if (loaded == null && demosError == null) p { className = ClassName("subtitle"); +"Loading…" }
-                for (demo in loaded.orEmpty()) {
-                    div {
-                        className = ClassName("card public-demo")
-                        h3 { +demo.name }
-                        demo.description?.let { p { className = ClassName("subtitle"); +it } }
-                        ul { for (role in demo.roles) li { roleLine(role) } }
-                        // A role an administrator took away is said here, as the Join page says it, not left as a card
-                        // with nothing to do.
-                        for (role in removedRoles(demo)) {
-                            p {
-                                className = ClassName("subtitle")
-                                +"One of ${demo.name}'s administrators has disabled your ${role.label} user."
-                            }
-                        }
-                        div {
-                            className = ClassName("public-demo-actions")
-                            for (role in joinedRoles(demo)) {
-                                Button {
-                                    disabled = busy
-                                    asDynamic()["aria-label"] = "Open ${demo.name} as ${role.label}"
-                                    onClick = { switchTo(demo.client) { AuthApi.switchUser(role.userId!!) } }
-                                    +"Open as ${role.label}"
-                                }
-                            }
-                            if (hasRoleToJoin(demo)) {
-                                val anotherRole = joinedRoles(demo).isNotEmpty()
-                                a {
-                                    href = joinHref(demo.client)
-                                    asDynamic()["aria-label"] = if (anotherRole) "Join ${demo.name} as another role" else "Join ${demo.name}"
-                                    +(if (anotherRole) "Join as another role…" else "Join…")
-                                }
-                            }
-                        }
-                        switchError?.takeIf { it.first == demo.client }?.let { errorText("Couldn't open ${demo.name}.", it.second) }
+                className = ClassName("public-demo-actions")
+                for (role in joinedRoles(demo)) {
+                    Button {
+                        disabled = busy
+                        asDynamic()["aria-label"] = "Open ${demo.name} as ${role.label}"
+                        onClick = { switchTo(demo.client) { AuthApi.switchUser(role.userId!!) } }
+                        +"Open as ${role.label}"
+                    }
+                }
+                if (hasRoleToJoin(demo)) {
+                    val anotherRole = joinedRoles(demo).isNotEmpty()
+                    a {
+                        href = joinHref(demo.client)
+                        asDynamic()["aria-label"] = if (anotherRole) "Join ${demo.name} as another role" else "Join ${demo.name}"
+                        +(if (anotherRole) "Join as another role…" else "Join…")
                     }
                 }
             }
-        }
-
-        // Always drawn ([publicHomeSections]); the wrapper carries the id the jump links point at.
-        div {
-            id = ElementId(HSEC.ownClient)
-            CreateOwnClientCard {
-                made = config.selfServeClient
-                madeAbsent = config.selfServeClientAbsent
-                madeName = config.users.firstOrNull { it.client == config.selfServeClient }?.clientName
-                workflowsNote = copy.opt("publicHome", "createClientNote")
-                templates = config.selfServeTemplates
-                assistantOffered = ownClientAssistantOffered(config.cards)
-            }
+            switchError?.takeIf { it.first == demo.client }?.let { errorText("Couldn't open ${demo.name}.", it.second) }
         }
     }
 }

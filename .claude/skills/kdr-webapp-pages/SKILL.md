@@ -33,7 +33,7 @@ rather than all of them:
 | [`simulations-page.md`](simulations-page.md) | The Simulations page |
 | [`file-store-page.md`](file-store-page.md) | The operator's file store page |
 | [`workflow-assistant.md`](workflow-assistant.md) | The workflow assistant page: its menu entry from the module, the sandbox, the conversation and its transcript, drafts to try and publish, the allowance, polling; and the operator's page of it |
-| [`public-home.md`](public-home.md) | A public test deployment, joining a demo client, creating your own client from the home page, and the public home page |
+| [`public-home.md`](public-home.md) | Home as a page document drawn by the generic renderer, a public test deployment, joining a demo client, creating your own client from the home page, and the public home page |
 
 A page file names the issues and source files behind it, and its tests where it has them; a file that names no test
 does not mean the page has none, so look in `webapp/src/jsTest/` and the backend's tests as well. The code is the

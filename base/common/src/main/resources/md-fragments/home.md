@@ -14,14 +14,12 @@
 # +brand KDR
 /-where Home: the page's title. -/
 # +title Welcome
-/- Under the title (issue #1576): links to the page's sections further down, by their ids -- `#home.demos` and
-   `#home.own-client` (the public home page's; a heading's id never has a dot, so none can clash). A link to a section
-   not drawn for the caller is left out, and with no link left the row is not drawn, so empty removes it. A link to
-   anything else (`/docs/...`, `/wa/...`) is always kept. -/
-/-where none: links to the sections of the public home page, which no client's home page has. -/
+/- Under the title (issues #1576, #1794): links that lead the page's row of jump links, before the links to its parts
+   that have a jumpLabel. Empty as shipped: the parts name themselves. A link to a part of the page, by its element id
+   (`#page.demos`), is left out where that part is not drawn for the caller; a link to anything else (`/docs/...`,
+   `/wa/...`) is always kept. -/
+/-where none: links leading the home page's row of jump links, empty as shipped. -/
 # +jumpLinks
-- [Try a demo](#home.demos)
-- [Your own client](#home.own-client)
 
 /-where Home: the paragraphs under the title. -/
 # +intro
@@ -35,6 +33,52 @@ section, and says what to read for what you want to do.
    deployment -- a deployment flavor's, say -- without its competing with whoever rewords the intro. -/
 /-where none: room under the intro for a component's or a flavor's word; a client rewords the intro. -/
 # +note
+
+
+/- The home page's document (issue #1794): Markdown with widget fences, drawn in order by the page renderer, which knows
+   nothing of Home. Each widget decides from its own data whether it draws anything; a fence's copy is a key of this
+   file. A client or a deployment rewords the title, the intro, and the note by their own keys above, and rearranges the
+   page by overlaying this one. The page widgets reference (docs/reference/page-widgets.md) describes every kind, and
+   shows this document as its worked example. -/
+/-where none: the order of the home page's parts; a client rewords the title, the intro, and the note. -/
+# @page
+# +home
+```kdr-ui
+{"id": "testAccess", "widget": "testAccess"}
+```
+```kdr-ui
+{"id": "hero", "widget": "hero"}
+```
+```kdr-ui
+{"id": "title", "widget": "pageTitle", "copy": "home.title"}
+```
+```kdr-ui
+{"id": "jumpLinks", "widget": "jumpLinks", "copy": "home.jumpLinks"}
+```
+```kdr-ui
+{"id": "firstCards", "widget": "cardsBlock", "block": "homeCards", "ids": ["checklist"]}
+```
+```kdr-ui
+{"id": "intro", "copy": "home.intro"}
+```
+```kdr-ui
+{"id": "note", "copy": "home.note"}
+```
+```kdr-ui
+{"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"]}
+```
+```kdr-ui
+{"id": "walkThrough", "copy": "publicHome.walkThrough", "cfactExpression": "kdr:publicMember"}
+```
+```kdr-ui
+{"id": "demos", "widget": "joinableDemos", "copy": "publicHome.demos", "jumpLabel": "Try a demo"}
+```
+```kdr-ui
+{"id": "ownClient", "widget": "createOwnClient", "jumpLabel": "Your own client"}
+```
+```kdr-ui
+{"id": "docs", "widget": "docLinks"}
+```
 
 
 /- What the site says of itself where it is linked from elsewhere (issue #1688): the browser tab's title, and the title
@@ -61,6 +105,14 @@ section, and says what to read for what you want to do.
    try a demo, or make a client of their own. Their other users are in the account menu (issue #1672). -/
 /- Above the sections (issue #1429). Empty as shipped; the `reference` flavor links its walk-through here. -/
 # +walkThrough
+/- Above the demo cards (issue #1794): the demos' heading, introduction, and note, each its own key below, so whoever
+   rewords one leaves the others alone. -/
+# +demos
+## ${@t("publicHome.demosTitle")}
+
+${@t("publicHome.demosIntro")}
+
+${@t("publicHome.demosNote")}
 # +demosTitle Try a demo
 # +demosIntro
 Join a demo client with a user of your own email. Each one is shared with everyone who joins it.

@@ -122,5 +122,9 @@ class PageDocumentTest {
         val reference = pageWidgetsMarkdown()
         for (kind in PageWidgets.coreKinds) assertTrue("### ${kind.name}" in reference, kind.name)
         assertTrue("| `${PGW.block}` | string | Yes |" in reference)
+        // A kind that draws its own copy says so (issue #1794); the worked example is there only when given.
+        assertTrue("### ${PageWidgets.pageTitle.name}" in reference && "draws its fence's `${PGW.copy}` itself" in reference)
+        assertFalse("worked example" in reference)
+        assertTrue("## Home, a worked example" in pageWidgetsMarkdown("The document."))
     }
 }
