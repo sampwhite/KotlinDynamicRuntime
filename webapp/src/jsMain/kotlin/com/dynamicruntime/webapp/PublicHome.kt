@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.home.HSEC
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
 import kotlinx.coroutines.MainScope
@@ -25,16 +24,6 @@ private val publicHomeScope = MainScope()
  * signed in acts in `public` too, and keeps the ordinary Home with its sign-in. Pure, and covered under `jsNodeTest`.
  */
 fun isPublicHome(user: UserProfile): Boolean = user.isLoggedIn && user.client == CL.public
-
-/**
- * The sections the public home page drew for [config] (issue #1576), by their [HSEC] ids: Try a demo where joining is
- * offered, and Your own client always. Home is drawn from its page document now (issue #1794), whose widgets each decide
- * whether they draw, so nothing reads this but its tests; it goes with the sections' ids (issue #1795). Pure.
- */
-fun publicHomeSections(config: HomeConfig): Set<String> = buildSet {
-    if (config.joinOffered) add(HSEC.demos)
-    add(HSEC.ownClient)
-}
 
 /** The roles of [demo] the caller has joined as, each to open. Pure. */
 fun joinedRoles(demo: JoinableView): List<JoinRoleView> = demo.roles.filter { it.userId != null }

@@ -211,7 +211,7 @@ private fun copyRolesTests() = stringSpec {
                         enabledEnvironments = setOf(ENV.unit, ENV.local),
                     ),
                 )
-                fragmentOverlay(HFRAG.home) { namespace(HFRAG.homeNs) { key("note", note) } }
+                fragmentOverlay(HFRAG.home) { namespace(HFRAG.homeNs) { key(HFRAG.intro, note) } }
             }
             GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("copyRoles", client), config)
             GedraConfigReload.reloadClient(cxt, client)

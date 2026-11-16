@@ -103,7 +103,8 @@ private fun homeExample(document: String): String =
         "shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no " +
         "conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one " +
         "condition is on the walk-through's note, which only such a visitor is shown. A client or a deployment rewords the " +
-        "title, the introduction, and the note by their own keys, and rearranges the page by overlaying this one.\n\n" +
+        "title and the introduction by their own keys, and rearranges the page, or adds a word of its own, by overlaying " +
+        "this one.\n\n" +
         "````markdown\n${document.trim()}\n````\n"
 
 /** A row per core kind: its name, what it draws, whose copy may place it, and its surfaces. */

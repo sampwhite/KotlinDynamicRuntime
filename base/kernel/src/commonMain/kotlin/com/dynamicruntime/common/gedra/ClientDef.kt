@@ -544,7 +544,6 @@ object CLD {
     const val homeBrand = "homeBrand"
     const val homeTitle = "homeTitle"
     const val homeIntro = "homeIntro"
-    const val homeNote = "homeNote"
 
     /** The longest wordmark a self-serve create takes: it sits beside the mark in the app bar. */
     const val homeBrandMaxLength = 40
@@ -552,12 +551,12 @@ object CLD {
     /** The longest home title a self-serve create takes. */
     const val homeTitleMaxLength = 120
 
-    /** The longest home introduction or note a self-serve create takes, in characters of Markdown. */
+    /** The longest home introduction a self-serve create takes, in characters of Markdown. */
     const val homeTextMaxLength = 4000
 
     /** The self-serve create's home-copy fields, each to the key of the home file's `home` namespace it sets. */
     val homeCopyFields: Map<String, String> = linkedMapOf(
-        homeBrand to HFRAG.brand, homeTitle to HFRAG.title, homeIntro to HFRAG.intro, homeNote to HFRAG.note,
+        homeBrand to HFRAG.brand, homeTitle to HFRAG.title, homeIntro to HFRAG.intro,
     )
 
     /** On a self-serve create: whether the session moved to the creator's user in the new client (issue #1113). */

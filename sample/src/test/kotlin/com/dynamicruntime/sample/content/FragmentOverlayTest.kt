@@ -231,6 +231,6 @@ private fun sampleImageTests() = stringSpec {
 
     "acme's home page shows it" {
         val copy = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, SC.acme)
-        copy?.content?.get("home")?.get("note").orEmpty() shouldContain "img:${SF.siteVisitFlow}"
+        copy?.content?.get("home")?.get("intro").orEmpty() shouldContain "img:${SF.siteVisitFlow}"
     }
 }

@@ -86,8 +86,9 @@ production client).
   administrator or an editor). A client's overlay wins over the `reference` flavor's, whose title and intro say what
   the site is. A new demo client does the same. It points to **Waiting on you** only as a card that appears once
   something waits, since the card is not drawn while nothing does. So a word about the demos on offer goes in
-  `publicHome.demosNote`, under **Try a demo**'s introduction (the sample's on Acme), never in `home.note`, which every
-  client's home page draws beneath its intro.
+  `publicHome.demosNote`, under **Try a demo**'s introduction (the sample's on Acme), never in the home page's own
+  copy, which every client's home page draws. A component's or a flavor's word on Home itself, beside the demos, goes in
+  by overlaying the page's document, `page.home` (issue #1795).
 - **Whether a visitor may change the demo client's configuration** is the deployment's (`JOIN.visitorsEditConfigKey`,
   off by default, on in the `reference` flavor; `ClientJoin.configEditRefusal`). Off, every configuration write --
   bundles, copy and menu, file refs, workflows' parameters, Design View -- refuses a visitor of a demo client (403),
@@ -124,8 +125,8 @@ else before the person's one client is claimed. The sample component ships one, 
 `local` only, so a deployment running as `dev` does not show it to the public.
 
 **Setting up the new client's home page as it is made** (issue #1336). Under those fields an optional group,
-"Your client's home page", takes a wordmark, a title, an introduction and a note (the `home.md` keys `brand`, `title`,
-`intro`, `note`, sent as `CLD.homeBrand` and its neighbours, blanks left out), and a favicon and a brand mark. The copy
+"Your client's home page", takes a wordmark, a title, and an introduction (the `home.md` keys `brand`, `title`, and
+`intro`, sent as `CLD.homeBrand` and its neighbours, blanks left out), and a favicon and a brand mark. The copy
 rides the create: the backend writes it as the client's `copy` config beside `main`, in the same trial-judged write,
 and **publishes both**, so it is live at once although a self-serve client has a sandbox and every later copy edit is
 a draft. It lands where the Clients page's copy editor would put it, so editing it there later behaves as for any
@@ -136,7 +137,8 @@ so once the create has moved the session, the card uploads each through the ordi
 waits while one is wrong, so a file the server would refuse never leaves a client half set up. An upload refused
 anyway leaves the card in place with a note naming which (`imageUploadsNote`) and **Continue to your client**: the
 client exists, and the image is added from My client. The client's own note is labeled "Internal note" here, to keep
-it apart from the home page's.
+it apart from the home page's introduction, which the client's people do see. (A note beneath the introduction was a
+field here too, until the home page's document replaced that slot, issue #1795.)
 
 **Home's copy resolves links as a document's do** (issue #1510). Every part of the page is drawn with the shell's
 `copyLinkResolver`, which the renderer passes to each (`PageData.copyLinks`), so `[start here](/docs/start-here.md)`
@@ -153,10 +155,11 @@ read from `home.md` as the reference is generated (`pageWidgetsReference`).
 
 - **The order of the page is the order of its document.** As shipped: `testAccess`, `hero`, the title (`pageTitle`,
   whose copy is `home.title`), `jumpLinks`, the cards above the introduction (`cardsBlock` with `ids: ["checklist"]`),
-  the intro and the note (fences with copy alone), the rest of the cards (`except: ["checklist"]`), the walk-through's
-  note, the demos (`joinableDemos`), creating your own client (`createOwnClient`), and the inline document links
-  (`docLinks`). A client or a flavor rewords the title, the intro, and the note by their own keys, as before, and
-  rearranges the page only by overlaying `page.home`.
+  the intro (a fence with copy alone), the rest of the cards (`except: ["checklist"]`), the walk-through's note, the
+  demos (`joinableDemos`), creating your own client (`createOwnClient`), and the inline document links (`docLinks`). A
+  client or a flavor rewords the title and the intro by their own keys, as before, and rearranges the page by
+  overlaying `page.home`. That is also where a component or a flavor puts a word of its own: the home page once had a
+  slot for one under the intro (`home.note`, issue #1221), which the document replaced (issue #1795).
 - **Each widget decides from its own data whether it draws** (`AppWidget.shows`), so who sees what needs no
   conditions: the demos only for a public member where joining is offered, the create card only for a public member,
   the test card only with test access, a cards block only with a card to draw. The one condition in the document is the
@@ -172,7 +175,8 @@ read from `home.md` as the reference is generated (`pageWidgetsReference`).
   out with no link to hold, and a card is drawn by the first cards block that names it (`pageCardsByFence`), so a block
   left with none drops out too. The renderer names no kind.
 - **Each drawn fence is its own element**, `page.<id>`, which a jump link names, classed `page-part page-part-<id>`
-  and `page-widget-<kind>`: the note's box is `.page-part-note`, the demos' spacing `.page-widget-joinableDemos`.
+  and `page-widget-<kind>`: the walk-through note's and the demos' spacing is `.page-part-walkThrough` and
+  `.page-widget-joinableDemos`.
 - **A page's top-level heading is a `pageTitle` fence**, since a line beginning with `#` and a space ends a value in a
   fragment file. A kind that draws its copy itself (`PageWidgetKind.drawsCopy`: the title, the jump row) is passed it
   rather than having it drawn above.
@@ -201,9 +205,9 @@ none of its own.
   one row (`home-card-lead`), then its words; and the row under the title draws, in place of a link to it, a primary
   button that does what the card's button does (`homeCardJumpButtons`, `HomeCard.leadsJumpRow`): Register opens the
   Register page. Not a scroll to the card: on a window that shows the whole page, a scroll moves nothing, and a button
-  that does nothing reads as broken. The card is left out of what the row's links count as drawn, so a link the copy
-  writes to it (the `reference` flavor's `[Register](#home.card.register)`) is dropped by `jumpLinksFor`, and
-  `homeCardJumpLinks` adds none. A card with the flag but no page keeps its link; one without the flag draws as before.
+  that does nothing reads as broken. `homeCardJumpLinks` adds no link to such a card, and the copy should not write one,
+  since the row draws the copy as written. A card with the flag but no page keeps its link; one without the flag draws
+  as before.
 - **The Register page says what the address is for, where it is typed** (issue #1698): the auth file's `register.intro`,
   empty in core, drawn above the form as the Log in page draws `login.intro`. The `reference` flavor repeats the card's
   promise there, since both Register buttons on the home page come straight to the form.
@@ -283,9 +287,8 @@ page's file).
   `home.card.<id>` (`homeCardElementId`), so an address can name it.
 - **A card may be named in the row of links under the title** (`HCARD.jumpLabel`), beside the copy's own jump links
   ("Start here", on the `reference` flavor): Home adds a link to each such card the copy does not link to already
-  (`homeCardJumpLinks`; the `reference` flavor's row leads with Register's, issue #1652), written in the
-  copy's own style -- list items after a list, `·` after a row on one line (`withCardJumpLinks`) -- and counts the
-  cards' element ids among what is drawn, so `jumpLinksFor` keeps them. Core's cards all are, so an administrator,
+  (`homeCardJumpLinks`), written in the copy's own style -- list items after a list, `·` after a row on one line
+  (`jumpRowLinks`) -- for the cards drawn on the page. Core's cards all are, so an administrator,
   an editor, or an operator sees at the top what the page offers further down, as the public home page's sections are
   named there. The assistant's card is one too, since it may sit below a long introduction; its link reads the card's `offerLabel` while the person may switch it on, as its button
   does. Home reads the assistant's status once (`useAssistantCardView`) for both. A client's copy that blanks
@@ -320,15 +323,15 @@ links to what the page draws further down, directly under the title (`nav.home-j
 
 - **A button for each card that is the page's call to action** (`homeCardJumpButtons`): Register opens the Register
   page (issue #1698).
-- **Its fence's copy, `home.jumpLinks`**, Markdown links that lead the row: empty as shipped; the `reference` flavor's
-  are Register and **Start here** (`/docs/start-here.md`), so its visitors who have not signed in see those two.
+- **Its fence's copy, `home.jumpLinks`**, Markdown links that lead the row, drawn as written (`jumpRowLinks`): empty as
+  shipped; the `reference` flavor's is **Start here** (`/docs/start-here.md`), so its visitors who have not signed in
+  see the Register button and "Start here".
 - **A link to each drawn fence with a `jumpLabel`** ("Try a demo", "Your own client", literal in the document), and to
-  each drawn card that asks for one (`homeCardJumpLinks`), added in the copy's style (`withCardJumpLinks`).
+  each drawn card that asks for one (`homeCardJumpLinks`), added in the copy's style (`jumpRowLinks`).
 
-A link to a fence or a card not drawn for this caller is left out (`jumpLinksFor`, against the drawn element ids:
-`page.<id>` and `home.card.<id>`), and so is the row with no link left. A link written to anything else (a document, a
-page, outside the site) is kept. `publicHomeSections` and the `HSEC` ids the jump links once named (`#home.demos`) are
-no longer read by the page, and go in #1795, as does the copy filtering.
+Only what is drawn for this caller is linked, so the copy never needs filtering: a link it writes, it names on purpose,
+and it is drawn whoever is looking (issue #1795). The row with no link is left out. The copy was once filtered against
+the sections drawn (`jumpLinksFor`, issue #1576), which the page's own links replaced.
 
 The anchors need no routing: a Markdown anchor is the browser's to follow (#1125), `scroll-padding-top` stops it below
 the app bar, and Back returns from it. An address that names a part on arrival (a reload after a jump) is scrolled

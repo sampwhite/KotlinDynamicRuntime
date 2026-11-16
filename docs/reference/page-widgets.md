@@ -141,7 +141,7 @@ It takes no parameters.
 
 ## Home, a worked example
 
-The app's home page is a page document: the `home` file's `page.home` key, as shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one condition is on the walk-through's note, which only such a visitor is shown. A client or a deployment rewords the title, the introduction, and the note by their own keys, and rearranges the page by overlaying this one.
+The app's home page is a page document: the `home` file's `page.home` key, as shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one condition is on the walk-through's note, which only such a visitor is shown. A client or a deployment rewords the title and the introduction by their own keys, and rearranges the page, or adds a word of its own, by overlaying this one.
 
 ````markdown
 ```kdr-ui
@@ -161,9 +161,6 @@ The app's home page is a page document: the `home` file's `page.home` key, as sh
 ```
 ```kdr-ui
 {"id": "intro", "copy": "home.intro"}
-```
-```kdr-ui
-{"id": "note", "copy": "home.note"}
 ```
 ```kdr-ui
 {"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"]}

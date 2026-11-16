@@ -16,7 +16,6 @@ import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
-import com.dynamicruntime.common.home.HSEC
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserChoice
@@ -165,12 +164,6 @@ class HomeCardsTest {
         assertEquals(emptyList(), homeCardJumpButtons(noAction))
         assertEquals(listOf("Nowhere" to homeCardElementId("nowhere")), homeCardJumpLinks(noAction, null))
         assertEquals(listOf("Workflow assistant" to homeCardElementId(ASST.homeCard)), homeCardJumpLinks(cards, null))
-        // And the copy's own link to the card is dropped for the button, its card being left out of what is drawn.
-        val drawn = cards.filterNot { it.leadsJumpRow }.map { homeCardElementId(it.id) }.toSet()
-        assertEquals(
-            "- [Start here](/docs/start-here.md)",
-            jumpLinksFor("- [Register](#home.card.register)\n- [Start here](/docs/start-here.md)", drawn),
-        )
     }
 
     @Test
@@ -179,27 +172,21 @@ class HomeCardsTest {
         // After a list, as list items -- the shipped copy, and the reference flavor's "Start here" before it.
         assertEquals(
             "- [Start here](/docs/start-here.md)\n- [Workflow assistant](#home.card.assistant)",
-            withCardJumpLinks("- [Start here](/docs/start-here.md)\n", links),
+            jumpRowLinks("- [Start here](/docs/start-here.md)\n", links),
         )
         // After a row written on one line, separated as it is.
         assertEquals(
             "[Start here](/docs/start-here.md) · [Workflow assistant](#home.card.assistant)",
-            withCardJumpLinks("[Start here](/docs/start-here.md)", links),
+            jumpRowLinks("[Start here](/docs/start-here.md)", links),
         )
         // With no copy, the links alone; with no links, the copy as it was.
-        assertEquals("- [Workflow assistant](#home.card.assistant)", withCardJumpLinks(null, links))
-        assertEquals("- [A](#x)", withCardJumpLinks("- [A](#x)", emptyList()))
+        assertEquals("- [Workflow assistant](#home.card.assistant)", jumpRowLinks(null, links))
+        assertEquals("- [A](#x)", jumpRowLinks("- [A](#x)", emptyList()))
         // A label's brackets cannot break the link.
-        assertEquals("- [Odd \\[1\\]](#home.card.x)", withCardJumpLinks(null, listOf("Odd [1]" to "home.card.x")))
-        // And the filter keeps the card's link where the card is drawn, dropping only sections that are not.
-        val shipped = "- [Try a demo](#home.demos)\n- [Your own client](#home.own-client)"
-        assertEquals(
-            "- [Workflow assistant](#home.card.assistant)",
-            jumpLinksFor(withCardJumpLinks(shipped, links), setOf("home.card.assistant")),
-        )
+        assertEquals("- [Odd \\[1\\]](#home.card.x)", jumpRowLinks(null, listOf("Odd [1]" to "home.card.x")))
         // A card the copy already links to is not added again (issue #1652), so the copy can put it first.
         val registerFirst = "- [Register](#home.card.register)\n- [Start here](/docs/start-here.md)"
-        assertEquals(registerFirst, withCardJumpLinks(registerFirst, listOf("Register" to "home.card.register")))
+        assertEquals(registerFirst, jumpRowLinks(registerFirst, listOf("Register" to "home.card.register")))
     }
 
     @Test
@@ -459,105 +446,27 @@ class WaitingOnYouTest {
     }
 }
 
-/** Pure-logic coverage for the home page's jump links (issue #1576): which of the copy's links are kept. */
+/** Pure-logic coverage for the home page's jump links (issues #1576, #1795): the copy is drawn as written. */
 class JumpLinksTest {
-    private val shipped = """
-        - [Try a demo](#home.demos)
-        - [Your own client](#home.own-client)
-    """.trimIndent()
-
     @Test
-    fun aLinkToASectionIsKeptOnlyWhileTheSectionIsDrawn() {
-        assertEquals(shipped, jumpLinksFor(shipped, setOf(HSEC.demos, HSEC.ownClient)))
-        assertEquals("- [Your own client](#home.own-client)", jumpLinksFor(shipped, setOf(HSEC.ownClient)))
+    fun theCopyIsDrawnAsWritten() {
+        // Every link the copy writes is kept, whatever it leads to: it names it on purpose.
+        val mixed = "- [Start here](/docs/start-here.md)\n- [Try a demo](#page.demos)\n- [The project](https://example.com)"
+        assertEquals(mixed, jumpRowLinks(mixed, emptyList()))
     }
 
     @Test
-    fun nothingIsDrawnWhenNoLinkIsLeftOrTheCopyIsBlank() {
-        assertNull(jumpLinksFor(shipped, emptySet()))
-        assertNull(jumpLinksFor("", setOf(HSEC.ownClient)))
-        assertNull(jumpLinksFor("   \n", setOf(HSEC.ownClient)))
-        assertNull(jumpLinksFor(null, setOf(HSEC.ownClient)))
+    fun nothingIsDrawnWhenTheCopyHoldsNoLink() {
+        assertNull(jumpRowLinks("", emptyList()))
+        assertNull(jumpRowLinks("   \n", emptyList()))
+        assertNull(jumpRowLinks(null, emptyList()))
         // Prose alone is no row of links, and neither is an image.
-        assertNull(jumpLinksFor("Jump to:", setOf(HSEC.ownClient)))
-        assertNull(jumpLinksFor("![](img:sample:arrow)\n- [Try a demo](#home.demos)", emptySet()))
-    }
-
-    @Test
-    fun aLinkToAnythingButAnAnchorIsAlwaysKept() {
-        val mixed = """
-            - [Start here](/docs/start-here.md)
-            - [Try a demo](#home.demos)
-            - [Join](/wa/join "Join a demo")
-            - [The project](https://example.com)
-        """.trimIndent()
-        assertEquals(
-            "- [Start here](/docs/start-here.md)\n- [Join](/wa/join \"Join a demo\")\n- [The project](https://example.com)",
-            jumpLinksFor(mixed, emptySet()),
-        )
-    }
-
-    @Test
-    fun aRowOnOneLineLosesTheHiddenLinkAndItsSeparator() {
-        val row = "[Try a demo](#home.demos) · [Start here](/docs/start-here.md) · [Your own client](#home.own-client)"
-        assertEquals(row, jumpLinksFor(row, setOf(HSEC.demos, HSEC.ownClient)))
-        assertEquals(
-            "[Start here](/docs/start-here.md) · [Your own client](#home.own-client)",
-            jumpLinksFor(row, setOf(HSEC.ownClient)),
-        )
-        assertEquals(
-            "[Try a demo](#home.demos) · [Start here](/docs/start-here.md)",
-            jumpLinksFor(row, setOf(HSEC.demos)),
-        )
-        assertEquals("[Start here](/docs/start-here.md)", jumpLinksFor(row, emptySet()))
-        val sectionsOnly = "[Try a demo](#home.demos) · [Your own client](#home.own-client)"
-        assertEquals("[Try a demo](#home.demos)", jumpLinksFor(sectionsOnly, setOf(HSEC.demos)))
-        assertNull(jumpLinksFor(sectionsOnly, emptySet()))
-        // A lead-in stays; the separator after a removed first link goes with it.
-        assertEquals(
-            "Jump to: [Your own client](#home.own-client).",
-            jumpLinksFor("Jump to: [Try a demo](#home.demos) | [Your own client](#home.own-client).", setOf(HSEC.ownClient)),
-        )
-    }
-
-    @Test
-    fun aHiddenLinkInProseKeepsItsWords() {
-        assertEquals(
-            "- Try a demo, or [read first](/docs/start-here.md)",
-            jumpLinksFor("- [Try a demo](#home.demos), or [read first](/docs/start-here.md)", emptySet()),
-        )
-        assertEquals(
-            "Start with a demo, then [read on](/docs/start-here.md).",
-            jumpLinksFor("Start with [a demo](#home.demos), then [read on](/docs/start-here.md).", emptySet()),
-        )
-    }
-
-    @Test
-    fun aDroppedItemTakesItsContinuationAndNestedItemsWithIt() {
-        val source = """
-            Jump to:
-
-            * [Try a demo](#home.demos)
-              which is shared with everyone
-              - [How joining works](/docs/joining.md)
-
-              More about demos.
-            + [Your own client](#home.own-client)
-            1. [Demos again](#home.demos)
-        """.trimIndent()
-        assertEquals(
-            "Jump to:\n\n\n+ [Your own client](#home.own-client)",
-            jumpLinksFor(source, setOf(HSEC.ownClient)),
-        )
-        // Kept, the item keeps what is under it.
-        assertEquals(
-            "- [Try a demo](#home.demos)\n  - [How joining works](/docs/joining.md)",
-            jumpLinksFor("- [Try a demo](#home.demos)\n  - [How joining works](/docs/joining.md)", setOf(HSEC.demos)),
-        )
+        assertNull(jumpRowLinks("Jump to:", emptyList()))
+        assertNull(jumpRowLinks("![](img:sample:arrow)", emptyList()))
     }
 }
 
-/** Pure-logic coverage for the public home page (issue #1324): who gets it, and what its sections list. */
+/** Pure-logic coverage for the public home page (issue #1324): who gets it, and what its demos offer. */
 class PublicHomeTest {
 
     @Test
@@ -587,31 +496,6 @@ class PublicHomeTest {
         val partly = JoinableView("confdemo", "Conference demo", null, listOf(role("speaker", userId = 9), role("organizer")))
         assertEquals(listOf("speaker"), joinedRoles(partly).map { it.name })
         assertTrue(hasRoleToJoin(partly))
-    }
-
-    @Test
-    fun theSectionsDrawnAreTheOnesThatHaveSomethingToOffer() {
-        fun config(joinOffered: Boolean, users: List<UserChoice>) = HomeConfig(
-            fragment = FragmentRef("home", "b1"),
-            layout = HomeLayout(topBar = false, leftBar = false, inlineLinks = false),
-            links = emptyList(),
-            menu = emptyList(),
-            user = UserProfile(authId = "a1", client = CL.public),
-            users = users,
-            canManageUsers = false,
-            canSeeAllClients = false,
-            hasCoreDetails = false,
-            sourceRepoBase = null,
-            joinOffered = joinOffered,
-        )
-        val me = UserChoice(1, CL.public, PERSONA.member, isCurrent = true)
-        val other = UserChoice(2, "acme", PERSONA.admin, clientName = "Acme")
-        assertEquals(setOf(HSEC.demos, HSEC.ownClient), publicHomeSections(config(true, listOf(me, other))))
-        // No joining offered: no demos. Your own client is always there. Other users add no section: the account
-        // menu lists them (issue #1672).
-        assertEquals(setOf(HSEC.ownClient), publicHomeSections(config(false, listOf(me, other))))
-        assertEquals(setOf(HSEC.demos, HSEC.ownClient), publicHomeSections(config(true, listOf(me))))
-        assertEquals(setOf(HSEC.ownClient), publicHomeSections(config(false, emptyList())))
     }
 }
 
@@ -673,7 +557,7 @@ class CreateOwnClientTest {
     @Test
     fun theRequestCarriesTheHomeCopyGivenAndLeavesOutABlankOne() {
         val request = createOwnClientRequest(
-            "Shop", "", "", mapOf(CLD.homeBrand to " Shop Co ", CLD.homeIntro to "**Hi**", CLD.homeNote to "  ", "other" to "x"),
+            "Shop", "", "", mapOf(CLD.homeBrand to " Shop Co ", CLD.homeIntro to "**Hi**", CLD.homeTitle to "  ", "other" to "x"),
         )
         assertEquals(mapOf(CLD.name to "Shop", CLD.homeBrand to "Shop Co", CLD.homeIntro to "**Hi**"), request)
     }

@@ -776,14 +776,14 @@ class AssistantTurnsTest : StringSpec({
                 COV.fileId to HFRAG.home,
                 CPY.changes to listOf(
                     mapOf(COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.title, CPY.reset to true),
-                    mapOf(COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.note, COV.value to "Meetings are on Tuesdays."),
+                    mapOf(COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.intro, COV.value to "Meetings are on Tuesdays."),
                 ),
             ),
         )
         applied[CPY.mode] shouldBe EDM.draft
         sandboxTitle() shouldBe shipped
-        write(ATOOL.resetCopy, mapOf(COV.fileId to HFRAG.home, COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.note))[CPY.mode] shouldBe
-            EDM.draft
+        val introReset = mapOf(COV.fileId to HFRAG.home, COV.namespaceField to HFRAG.homeNs, COV.key to HFRAG.intro)
+        write(ATOOL.resetCopy, introReset)[CPY.mode] shouldBe EDM.draft
         // A key the client does not reword cannot be put back: the endpoint's refusal, for the model to correct from.
         AssistantTools.run(run, ATOOL.resetCopy, title).isError shouldBe true
 

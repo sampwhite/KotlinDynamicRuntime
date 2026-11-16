@@ -14,10 +14,9 @@
 # +brand KDR
 /-where Home: the page's title. -/
 # +title Welcome
-/- Under the title (issues #1576, #1794): links that lead the page's row of jump links, before the links to its parts
-   that have a jumpLabel. Empty as shipped: the parts name themselves. A link to a part of the page, by its element id
-   (`#page.demos`), is left out where that part is not drawn for the caller; a link to anything else (`/docs/...`,
-   `/wa/...`) is always kept. -/
+/- Under the title (issues #1576, #1794, #1795): links that lead the page's row of jump links, before the links to its
+   parts that have a jumpLabel, which are added only where a part is drawn. Empty as shipped: the parts name themselves.
+   Drawn as written, so a link here to a part of the page (`#page.demos`) is there for every caller, drawn or not. -/
 /-where none: links leading the home page's row of jump links, empty as shipped. -/
 # +jumpLinks
 
@@ -29,18 +28,14 @@ serves: the layout below comes from a UI-config endpoint, and this copy comes fr
 To find your way around, [start here](/docs/start-here.md): it is first under **Documents**, in the menu's Reference
 section, and says what to read for what you want to do.
 
-/- Beneath the intro, and empty as shipped, so nothing shows (issue #1221): room for a component's own word on a
-   deployment -- a deployment flavor's, say -- without its competing with whoever rewords the intro. -/
-/-where none: room under the intro for a component's or a flavor's word; a client rewords the intro. -/
-# +note
-
 
 /- The home page's document (issue #1794): Markdown with widget fences, drawn in order by the page renderer, which knows
    nothing of Home. Each widget decides from its own data whether it draws anything; a fence's copy is a key of this
-   file. A client or a deployment rewords the title, the intro, and the note by their own keys above, and rearranges the
-   page by overlaying this one. The page widgets reference (docs/reference/page-widgets.md) describes every kind, and
-   shows this document as its worked example. -/
-/-where none: the order of the home page's parts; a client rewords the title, the intro, and the note. -/
+   file. A client or a deployment rewords the title and the intro by their own keys above, and rearranges the page by
+   overlaying this one, which is also where a component or a flavor places a word of its own (issue #1795). The
+   page widgets reference (docs/reference/page-widgets.md) describes every kind, and shows this document as its worked
+   example. -/
+/-where none: the order of the home page's parts; a client rewords the title and the intro. -/
 # @page
 # +home
 ```kdr-ui
@@ -60,9 +55,6 @@ section, and says what to read for what you want to do.
 ```
 ```kdr-ui
 {"id": "intro", "copy": "home.intro"}
-```
-```kdr-ui
-{"id": "note", "copy": "home.note"}
 ```
 ```kdr-ui
 {"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"]}
