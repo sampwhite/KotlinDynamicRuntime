@@ -33,6 +33,7 @@ text, so copy can show a fence as an example, as this page does, without drawing
 | `copy` | Copy drawn before the widget, as `namespace.key` of the page's own fragment file, unless the kind draws it itself in its own place, as a page's title does. It is drawn as any other copy is, so it may pull other keys and fill placeholders. |
 | `cfactExpression` | Whether the fence is drawn: a test of [facts](facts.md), judged in the browser, so it may name only the facts about the caller and the node that are sent to it. A fact about a form, a client's own included, never holds on a page. Left out, the fence is always drawn. |
 | `jumpLabel` | Puts a link to the fence, with these words, among the page's jump links. |
+| `$comment` | A note for whoever reads or rearranges the page, never drawn: why the fence is there, or when its widget draws anything, since a widget decides that from its own data and the page does not otherwise say. It stays with the fence, so a client's copy of the page keeps it. |
 
 Every other key is a parameter of the widget's kind, held to the kind's own list below.
 
@@ -51,7 +52,7 @@ written. A fence is refused when:
 - it is never closed;
 - its body is not a JSON object;
 - it has no `id`, an id that is not a name, or the id of an earlier fence in the same copy;
-- it names a kind there is none of, or one that only copy a component ships may place;
+- it names a kind there is none of;
 - it gives a parameter the kind does not take, or one the kind's schema refuses;
 - it names neither a `widget` nor a `copy`, so it would draw nothing;
 - its `copy` is not a `namespace.key` the page's fragment file has;
@@ -59,6 +60,21 @@ written. A fence is refused when:
 - one of the keys above holds something other than text.
 
 Where copy is drawn, a fence with a problem is left out and the rest of the page is drawn.
+
+## Pages of your own
+
+The app's home page is the page `home`: a key of the `home` file's `page` namespace. Every key
+there is a page, opened at `/wa/page/<key>` and drawn by the same renderer as the home page, which knows nothing of
+which page it draws. A client or a deployment adds a page of its own by overlaying a new key in that namespace, the
+one key an overlay may add to a file; anywhere else, a key the file does not have is refused.
+
+A menu item opens a page with the `openPage` function, naming the page's key:
+`["openPage", "siteVisits"]`. A menu item naming a page the client does not have is refused, and so is
+removing a page a menu item opens. Copy links to one at its address, `/wa/page/siteVisits`.
+
+A client's page adds no copy key but its document, so its words are the Markdown between its fences, and its title is
+a `pageTitle` fence's `text`. The sample's Acme client has one, `siteVisits`, which its menu
+opens and its home page links: a title, a few paragraphs and an image, and a cards block drawing the Your client card.
 
 ## Surfaces
 
@@ -72,16 +88,19 @@ A kind says where it can be drawn. A surface meeting a fence whose kind it canno
 
 ## The kinds
 
-| Kind | What it draws | Who may place it | Drawn on |
-|---|---|---|---|
-| [`hero`](#hero) | The brand mark beside the wordmark (the home copy's brand). Nothing when the copy names no brand. | Any copy, a client's included | `app`, `site` |
-| [`pageTitle`](#pagetitle) | The page's title, its fence's copy drawn as the page's one top-level heading. Nothing when the copy is blank. | Any copy, a client's included | `app`, `site`, `mail` |
-| [`jumpLinks`](#jumplinks) | A row of links to what the page draws further down: led by its fence's copy, links written in Markdown (a list, or a row on one line), then a link to each drawn fence that has a jumpLabel, and to each card that asks for one. A link to a fence or a card not drawn for the caller is left out, and with no link left, so is the row. | Any copy, a client's included | `app`, `site` |
-| [`cardsBlock`](#cardsblock) | A UiBlock of cards, resolved for the caller as the home cards are: every card the block gives them, or those named. | Any copy, a client's included | `app` |
-| [`joinableDemos`](#joinabledemos) | The demo clients a visitor signed in to the public client may join, each with its roles, Open as, and Join. Nothing where joining is not offered. | Copy a component ships | `app` |
-| [`createOwnClient`](#createownclient) | The card that creates a person's own client, or opens the one they made. Only for a caller signed in to the public client. | Copy a component ships | `app` |
-| [`testAccess`](#testaccess) | Becoming another user, for a caller with test access on a test instance. Nothing for anyone else. | Copy a component ships | `app` |
-| [`docLinks`](#doclinks) | Links to the documents the deployment lists. | Any copy, a client's included | `app` |
+Any copy may place any kind, a client's own included. A widget decides from its own data whether it draws anything for
+the caller, so a page a client copies from Home keeps the demos and the rest, which draw nothing for the client's people.
+
+| Kind | What it draws | Drawn on |
+|---|---|---|
+| [`hero`](#hero) | The brand mark beside the wordmark (the home copy's brand). Nothing when the copy names no brand. | `app`, `site` |
+| [`pageTitle`](#pagetitle) | The page's title, drawn as its one top-level heading: its fence's copy, or its text. Nothing when both are blank. | `app`, `site`, `mail` |
+| [`jumpLinks`](#jumplinks) | A row of links to what the page draws further down: led by its fence's copy, links written in Markdown (a list, or a row on one line), then a link to each drawn fence that has a jumpLabel, and to each card that asks for one. A link to a fence or a card not drawn for the caller is left out, and with no link left, so is the row. | `app`, `site` |
+| [`cardsBlock`](#cardsblock) | A UiBlock of cards, resolved for the caller as the home cards are: every card the block gives them, or those named. | `app` |
+| [`joinableDemos`](#joinabledemos) | The demo clients a visitor signed in to the public client may join, each with its roles, Open as, and Join. Nothing where joining is not offered. | `app` |
+| [`createOwnClient`](#createownclient) | The card that creates a person's own client, or opens the one they made. Only for a caller signed in to the public client. | `app` |
+| [`testAccess`](#testaccess) | Becoming another user, for a caller with test access on a test instance. Nothing for anyone else. | `app` |
+| [`docLinks`](#doclinks) | Links to the documents the deployment lists. | `app` |
 
 ### hero
 
@@ -91,11 +110,13 @@ It takes no parameters.
 
 ### pageTitle
 
-The page's title, its fence's copy drawn as the page's one top-level heading. Nothing when the copy is blank.
+The page's title, drawn as its one top-level heading: its fence's copy, or its text. Nothing when both are blank.
 
 It draws its fence's `copy` itself, as described above, rather than before it.
 
-It takes no parameters.
+| Parameter | Type | Required | What it means |
+|---|---|---|---|
+| `text` | string | No | The title's words, where no copy key holds them: a client's own page adds no key but its document (issue #1796). The fence's copy, where it has one, is drawn instead. |
 
 ### jumpLinks
 
@@ -141,41 +162,50 @@ It takes no parameters.
 
 ## Home, a worked example
 
-The app's home page is a page document: the `home` file's `page.home` key, as shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one condition is on the walk-through's note, which only such a visitor is shown. A client or a deployment rewords the title and the introduction by their own keys, and rearranges the page, or adds a word of its own, by overlaying this one.
+The app's home page is a page document: the `home` file's `page.home` key, as shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one condition is on the walk-through's note, which only such a visitor is shown; each fence's `$comment` says when it draws. A client or a deployment rewords the title and the introduction by their own keys, and rearranges the page, or adds a word of its own, by overlaying this one. A second page, drawn the same way, is a client's own (above).
 
 ````markdown
 ```kdr-ui
-{"id": "testAccess", "widget": "testAccess"}
+{"id": "testAccess", "widget": "testAccess",
+ "$comment": "Drawn only for a session with test access: env-authed, on a test instance."}
 ```
 ```kdr-ui
-{"id": "hero", "widget": "hero"}
+{"id": "hero", "widget": "hero",
+ "$comment": "Drawn while home.brand is not blank."}
 ```
 ```kdr-ui
 {"id": "title", "widget": "pageTitle", "copy": "home.title"}
 ```
 ```kdr-ui
-{"id": "jumpLinks", "widget": "jumpLinks", "copy": "home.jumpLinks"}
+{"id": "jumpLinks", "widget": "jumpLinks", "copy": "home.jumpLinks",
+ "$comment": "Links to what is drawn below with a jump label, and a call-to-action card's button; drawn only when it has one."}
 ```
 ```kdr-ui
-{"id": "firstCards", "widget": "cardsBlock", "block": "homeCards", "ids": ["checklist"]}
+{"id": "firstCards", "widget": "cardsBlock", "block": "homeCards", "ids": ["checklist"],
+ "$comment": "The new client's checklist, above the introduction: for an administrator of a self-serve client while a step is left."}
 ```
 ```kdr-ui
 {"id": "intro", "copy": "home.intro"}
 ```
 ```kdr-ui
-{"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"]}
+{"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"],
+ "$comment": "Every other card the caller is sent, each by its own condition; a live card only while its read finds something."}
 ```
 ```kdr-ui
-{"id": "walkThrough", "copy": "publicHome.walkThrough", "cfactExpression": "kdr:publicMember"}
+{"id": "walkThrough", "copy": "publicHome.walkThrough", "cfactExpression": "kdr:publicMember",
+ "$comment": "The walk-through's note, for a visitor signed in to the public client."}
 ```
 ```kdr-ui
-{"id": "demos", "widget": "joinableDemos", "copy": "publicHome.demos", "jumpLabel": "Try a demo"}
+{"id": "demos", "widget": "joinableDemos", "copy": "publicHome.demos", "jumpLabel": "Try a demo",
+ "$comment": "Drawn only for a visitor signed in to the public client, on a deployment that offers joining a demo."}
 ```
 ```kdr-ui
-{"id": "ownClient", "widget": "createOwnClient", "jumpLabel": "Your own client"}
+{"id": "ownClient", "widget": "createOwnClient", "jumpLabel": "Your own client",
+ "$comment": "Drawn only for a visitor signed in to the public client."}
 ```
 ```kdr-ui
-{"id": "docs", "widget": "docLinks"}
+{"id": "docs", "widget": "docLinks",
+ "$comment": "Drawn only where the deployment lists its documents inline on Home (homeInlineLinks, off by default)."}
 ```
 ````
 <!-- kdr-generated: end -->

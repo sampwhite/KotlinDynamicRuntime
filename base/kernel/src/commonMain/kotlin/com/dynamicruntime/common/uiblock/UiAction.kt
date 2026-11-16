@@ -97,7 +97,7 @@ fun parseUiAction(value: Any?): UiAction? = when (value) {
  */
 object UiActions {
     val declared: List<UiActionDef> =
-        listOf(HACT.logout, HACT.envLogout, HACT.openPath, HACT.setEnvDebug, HACT.becomeDeploymentAdmin)
+        listOf(HACT.logout, HACT.envLogout, HACT.openPath, HACT.openPage, HACT.setEnvDebug, HACT.becomeDeploymentAdmin)
 
     /** The declaration for [name], or null when nothing declares it. */
     fun forName(name: String): UiActionDef? = declared.firstOrNull { it.name == name }

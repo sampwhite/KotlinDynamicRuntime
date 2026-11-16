@@ -183,6 +183,32 @@ read from `home.md` as the reference is generated (`pageWidgetsReference`).
 - **Only the home cards reach the page.** `cardsBlock` draws the block the shell config resolves (`HCARD.block`); a
   page naming another draws nothing there until the second page (#1796) needs one resolved.
 
+### Pages of a client's own (issue #1796)
+
+Home is one page document among any number: every key of the `home` file's `page` namespace is a page, drawn at
+`/wa/page/<key>` (`HMENU.pagePage`, `HP.pageId`, `pageDocumentRoute`) by `PageScreen`, which is what Home is too
+(`Home` draws `PageScreen` with the id `home`). A key with no document says there is no such page, with the way home.
+
+- **A client or a flavor adds a page by overlaying a new key there**, the one key an overlay may add to a file. One
+  rule says so, `overlayMayAddKeys`, read by the orphan report (`orphanedOverlayKeys`) and by the copy editor's set
+  (`ClientCopyEdit`), so the editor edits a client's page as any key; everywhere else a key the file does not have is
+  still refused. The page's fences are the client's copy's, checked as Home's are.
+- **A menu item opens a page with `openPage`** (`HACT.openPage`, its one argument the key), which navigates in the app;
+  `FrontendActions` takes only a name, so an item cannot make it a path. The UiBlock check (`uiBlockFaults`) refuses an
+  `openPage` naming what is not a name, or a page its client's `home` file does not have (`pageDocumentIds`, from the
+  candidate copy in a trial), so removing a page a menu item opens is refused too. Copy links one at `/wa/page/<key>`.
+  `/wa/page/home` and an empty id are Home (`isPageDocumentId`), and `openPage` of `home` goes to Home's own address.
+- **A fence may carry a `$comment`** (`PGW.comment`), a fence key every kind takes and the renderer never draws: a note
+  on when its widget draws anything, which the widget decides from its own data. Home's shipped fences each say so,
+  and the note travels with the copy into a client's copy editor and any overlay restating the page.
+- **A page reads live card data only for the cards its document can draw** (`pageDrawableCards`), and only Home draws
+  the document-link bars (`PageScreenProps.docBars`): any other page draws only its document.
+- **A client's page adds no copy key but its document**, so its words are its Markdown, and its title a `pageTitle`
+  fence's literal `text` (`pageTitleOf`: the fence's copy where it has one, else its text).
+- **The sample's acme has one**, `siteVisits` (`SF.siteVisitsPage`): a title, a few paragraphs, the sample's
+  site-visit diagram, and a cards block drawing the Your client card, which only an administrator is sent. Its menu
+  opens it, just after Workflows, and its home page's intro links it.
+
 ## Home cards (issue #1636)
 
 Where the page document places them (two `cardsBlock` fences, above), Home draws the **home cards** the

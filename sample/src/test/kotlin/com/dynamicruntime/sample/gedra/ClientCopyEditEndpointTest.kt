@@ -175,6 +175,27 @@ class ClientCopyEditEndpointTest : StringSpec({
         admin.expectError(EXC.notFound, CPY.setPath, data = address(SC.acme, "home", "noSuchKey") + mapOf(COV.value to "x"))
     }
 
+    "a page of the client's own is set and reset as any key is, its fences held to their rules" {
+        // Issue #1796, before globex has configs of its own below: a key of the home file's page documents is a page,
+        // which the client adds -- no shipped key needed.
+        val page = "```kdr-ui\n{\"id\": \"title\", \"widget\": \"pageTitle\", \"text\": \"Globex hours\"}\n```\nOpen at nine."
+        admin.postData(CPY.setPath, address(SC.globex, HFRAG.pageNs, "hours") + mapOf(COV.value to page))[COV.value] shouldBe page
+        served(SC.globex, ns = HFRAG.pageNs, key = "hours").first shouldBe page
+        copyRow(SC.globex, HFRAG.pageNs, "hours")!![COV.orphan] shouldBe false
+        // Its fences are judged by the trial: one naming a kind there is none of is refused, and nothing stored.
+        val carousel = "```kdr-ui\n{\"id\": \"x\", \"widget\": \"carousel\"}\n```"
+        admin.expectError(EXC.badInput, CPY.setPath, data = address(SC.globex, HFRAG.pageNs, "hours") + mapOf(COV.value to carousel))
+        served(SC.globex, ns = HFRAG.pageNs, key = "hours").first shouldBe page
+        // A reset removes the page.
+        admin.postData(CPY.resetPath, address(SC.globex, HFRAG.pageNs, "hours"))
+        served(SC.globex, ns = HFRAG.pageNs, key = "hours").first shouldBe null
+        // Home's own document, restated with a word of the client's: every shipped fence kept, the demos' too (issue #1796).
+        val home = served(SC.globex, ns = HFRAG.pageNs, key = HFRAG.pageHome).first!! + "\n\nGlobex, at your service."
+        admin.postData(CPY.setPath, address(SC.globex, HFRAG.pageNs, HFRAG.pageHome) + mapOf(COV.value to home))
+        served(SC.globex, ns = HFRAG.pageNs, key = HFRAG.pageHome).first shouldBe home
+        admin.postData(CPY.resetPath, address(SC.globex, HFRAG.pageNs, HFRAG.pageHome))
+    }
+
     "an edit lands in the stored config that already sets the key, and a config with a draft of its own is refused" {
         // Two published stored configs of globex's, each overlaying `home` with one key.
         val svc = GedraConfigService.get(cxt)

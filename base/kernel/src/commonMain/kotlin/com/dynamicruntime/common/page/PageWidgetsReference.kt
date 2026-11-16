@@ -2,7 +2,9 @@
 
 package com.dynamicruntime.common.page
 
+import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.home.HCARD
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.schema.SchType
 
 /**
@@ -53,6 +55,7 @@ text, so copy can show a fence as an example, as this page does, without drawing
 | `$${PGW.copy}` | Copy drawn before the widget, as `namespace.key` of the page's own fragment file, unless the kind draws it itself in its own place, as a page's title does. It is drawn as any other copy is, so it may pull other keys and fill placeholders. |
 | `$${PGW.cfactExpression}` | Whether the fence is drawn: a test of [facts](facts.md), judged in the browser, so it may name only the facts about the caller and the node that are sent to it. A fact about a form, a client's own included, never holds on a page. Left out, the fence is always drawn. |
 | `$${PGW.jumpLabel}` | Puts a link to the fence, with these words, among the page's jump links. |
+| `$${PGW.comment}` | A note for whoever reads or rearranges the page, never drawn: why the fence is there, or when its widget draws anything, since a widget decides that from its own data and the page does not otherwise say. It stays with the fence, so a client's copy of the page keeps it. |
 
 Every other key is a parameter of the widget's kind, held to the kind's own list below.
 
@@ -71,7 +74,7 @@ written. A fence is refused when:
 - it is never closed;
 - its body is not a JSON object;
 - it has no `$${PGW.id}`, an id that is not a name, or the id of an earlier fence in the same copy;
-- it names a kind there is none of, or one that only copy a component ships may place;
+- it names a kind there is none of;
 - it gives a parameter the kind does not take, or one the kind's schema refuses;
 - it names neither a `$${PGW.widget}` nor a `$${PGW.copy}`, so it would draw nothing;
 - its `$${PGW.copy}` is not a `namespace.key` the page's fragment file has;
@@ -79,6 +82,21 @@ written. A fence is refused when:
 - one of the keys above holds something other than text.
 
 Where copy is drawn, a fence with a problem is left out and the rest of the page is drawn.
+
+## Pages of your own
+
+The app's home page is the page `home`: a key of the `$${HFRAG.home}` file's `$${HFRAG.pageNs}` namespace. Every key
+there is a page, opened at `/wa/page/<key>` and drawn by the same renderer as the home page, which knows nothing of
+which page it draws. A client or a deployment adds a page of its own by overlaying a new key in that namespace, the
+one key an overlay may add to a file; anywhere else, a key the file does not have is refused.
+
+A menu item opens a page with the `$${HACT.openPage.name}` function, naming the page's key:
+`["$${HACT.openPage.name}", "siteVisits"]`. A menu item naming a page the client does not have is refused, and so is
+removing a page a menu item opens. Copy links to one at its address, `/wa/page/siteVisits`.
+
+A client's page adds no copy key but its document, so its words are the Markdown between its fences, and its title is
+a `$${PageWidgets.pageTitle.name}` fence's `$${PGW.text}`. The sample's Acme client has one, `siteVisits`, which its menu
+opens and its home page links: a title, a few paragraphs and an image, and a cards block drawing the Your client card.
 
 ## Surfaces
 
@@ -90,8 +108,11 @@ $${PageSurface.entries.joinToString("\n") { "| `${it.name}` | ${it.description} 
 
 ## The kinds
 
-| Kind | What it draws | Who may place it | Drawn on |
-|---|---|---|---|
+Any copy may place any kind, a client's own included. A widget decides from its own data whether it draws anything for
+the caller, so a page a client copies from Home keeps the demos and the rest, which draw nothing for the client's people.
+
+| Kind | What it draws | Drawn on |
+|---|---|---|
 $${kindsTable()}
 
 $${PageWidgets.coreKinds.joinToString("\n\n") { kindSection(it) }}
@@ -102,15 +123,15 @@ private fun homeExample(document: String): String =
     "\n## Home, a worked example\n\nThe app's home page is a page document: the `home` file's `page.home` key, as " +
         "shipped below. Each widget decides from its own data whether it draws anything, so who sees what needs no " +
         "conditions: the demos only for a visitor signed in to the public client where joining is offered, say. Its one " +
-        "condition is on the walk-through's note, which only such a visitor is shown. A client or a deployment rewords the " +
+        "condition is on the walk-through's note, which only such a visitor is shown; each fence's `${PGW.comment}` says " +
+        "when it draws. A client or a deployment rewords the " +
         "title and the introduction by their own keys, and rearranges the page, or adds a word of its own, by overlaying " +
-        "this one.\n\n" +
+        "this one. A second page, drawn the same way, is a client's own (above).\n\n" +
         "````markdown\n${document.trim()}\n````\n"
 
-/** A row per core kind: its name, what it draws, whose copy may place it, and its surfaces. */
+/** A row per core kind: its name, what it draws, and its surfaces. */
 private fun kindsTable(): String = PageWidgets.coreKinds.joinToString("\n") { kind ->
-    "| [`${kind.name}`](#${kind.name.lowercase()}) | ${kind.description} | " +
-        "${kind.placement.words.replaceFirstChar { it.uppercase() }} | ${kind.surfaces.joinToString(", ") { "`${it.name}`" }} |"
+    "| [`${kind.name}`](#${kind.name.lowercase()}) | ${kind.description} | ${kind.surfaces.joinToString(", ") { "`${it.name}`" }} |"
 }
 
 /** One kind's section: its heading, and its parameters from its compiled type. */

@@ -169,7 +169,9 @@ an entry in the `$${CCT.fragmentDef}` slot of a client's configuration, with the
 - **An empty value is a value.** It replaces the words with nothing, which some copy reads as "none": an empty
   explanation shows no "What is this?" link.
 - **A key the file does not have is refused.** It would change nothing, which most often means the key was renamed and
-  the overlay was left behind.
+  the overlay was left behind. The one exception is a page of your own: a key of the `home` file's `page` namespace is
+  a page document, which you add, opened at `/wa/page/<key>`. The [page widgets reference](page-widgets.md#pages-of-your-own)
+  says how.
 
 See the [client configuration reference](client-configuration.md) for the slot, and
 [Copy from a file](../demo-client/reference.md#copy-from-a-file) for a layout taking its heading from a fragment file.

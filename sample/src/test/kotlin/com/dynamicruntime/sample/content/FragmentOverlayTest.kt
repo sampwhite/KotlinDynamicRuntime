@@ -227,8 +227,10 @@ private fun sampleImageTests() = stringSpec {
         handler.rptResponseMimeType shouldBe "image/svg+xml"
     }
 
-    "acme's home page shows it" {
+    "acme's site-visits page shows it" {
+        // Its own page (issue #1796), which its home page links.
         val copy = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, SC.acme)
-        copy?.content?.get("home")?.get("intro").orEmpty() shouldContain "img:${SF.siteVisitFlow}"
+        copy?.content?.get(HFRAG.pageNs)?.get(SF.siteVisitsPage).orEmpty() shouldContain "img:${SF.siteVisitFlow}"
+        copy?.content?.get(HFRAG.homeNs)?.get(HFRAG.intro).orEmpty() shouldContain "/wa/page/${SF.siteVisitsPage}"
     }
 }

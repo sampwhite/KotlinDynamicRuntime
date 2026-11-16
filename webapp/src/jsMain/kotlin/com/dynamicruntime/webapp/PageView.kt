@@ -83,7 +83,7 @@ val appWidgets: Map<String, AppWidget> = listOf(
             }
         }
     },
-    AppWidget(PageWidgets.pageTitle, { _, part -> part.copy != null }) { _, part -> h1 { +part.copy.orEmpty() } },
+    AppWidget(PageWidgets.pageTitle, { _, part -> pageTitleOf(part) != null }) { _, part -> h1 { +pageTitleOf(part).orEmpty() } },
     // The row reads the rest of the page, so whether it shows is asked of the planned page.
     AppWidget(PageWidgets.jumpLinks, { _, _ -> true }, { scene, part -> !scene.jumpRow(part).isEmpty }) { scene, part ->
         jumpRow(scene, part)

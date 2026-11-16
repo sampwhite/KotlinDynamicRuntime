@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HACT
 import com.dynamicruntime.common.uiblock.UiActions
+import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.sameOriginPath
 
 /**
@@ -22,6 +23,8 @@ class FrontendActions(
     private val openPath: (String) -> Unit,
     private val setEnvDebug: (Boolean) -> Unit,
     private val becomeDeploymentAdmin: () -> Unit,
+    /** Opens a page document in the app (issue #1796); by default, a navigation to its route. */
+    private val openPage: (String) -> Unit = { navigate(pageDocumentRoute(it)) },
 ) {
     // Every URL an item supplies is guarded here, in the one place item data becomes a navigation. A menu item
     // is data a client may overlay, so an unguarded argument that reaches a full-window navigation is an open
@@ -41,6 +44,9 @@ class FrontendActions(
         },
         // openPath leaves the SPA for a same-origin server path. See `HACT.openPath`.
         HACT.openPath.name to { args -> sameOriginPath(args.firstOrNull())?.let { openPath(it) } },
+        // openPage stays in the app, at a page document's route (issue #1796). Its argument becomes a path segment, so
+        // only a name is taken: anything else -- a slash, a dot -- makes the item inert, as a refused path does.
+        HACT.openPage.name to { args -> args.firstOrNull()?.takeIf { it.isVariableName() }?.let { openPage(it) } },
         // Turn debug behaviors on or off (issue #517); the arg is the boolean as a string. No URL to guard --
         // it moves session state through the env-auth endpoint, which the backend still gates on env auth.
         HACT.setEnvDebug.name to { args -> setEnvDebug(args.firstOrNull() == "true") },
