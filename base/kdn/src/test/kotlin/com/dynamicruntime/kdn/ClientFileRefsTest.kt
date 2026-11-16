@@ -807,7 +807,7 @@ private fun clientFileRefsTests() = stringSpec {
         fun futureOf(entries: List<Map<String, Any?>>) = entries.filter { it[GE.traitId] == future }.map { it[GE.data] }
         val both = listOf(mapOf("id" to "a"), mapOf("id" to "b"))
 
-        // An edit of another slot, as a copy or menu editor makes one -- trialled, as theirs are: a slot this node
+        // An edit of another slot, as a copy or menu editor makes one -- trialed, as theirs are: a slot this node
         // does not read is nothing the write did, so it is not what the trial judges the write by.
         val patched = svc.patchConfigs(writer, trial = true) { edit(classId) { current ->
             current + (CCT.cfactDef to listOf(mapOf(CCT.name to "carryTwo", CCT.group to "carry", CCT.description to "Two.")))
@@ -949,7 +949,7 @@ private fun clientFileRefsTests() = stringSpec {
     }
 
     // A client with a sandbox runs what it published, so its drafts are loaded only by the sandbox -- and a problem a
-    // draft already has is recorded there. The next write to the client has to recognise it as one it already had.
+    // draft already has is recorded there. The next write to the client has to recognize it as one it already had.
     "a draft ref whose file went missing does not refuse the client's later edits" {
         val w = forgiving
         val client = "refdraft"
@@ -1153,6 +1153,7 @@ class SourceFileRefComponent : ComponentDefinition {
         },
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val client = "srcref1153"
     }
@@ -1183,6 +1184,7 @@ class RefLimitComponent : ComponentDefinition {
             for (n in 1..count) fileRef("s$n") { local(root, "pic.png") }
         }
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val root = "art"
         const val over = "reflimitover"
