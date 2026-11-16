@@ -340,19 +340,23 @@ was written before the code, and it is grown as decisions settle rather than res
 
 [`docs/design/sandboxes.md`](docs/design/sandboxes.md) describes a client's **sandbox**: a second client, linked to
 it, that runs the client's drafts against users and data of its own, so a change is seen working before it is
-published. It covers why a sandbox is built as a client, what it runs, who may enter it and with what authority, and
-how it changes the way edits and publishing behave.
+published. It opens with [a guide](docs/design/sandboxes.md#using-a-sandbox) to turning one on, trying a change in
+it, and publishing, then records why a sandbox is built as a client, what it runs, who may enter it and with what
+authority, and how it changes the way edits and publishing behave.
 
-[`docs/design/file-refs.md`](docs/design/file-refs.md) covers a client's **file refs**: named images its copy shows
-by name, with the bytes in the file store or on the node's own disk. It sets out where the bytes may be and who may
-name them, how a configuration holding refs is judged when a file can go missing, and how a ref is served.
+[`docs/design/config-file-refs.md`](docs/design/config-file-refs.md) covers a client's **named images**, its
+configuration file refs: images its copy shows by name, with the bytes in the file store or on the node's own disk.
+It opens with [a guide](docs/design/config-file-refs.md#using-named-images) to adding an image, showing it in copy,
+and replacing it, then sets out where the bytes may be and who may name them, how a configuration holding refs is
+judged when a file can go missing, and how a ref is served.
 
 [`docs/design/ui-block.md`](docs/design/ui-block.md) names the **UiBlock** — a registered piece of declared presentation
 structure, merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
-It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact expressions by the
-backend before the response is built, fragment references by the frontend against copy it has already cached, and how
-SDUI data invokes frontend functionality at all — by naming an entry in a hardwired registry, with the names in shared
-kernel code so the reference is checkable at boot. It was written as intent, so that the term and the settled decisions
+It opens with [a guide](docs/design/ui-block.md#using-ui-blocks) to changing a block for a client and declaring or
+adding to one in a component. It records what a UiBlock is the unit of, and where each kind of reference inside one
+resolves: cfact expressions by the backend before the response is built, fragment references by the frontend against
+copy it has already cached, and how SDUI data invokes frontend functionality at all — by naming an entry in a hardwired
+registry, with the names in shared kernel code so the reference is checkable at boot. It was written as intent, so that the term and the settled decisions
 were not buried in an issue thread, and is now largely built.
 
 [`docs/design/user-search.md`](docs/design/user-search.md) describes the **admin user search**: a scan of the
@@ -361,9 +365,10 @@ the server-driven-UI shape it was given, in which one shared description of the 
 console.
 
 [`docs/design/reporting.md`](docs/design/reporting.md) covers **named reports**: a client's chosen trait values — and
-facts about a form, its workflows and its owner — promoted to columns, a row per form or per group. It sets out the path
-grammar, how values are combined within a form and rolled up across a group, the checks a report passes when
-configuration loads, and what the cursor-paged run guarantees when forms change during a walk.
+facts about a form, its workflows and its owner — promoted to columns, a row per form or per group. It opens with
+[a guide](docs/design/reporting.md#using-reports) to making, running, and keeping the history of a report, then sets
+out the path grammar, how values are combined within a form and rolled up across a group, the checks a report passes
+when configuration loads, and what the cursor-paged run guarantees when forms change during a walk.
 
 `docs/history/` keeps designs that were tried and superseded, left as written so the reasoning is not
 lost. Today it holds one, [`gedra-workflow.md`](docs/history/gedra-workflow.md), the first workflow design, retired

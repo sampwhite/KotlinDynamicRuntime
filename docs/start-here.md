@@ -54,7 +54,10 @@ For a person who sets up a client and looks after it: its forms and workflows, i
    definition, its people and forms, its configuration, its sandbox and publishing, and its pages.
 5. **[Making changes](reference/making-changes.md),** for each kind of change to a client: the editor that makes it,
    and why an editor is preferred to writing the configuration as JSON.
-6. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
+6. **Guides to [the sandbox](design/sandboxes.md#using-a-sandbox), [reports](design/reporting.md#using-reports),
+   and [named images](design/config-file-refs.md#using-named-images),** each at the top of its design note: trying a
+   change and publishing it, making and running a report, and adding an image a page shows.
+7. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
    client's whole configuration as JSON. It lists every part of the configuration and what each holds.
 
 ## Build on it
@@ -64,13 +67,15 @@ For a developer who runs the runtime, extends it, or contributes to it.
 1. **[The README](../README.md#getting-started),** to set up a checkout and start a server of your own.
 2. **[Extending](extending.md),** for every way a deployment, a component, or a client varies what the runtime does,
    and the rule behind them.
-3. **[The conference demo](demo-client/README.md),** a client built from configuration alone, its JSON explained one
+3. **[UI blocks](design/ui-block.md#using-ui-blocks),** for the menu and Home's cards as data: declaring a block in
+   a component, or adding to the platform's.
+4. **[The conference demo](demo-client/README.md),** a client built from configuration alone, its JSON explained one
    piece at a time.
-4. **[The grants demo](grants-demo/README.md),** a client in its own words: every piece of copy a client is likely to
+5. **[The grants demo](grants-demo/README.md),** a client in its own words: every piece of copy a client is likely to
    reword, reworded theme by theme.
-5. **[The schema dialect](reference/schema-dialect.md),** for the JSON Schema keywords the runtime reads, and its own.
-6. **[Deploying a lightweight node](deploy/lightweight-node.md),** to run a site of your own on one small server.
-7. **[Contributing](../CONTRIBUTING.md)** and **[the code guide](development/code-guide.md),** before you change the
+6. **[The schema dialect](reference/schema-dialect.md),** for the JSON Schema keywords the runtime reads, and its own.
+7. **[Deploying a lightweight node](deploy/lightweight-node.md),** to run a site of your own on one small server.
+8. **[Contributing](../CONTRIBUTING.md)** and **[the code guide](development/code-guide.md),** before you change the
    code. The README lists [the design documents](../README.md#design-documents) behind each part.
 
 ## Have an AI configure it

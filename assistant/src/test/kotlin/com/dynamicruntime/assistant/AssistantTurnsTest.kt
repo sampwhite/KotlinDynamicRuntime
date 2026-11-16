@@ -60,6 +60,7 @@ import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
@@ -1067,6 +1068,10 @@ class AssistantTurnsTest : StringSpec({
         // How the menu and Home's cards are changed, and who may call what (issue #1767).
         AssistantTools.readableDoc(cxt, "menu-and-home-cards").shouldNotBeNull()
         AssistantTools.readableDoc(cxt, "roles-and-access").shouldNotBeNull()
+        // The design notes that open with a guide (issue #1809), kept as files rather than generated.
+        for (note in listOf(HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock)) {
+            AssistantTools.readableDoc(cxt, note).shouldNotBeNull().shouldContain("## Using ")
+        }
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
     }
 

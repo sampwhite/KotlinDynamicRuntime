@@ -50,7 +50,7 @@ tested, and released. See *Where config comes from, and where it goes* in
 | **Its own modules and components** | The deployment's `settings.gradle.kts`, which is not version-controlled, adds modules to the build. A module's components are then discovered the same way as the runtime's own. | [`examples/settings.gradle.kts.example`](../examples/settings.gradle.kts.example) |
 | **Named variants** | A deployment flavor (`KDR_DEPLOY_FLAVORS`) switches on a set of settings that components declared together, such as a reference instance. | the `kdr-deploy-flavors` skill |
 | **Branding** | The webapp's favicon and logo for the whole deployment, shipped as files beside its configuration code, without a fork of the webapp. | [`examples/custom-config.md`](../examples/custom-config.md#branding-the-webapp) |
-| **Files** | Where uploaded files are kept (memory, a directory, or S3), and which directories on the node hold images clients may name. | [`design/file-refs.md`](design/file-refs.md), [`deploy/lightweight-node.md`](deploy/lightweight-node.md) |
+| **Files** | Where uploaded files are kept (memory, a directory, or S3), and which directories on the node hold images clients may name. | [`design/config-file-refs.md`](design/config-file-refs.md), [`deploy/lightweight-node.md`](deploy/lightweight-node.md) |
 
 **How discovery works.** Anything a deployment injects implements `KdrProvider` and names itself in a
 `META-INF/services` file, and the JVM's `ServiceLoader` finds it at startup. Nothing scans the classpath, so only a
@@ -127,7 +127,7 @@ the webapp. No code is involved, and a change is made live by reloading the clie
 | **Reports**: named reports over its forms, with history | [`design/reporting.md`](design/reporting.md) |
 | **Copy**: replacing any text the application shows, key by key | the webapp's copy editor |
 | **The menu**: renaming, hiding, or showing an item to a named audience | [`design/ui-block.md`](design/ui-block.md) |
-| **Images**: named images its copy shows (file refs), and its favicon and brand mark (web assets) | [`design/file-refs.md`](design/file-refs.md) |
+| **Images**: named images its copy shows (file refs), and its favicon and brand mark (web assets) | [`design/config-file-refs.md`](design/config-file-refs.md) |
 | **Its definition**: name, labels for its users, personas, and time zone | [`design/client-definition.md`](design/client-definition.md) |
 
 **Starting from another client.** A client can be built on a template (`extendsFromClientId`): the template's

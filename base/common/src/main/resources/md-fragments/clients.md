@@ -166,6 +166,9 @@ not allowed to use it, whatever the menu says. **Reset** puts an item back as sh
 Most of the shipped menu is for the deployment's own operators, test instances, and debugging, which this client's
 people are never offered. The list shows only the items they may be, unless asked for every one.
 
+[Menu and home cards](/docs/reference/menu-and-home-cards.md) says more, with every item the application ships and
+how to change Home's cards.
+
 
 /-where none: the Clients page's explanations, an administrator's page. -/
 # @sandbox
@@ -187,6 +190,9 @@ see it before it reaches them. Open the sandbox to try a change, and publish fro
 You become a second version of yourself: a user of the sandbox, also an administrator. The bar then shows the
 sandbox's name in place of Open sandbox, and **Back to** the client returns you to your usual self. Both versions of
 you are also listed in the menu under your name in the bar, and choosing one switches to it.
+
+[Using a sandbox](/docs/design/sandboxes.md#using-a-sandbox) says more: trying a change, publishing it, and what
+is never drafted.
 
 
 /-where none: the Clients page's explanations, an administrator's page. -/
@@ -241,6 +247,9 @@ To try it, make this explanation show an image of your own:
    sandbox. **Reset** on the key puts the shipped explanation back.
 
 Upload the image first: copy naming a file the client does not have is refused when it is saved.
+
+[Using named images](/docs/design/config-file-refs.md#using-named-images) says more: the kinds and sizes of image a file
+may be, and replacing or removing one.
 
 
 /-where none: the Clients page's explanations, an administrator's page. -/

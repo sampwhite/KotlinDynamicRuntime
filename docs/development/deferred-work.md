@@ -709,6 +709,37 @@ show the deployment's.
   today, from the domain later -- the shell could link the client's own. Left out because the shell is rendered
   before anything about the caller is consulted, and that is a property worth a decision of its own.
 
+## When a client links a document from its own copy
+
+The repository's links are checked by the build: its documents, and the copy each module ships
+(`RepoDocLinksTest`, issues #1294 and #1809). A client's own copy, stored in its configuration, is not: a link there
+to a document that does not exist, or to a section it lacks, goes to the source repository or shows as text, and
+nothing says so.
+
+- **Check a document link when a client's copy is saved or loaded** *(#1809, deferred here 2026-11-16).* Beside the
+  check that copy names only images the client has (`FileRefService.reportCopyProblems`), and judged as it is: a link
+  to a document path no component declares, or to a heading it lacks, is a problem of the copy, refused by the write
+  that brings it and kept, with a warning, at a load. Not done now, since no client links a document from its own
+  copy yet.
+- **Broken links are a larger topic than this.** Once form data can link web content published from other form data,
+  a link may name something that is unpublished, removed, or another client's. That wants a design of its own, which
+  this check should not grow into piecemeal.
+
+## When a trait's data can reference an uploaded file
+
+Today's file refs (issue #1153) are **configuration**: an entry of a client's `kdr:fileRefDef` slot naming an image its
+copy shows. A trait whose field names an uploaded file would be a file reference in a form's **data**, for which
+`GedraDataType.fileRef` is reserved. Two ideas would then share one word.
+
+- **Scope the configuration kind's names in code** *(#1809, deferred here 2026-11-16).* The documents already call
+  them "named images" and "configuration file refs", in
+  [`docs/design/config-file-refs.md`](../design/config-file-refs.md). The code still says file ref throughout: the
+  `kdr:fileRefDef` slot, `FileRefService`, `FREF`, `ClientFileRefEdit`, the `ref:` image syntax in copy, the
+  `/clientAdmin/client/files` endpoints, and the assistant's `read_file_refs`. Rename them to a scoped name, such as
+  "config file" or "named image", in the same change that builds the data kind, so that neither is ever plain "file
+  ref" next to the other. The data kind gets a design note of its own, not a section of that one. Not done now, since
+  nothing yet holds a file in its data, and the rename touches stored configuration's slot names.
+
 ## When a configuration holding file refs is imported for another client, or into another deployment
 
 A file ref (issue #1153) is an entry in a client's stored configuration that names bytes in the file store by their

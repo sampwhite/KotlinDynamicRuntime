@@ -124,7 +124,7 @@ For the client configuration itself, the client has the following attributes.
   image already on the machine, under a root the deployment declares (issue #1154) -- how a client is shipped
   with artwork that an upload then overrides. The client's copy shows one as an image by naming it,
   `![Our logo](ref:logo)` (issue #1186), so a replaced image needs no edit to the copy. File refs, and how a
-  template passes them on, are described in [`file-refs.md`](file-refs.md).
+  template passes them on, are described in [`config-file-refs.md`](config-file-refs.md).
 * `enabledEnvironments` - A list of environments where the client is enabled. Even if not enabled, it
   can still be referred to, but the client will otherwise be considered not to be present. 
   It defaults to the list {'unit', 'local', 'dev'}. It is an error if any environment besides `unit` and `local`
@@ -1032,7 +1032,7 @@ The merge is **by rule, per kind of definition**, and only two kinds look inside
 | Trait usages (listing columns) | The client's list replaces the base's list. |
 | Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |
 | UiBlock | The UiBlock merge (keyed arrays, recursive), the base's layer below the client's own. |
-| File ref, by ref id | The client's ref in code replaces the base's; a configured one overrides it instead. See [`file-refs.md`](file-refs.md#inheritance-sandboxes-and-what-is-stored). |
+| File ref, by ref id | The client's ref in code replaces the base's; a configured one overrides it instead. See [`config-file-refs.md`](config-file-refs.md#inheritance-sandboxes-and-what-is-stored). |
 | Client definition | The client's own fields stand; see `extendsFromClientId` above for what is defaulted. |
 
 So the built client holds each definition **once**. A redefinition takes the base's definition out of the clone

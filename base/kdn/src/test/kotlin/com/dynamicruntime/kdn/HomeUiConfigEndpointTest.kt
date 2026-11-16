@@ -150,7 +150,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         val core = listOf(
             HDOC.startHere, HDOC.readme, HDOC.extending, HDOC.apiKeysAndTokens, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
             HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraStates, HDOC.uiBlock, HDOC.reporting,
-            HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.apiKeys, HDOC.gedraWorkflow,
+            HDOC.configFileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.apiKeys, HDOC.gedraWorkflow,
             HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths,
             HDOC.formLayouts, HDOC.rolesAndAccess, HDOC.clientConfiguration, HDOC.apiGuide, HDOC.referenceIndex, HDOC.license,
         )

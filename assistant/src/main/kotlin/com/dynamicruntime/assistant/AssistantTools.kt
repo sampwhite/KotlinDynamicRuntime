@@ -81,8 +81,11 @@ object TOOL {
 
     /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
     val docs = listOf(
-        HDOC.whatAClientIs, HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts,
-        HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards, HDOC.rolesAndAccess,
+        HDOC.whatAClientIs, HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages,
+        HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards,
+        HDOC.rolesAndAccess,
+        // The design notes that open with a guide (issue #1809).
+        HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock,
     )
 
     /** How deep a tool's input may nest before it is refused rather than walked. */
@@ -256,8 +259,12 @@ object AssistantTools {
                 AssistantTool(
                     ATOOL.readDoc,
                     "Reads a reference document as Markdown: '${HDOC.whatAClientIs}' (a client as a whole: its definition, " +
-                            "bundles, sandbox, the layers its people see, and its pages), '${HDOC.makingChanges}' (for each kind of change, the tool to make it " +
-                            "with -- read it before choosing one), '${HDOC.clientConfiguration}' (every config slot and its fields), " +
+                            "bundles, sandbox, the layers its people see, and its pages), '${HDOC.makingChanges}' (for each kind " +
+                            "of change, the tool to make it with -- read it before choosing one), '${HDOC.clientConfiguration}' " +
+                            "(every config slot and its fields), the design notes that open with a guide: '${HDOC.sandboxes}' " +
+                            "(trying a change and publishing it), '${HDOC.reporting}' (making, running, and keeping the history of " +
+                            "a report), '${HDOC.configFileRefs}' (a named image the client's copy shows: a configuration file ref), " +
+                            "and '${HDOC.uiBlock}' (the menu and Home's cards as data), " +
                             "'${HDOC.schemaDialect}' (how a trait's data type is written), '${HDOC.validationMessages}' (the codes " +
                             "a refused value is reported with, and how a schema gives one a message), '${HDOC.expressions}' (the " +
                             $$"${…} language of copy, columns, layouts, and computed values), '$${HDOC.facts}' (the facts a menu entry, " +
