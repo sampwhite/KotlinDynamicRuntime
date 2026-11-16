@@ -54,9 +54,11 @@ For a person who sets up a client and looks after it: its forms and workflows, i
    definition, its people and forms, its configuration, its sandbox and publishing, and its pages.
 5. **[Making changes](reference/making-changes.md),** for each kind of change to a client: the editor that makes it,
    and why an editor is preferred to writing the configuration as JSON.
-6. **Guides to [the sandbox](design/sandboxes.md#using-a-sandbox), [reports](design/reporting.md#using-reports),
-   and [named images](design/config-file-refs.md#using-named-images),** each at the top of its design note: trying a
-   change and publishing it, making and running a report, and adding an image a page shows.
+6. **Guides to [the client's definition](design/client-definition.md#using-a-clients-definition),
+   [the sandbox](design/sandboxes.md#using-a-sandbox), [reports](design/reporting.md#using-reports), and
+   [named images](design/config-file-refs.md#using-named-images),** each at the top of its design note: what a
+   definition holds and who changes each part, trying a change and publishing it, making and running a report, and
+   adding an image a page shows.
 7. **[The client configuration reference](reference/client-configuration.md),** for the bundle editor, which shows a
    client's whole configuration as JSON. It lists every part of the configuration and what each holds.
 

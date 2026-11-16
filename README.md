@@ -336,7 +336,9 @@ state the platform derives and one a caller asserts, and how states are stored (
 [`docs/design/client-definition.md`](docs/design/client-definition.md) describes the **client** — the thing whose id
 sits in every `GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
 traits it supports, what its callers are shown, and what happens to its content when it is not there. Like the others it
-was written before the code, and it is grown as decisions settle rather than restated. Much of it is now built.
+was written before the code, and it is grown as decisions settle rather than restated. Much of it is now built. It
+opens with [a guide](docs/design/client-definition.md#using-a-clients-definition) to what a definition holds, who
+changes each part, and where.
 
 [`docs/design/sandboxes.md`](docs/design/sandboxes.md) describes a client's **sandbox**: a second client, linked to
 it, that runs the client's drafts against users and data of its own, so a change is seen working before it is

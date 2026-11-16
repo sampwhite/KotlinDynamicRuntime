@@ -135,9 +135,41 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 
 The client this configuration defines, as a stored entry. For a client defined in code it is instead a change to that definition (issue #1677), which may say only whether the client has a sandbox: `clientId`, `"overrides": "codeOverlay"`, and `sandbox`.
 
+What each part of a definition is for, and how it is changed: [Using a client's definition](../design/client-definition.md#using-a-clients-definition).
+
 A bundle holds one entry in this slot.
 
 An entry is [WrittenClientInfo](#writtenclientinfo).
+
+**Who sets each field.** A client made by another (a customer's, or a person's own) starts each field as the second column says, and the third says who may change it afterward. An administrator of every client may change any field.
+
+| Field | A client another makes starts with | Changed afterward by |
+|---|---|---|
+| `clientId` | Its maker's choice | The platform only |
+| `name` | Its maker's choice | Its administrator, on the Clients page's **Definition** panel |
+| `description` | Its maker's choice | Its administrator, on the Clients page's **Definition** panel |
+| `customerId` | The making client's value | The platform only |
+| `usageType` | The making client's value | The platform only |
+| `audience` | The making client's value | The platform only |
+| `enabledEnvironments` | The making client's value | The platform only |
+| `extendsFromClientId` | Its maker's choice | The platform only |
+| `domainPrefix` | Nothing, or off | The platform only |
+| `customDomain` | Nothing, or off | The platform only |
+| `webResourcesId` | Nothing, or off | The platform only |
+| `timeZone` | The making client's value | Its administrator, on the Clients page's **Definition** panel |
+| `userLabels` | Nothing, or off | Its administrator, on the Clients page's **Definition** panel |
+| `userLabelNotes` | Nothing, or off | Its administrator, on the Clients page's **Definition** panel |
+| `sandbox` | Its maker's choice | Its administrator, with **Add a sandbox** or **Remove the sandbox** |
+| `includedTraits` | Nothing, or off | Its administrator, in the **Traits** editor |
+| `preload` | Nothing, or off | The platform only |
+| `staticConfig` | Nothing, or off | The platform only |
+| `retired` | Nothing, or off | The platform only |
+| `publicTemplate` | Nothing, or off | The platform only |
+| `testFeatures` | Nothing, or off | The platform only |
+| `joinRoles` | Nothing, or off | The platform only |
+| `sessionHours` | The making client's value | Its administrator, on the Clients page's **Definition** panel |
+| `refreshIntervalSeconds` | The making client's value | The platform only |
+| `manualFormStates` | Nothing, or off | Its administrator, on the Clients page's **Definition** panel |
 
 ### kdr:customerDef
 

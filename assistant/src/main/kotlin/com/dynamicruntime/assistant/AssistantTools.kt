@@ -84,8 +84,8 @@ object TOOL {
         HDOC.whatAClientIs, HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages,
         HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards,
         HDOC.rolesAndAccess,
-        // The design notes that open with a guide (issue #1809).
-        HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock,
+        // The design notes that open with a guide (issues #1809, #1810).
+        HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock, HDOC.clientDefinition,
     )
 
     /** How deep a tool's input may nest before it is refused rather than walked. */
@@ -264,7 +264,8 @@ object AssistantTools {
                             "(every config slot and its fields), the design notes that open with a guide: '${HDOC.sandboxes}' " +
                             "(trying a change and publishing it), '${HDOC.reporting}' (making, running, and keeping the history of " +
                             "a report), '${HDOC.configFileRefs}' (a named image the client's copy shows: a configuration file ref), " +
-                            "and '${HDOC.uiBlock}' (the menu and Home's cards as data), " +
+                            "'${HDOC.uiBlock}' (the menu and Home's cards as data), and '${HDOC.clientDefinition}' (what a " +
+                            "client's definition holds, and who changes each part), " +
                             "'${HDOC.schemaDialect}' (how a trait's data type is written), '${HDOC.validationMessages}' (the codes " +
                             "a refused value is reported with, and how a schema gives one a message), '${HDOC.expressions}' (the " +
                             $$"${…} language of copy, columns, layouts, and computed values), '$${HDOC.facts}' (the facts a menu entry, " +
