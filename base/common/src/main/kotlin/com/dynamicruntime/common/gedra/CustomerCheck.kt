@@ -211,7 +211,7 @@ internal fun newClientPrefixFault(clients: ClientService, clientId: String, cust
     if (customerId != null) {
         clients.customer(customerId)
             ?: return "Client '$clientId' cannot be created under the customer '$customerId', which this deployment does not declare."
-        if (prefix != customerId) {
+        if (!isCustomersClientId(clientId, customerId)) {
             return "Client '$clientId' cannot be created under the customer '$customerId': a customer's client ids " +
                 "are its own id or '$customerId${CUST.separator}<name>'."
         }

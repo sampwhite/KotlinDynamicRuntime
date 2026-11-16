@@ -46,7 +46,11 @@ val CustomersPage = FC<Props> {
     // The endpoint's refusal (a 403 or 404), in its words.
     var refusal by useState<String?>(null)
     val generation = useRefreshGeneration()
+    val bump = useRefreshBump()
     val named = routeParams()[HP.customer]
+    // The New client form (issue #1820), open once asked for -- on this customer: another one starts with it closed.
+    var creating by useState(false)
+    useEffect(named) { creating = false }
 
     useEffect(generation, named) {
         customersScope.launch {
@@ -80,7 +84,12 @@ val CustomersPage = FC<Props> {
                 }
             }
             across && named == null -> customerList(customers, loadError)
-            else -> customerDetail(view, loadError, across, config?.user?.client.orEmpty())
+            else -> customerDetail(view, loadError, across, config?.user?.client.orEmpty(), creating, onCreate = { creating = it }) {
+                // Made: the customer's clients re-read, and the form stays to say so -- and, for the customer's own
+                // administrator, to offer the switch to their user there.
+                bump()
+                false
+            }
         }
     }
 }
@@ -139,7 +148,17 @@ private fun ChildrenBuilder.customerList(customers: List<CustomerSummary>?, load
 }
 
 /** One customer: what it is, and its clients as rows of facts. */
-private fun ChildrenBuilder.customerDetail(view: CustomerView?, loadError: DisplayError?, across: Boolean, ownClient: String) {
+private fun ChildrenBuilder.customerDetail(
+    view: CustomerView?,
+    loadError: DisplayError?,
+    across: Boolean,
+    ownClient: String,
+    creating: Boolean,
+    /** Opens or closes the New client form. */
+    onCreate: (Boolean) -> Unit,
+    /** A client was made through the form; see [ClientCreatePanelProps.onCreated]. */
+    onCreated: (ClientCreateOutcome) -> Boolean,
+) {
     // A way back only to a list there is: a root's administrator is shown their own customer in its place.
     if (across) backToListing(HMENU.pageCustomers)
     if (view == null) {
@@ -163,6 +182,25 @@ private fun ChildrenBuilder.customerDetail(view: CustomerView?, loadError: Displ
         p {
             className = ClassName("subtitle")
             +"Facts about each of the customer's clients. You change only your own, from its page."
+        }
+    }
+    // Creating one of the customer's clients (issue #1820): the platform's create with the customer chosen, or the
+    // customer's own, for its root's administrator.
+    if (customerOffersNewClient(customer, across)) {
+        if (creating) {
+            ClientCreatePanel {
+                presetCustomer = customer.customerId.takeIf { across }
+                this.onCreated = onCreated
+                onClose = { onCreate(false) }
+            }
+        } else {
+            p {
+                Button {
+                    type = "link"
+                    onClick = { onCreate(true) }
+                    +"New client…"
+                }
+            }
         }
     }
     if (view.clients.isEmpty()) {

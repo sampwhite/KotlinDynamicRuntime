@@ -1258,3 +1258,10 @@ sorts are SQL over the data row, and the stamp lives in the state row's entries.
 the state row's own `updatedAt` -- close, but a recompute after a save or a configuration change moves it too -- or by a
 stamp written beside the engagement as each act is taken. Built when a reviewer or administrator asks to see the forms
 most recently approved or reversed first.
+
+## When an operator wants to make a new customer from the New client form
+
+The Clients page's New client form (issue #1820) files a client under an existing customer or none. The platform's
+create already takes `newCustomer` (a name and a note), which makes a customer whose id is the client's and whose root
+the client is (issue #1107), so the form could offer "a new customer, with this client as its root" beside the existing
+ones. Built when an operator asks to set up a customer from the page rather than through configuration.

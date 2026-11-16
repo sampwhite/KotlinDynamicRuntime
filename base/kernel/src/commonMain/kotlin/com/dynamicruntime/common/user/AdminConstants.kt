@@ -167,6 +167,12 @@ object UADEP {
      */
     const val clientCreate = "/${SECT.clientAdmin}/client/create"
 
+    /**
+     * What the caller may create a client with (issue #1820): the templates it may name and, for the platform, the
+     * customers it may file one under -- the lists the creates judge by, for a form to offer.
+     */
+    const val clientCreateChoices = "/${SECT.clientAdmin}/client/createChoices"
+
     /** The scoped counterpart to [ADEP.clientDefinition]: the caller's own client unless they may name another. */
     const val clientDefinition = "/${SECT.clientAdmin}/client/definition"
 

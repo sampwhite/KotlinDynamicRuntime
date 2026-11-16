@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientExtension
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.CustomerDef
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
@@ -508,6 +509,47 @@ class ExtensionTemplateComponent : ComponentDefinition {
                 property("size", "A size.") { type = SCT.integer }
             }
         },
+        // A customer of code, its root, and a code-defined client of its own by its id that is not marked for public
+        // use: what the customer's root administrators may build on beside the public templates (issue #1820).
+        gedraConfig(cxt, "cu", "client.$customerRoot", customerRoot) {
+            defineCustomer(CustomerDef(customerId = customerRoot, name = "Template customer", rootClientId = customerRoot))
+            defineClient(
+                ClientDef(
+                    clientId = customerRoot, name = "Template customer root", usageType = ClientUsageType.production,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    customerId = customerRoot,
+                ),
+            )
+        },
+        gedraConfig(cxt, "kit", "client.$customerKit", customerKit) {
+            defineClient(
+                ClientDef(
+                    clientId = customerKit, name = "Customer kit", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    customerId = customerRoot, includedTraits = listOf("kitNote"),
+                ),
+            )
+            trait("KitNoteEntry", "kitNote", setOf(GedraDataType.formDoc), "A note.") { property("note", "A note.") }
+        },
+        // Under the customer's prefix but linked to no customer: not the customer's, whatever its id says (issue #1820).
+        gedraConfig(cxt, "loose", "client.$customerLoose", customerLoose) {
+            defineClient(
+                ClientDef(
+                    clientId = customerLoose, name = "Loose kit", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+        },
+        // Linked to the customer under its prefix in another case, which the load holds without regard to case.
+        gedraConfig(cxt, "cased", "client.$customerCased", customerCased) {
+            defineClient(
+                ClientDef(
+                    clientId = customerCased, name = "Cased kit", usageType = ClientUsageType.template,
+                    audience = ClientAudience.customer, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    customerId = customerRoot,
+                ),
+            )
+        },
         // Another, so the bundle editor's tests of its code layer (issue #1646) have one of their own.
         gedraConfig(cxt, "own", "client.$ownLayer", ownLayer) {
             defineClient(
@@ -531,5 +573,9 @@ class ExtensionTemplateComponent : ComponentDefinition {
         const val child = "tplkid"
         const val ownCode = "tplowncode"
         const val ownLayer = "tplownlayer"
+        const val customerRoot = "tplcu"
+        const val customerKit = "tplcu_kit"
+        const val customerLoose = "tplcu_loose"
+        const val customerCased = "TPLCU_cased"
     }
 }

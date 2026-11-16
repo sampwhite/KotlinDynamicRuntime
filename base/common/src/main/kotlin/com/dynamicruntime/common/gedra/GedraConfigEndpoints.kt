@@ -1687,12 +1687,14 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     ClientDef.defineCreateType(this)
 
     // The clients a platform operator may build one on: every code-defined base (issue #1567). And the ones a
-    // customer's administrator may: those marked for public use. Choice lists for a form; each create judges the base.
+    // customer's root administrator may: those marked for public use, and the customer's own code-defined ones (issue
+    // #1820). Choice lists for a form, from the same list each create judges the base against.
     optionsProvider(CLD.templateOptions) { c, _ ->
-        ClientService.get(c).baseClients().map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+        ClientService.get(c).basesFor(anyBase = true, customerId = null).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
-    optionsProvider(CLD.publicTemplateOptions) { c, _ ->
-        ClientService.get(c).publicTemplates().map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    optionsProvider(CLD.customerTemplateOptions) { c, _ ->
+        ClientService.get(c).basesFor(anyBase = false, CustomerAccess.administeredCustomer(c)?.customerId)
+            .map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
 
     // The customers a client may be filed under (issue #1107), for a form; whether the id falls in the chosen one's

@@ -209,28 +209,51 @@ class ClientService : ServiceInitializer {
      * build on these and no other -- so a deployment running as `dev` offers no base that is enabled only where its
      * developers run.
      */
-    fun publicTemplates(): List<ClientDef> = baseClients().filter { it.publicTemplate && it.isEnabledIn(env) }
+    fun publicTemplates(): List<ClientDef> = basesFor(anyBase = false, customerId = null)
 
     /**
-     * Refuses [baseId] as the base of a client being created, unless it is one of [publicTemplates] -- or, for a
-     * platform operator's create ([anyBase]), one of [baseClients]. Asked before anything is written, so a refusal
-     * costs nothing. Null names no base.
+     * The bases a creator may name (issues #1567, #1820): every one of [baseClients] for a platform operator
+     * ([anyBase]); otherwise those enabled in this environment that are marked for public use or -- for a creator
+     * acting for customer [customerId] -- are the customer's own ([isCustomersBase]), its root included. With no
+     * customer, [publicTemplates]. Only ever code-defined clients, and building on one takes its definition in code
+     * alone, never what is configured on it. The one list a create checks a base against and a form offers.
      */
-    fun requireBase(baseId: String?, anyBase: Boolean) {
-        if (baseId == null) return
+    fun basesFor(anyBase: Boolean, customerId: String?): List<ClientDef> =
         if (anyBase) {
-            if (baseClients().none { it.clientId == baseId }) {
-                throw KdrException.mkInput(
-                    "'$baseId' is not a client another can be built on: a base is a code-defined client that extends " +
-                        "none itself, and is not retired.",
-                )
+            baseClients()
+        } else {
+            baseClients().filter {
+                it.isEnabledIn(env) && (it.publicTemplate || (customerId != null && isCustomersBase(it, customerId)))
             }
-        } else if (publicTemplates().none { it.clientId == baseId }) {
-            throw KdrException.mkInput(
-                "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
-                    "(${CLD.publicTemplate}) may be named.",
-            )
         }
+
+    /**
+     * Whether code-defined [def] is customer [customerId]'s own, to build on (issue #1820): linked to the customer --
+     * the link is what says whose a client is, and a client moved to another customer keeps its id -- and under the
+     * customer's prefix, without regard to case, as a code client's prefix is held at load.
+     */
+    fun isCustomersBase(def: ClientDef, customerId: String): Boolean =
+        def.customerId == customerId && clientIdPrefix(def.clientId).equals(customerId, ignoreCase = true)
+
+    /**
+     * Refuses [baseId] as the base of a client being created unless it is one of [basesFor] the same [anyBase] and
+     * [customerId]. Asked before anything is written, so a refusal costs nothing. Null names no base.
+     */
+    fun requireBase(baseId: String?, anyBase: Boolean, customerId: String? = null) {
+        if (baseId == null || basesFor(anyBase, customerId).any { it.clientId == baseId }) return
+        throw KdrException.mkInput(
+            when {
+                anyBase ->
+                    "'$baseId' is not a client another can be built on: a base is a code-defined client that extends " +
+                        "none itself, and is not retired."
+                customerId != null ->
+                    "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
+                        "(${CLD.publicTemplate}), or one of the customer '$customerId''s own, may be named."
+                else ->
+                    "'$baseId' is not a client yours can be built on: only a code-defined client marked for public use " +
+                        "(${CLD.publicTemplate}) may be named."
+            },
+        )
     }
 
     override fun onCreate(cxt: KdrCxt) {

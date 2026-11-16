@@ -39,11 +39,11 @@ object ClientDelegatedCreate {
     )
 
     /**
-     * Creates the client [request] -- its creator's choices -- describes, under the customer whose root is [cxt]'s
-     * client.
+     * The customer [cxt]'s caller creates clients for, as an administrator of its root client -- or the refusal: an
+     * administrator confined to an organization, a client that is no customer's root, or a customer on the free plan.
+     * Asked by the create, and by what offers its choices (issue #1820), so a form is refused as the create would be.
      */
-    fun create(cxt: KdrCxt, request: Map<String, Any?>): Result {
-        val clients = ClientService.get(cxt)
+    fun creatingCustomer(cxt: KdrCxt): CustomerDef {
         val root = cxt.client
         // Making a customer's clients is customer-wide authority, so an administrator confined to an organization of
         // the root -- who sees only that organization -- does not have it.
@@ -53,7 +53,7 @@ object ClientDelegatedCreate {
                 code = EXC.notAuthorized,
             )
         }
-        val customer = clients.customerOf(root)?.takeIf { it.rootClientId == root }
+        val customer = ClientService.get(cxt).customerOf(root)?.takeIf { it.rootClientId == root }
             ?: throw KdrException(
                 "Only an administrator of a customer's root client creates its clients; '$root' is no customer's root.",
                 code = EXC.notAuthorized,
@@ -64,6 +64,17 @@ object ClientDelegatedCreate {
                 "The customer '${customer.customerId}' is on the ${PLAN.free} plan, which makes no clients.",
             )
         }
+        return customer
+    }
+
+    /**
+     * Creates the client [request] -- its creator's choices -- describes, under the customer whose root is [cxt]'s
+     * client.
+     */
+    fun create(cxt: KdrCxt, request: Map<String, Any?>): Result {
+        val clients = ClientService.get(cxt)
+        val root = cxt.client
+        val customer = creatingCustomer(cxt)
         val identity = cxt.userProfile.identityId?.let { UserService.get(cxt).queryIdentityById(cxt, it) }
             ?: throw KdrException(
                 "This session has no identity to give the new client's administrator; log in again.",
@@ -77,8 +88,9 @@ object ClientDelegatedCreate {
         // the prefix, a taken id is one of the customer's own, which they may see.
         val clientId = request[CLD.clientId].toOptStr().orEmpty()
         newClientPrefixFault(clients, clientId, customer.customerId)?.let { throw KdrException.mkInput(it) }
-        // Not the platform's, so only a base marked for public use (issue #1567).
-        clients.requireBase(request[CLD.extendsFromClientId].toOptStr(), anyBase = false)
+        // Not the platform's, so a base marked for public use (issue #1567), or a code-defined one of the customer's
+        // own (issue #1820).
+        clients.requireBase(request[CLD.extendsFromClientId].toOptStr(), anyBase = false, customer.customerId)
         val created = ClientCreate.create(
             cxt, ClientFieldPolicies.delegatedDefinition(parent.toInfo(), request),
             starterWorkflows = request[CLD.starterWorkflows] != false,

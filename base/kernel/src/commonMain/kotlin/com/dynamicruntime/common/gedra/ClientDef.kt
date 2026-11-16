@@ -673,10 +673,23 @@ object CLD {
     const val templateOptions = "clientTemplateOptions"
 
     /**
-     * The id of the options source behind a customer's create input's `extendsFromClientId` (issue #1567): the
-     * code-defined clients marked [ClientDef.publicTemplate], the only ones a customer's administrator may build on.
+     * The id of the options source behind a customer's create input's `extendsFromClientId` (issues #1567, #1820): the
+     * code-defined clients the caller, an administrator of a customer's root, may build on -- those marked
+     * [ClientDef.publicTemplate], and the customer's own: linked to it and under its prefix.
      */
-    const val publicTemplateOptions = "clientPublicTemplateOptions"
+    const val customerTemplateOptions = "clientCustomerTemplateOptions"
+
+    /** The type of what a caller may create a client with (issue #1820): its templates, and the platform's customers. */
+    const val createChoicesTypeName = "ClientCreateChoices"
+
+    /** On create choices: whether the caller creates as the platform -- any client, through the platform's create. */
+    const val asPlatform = "asPlatform"
+
+    /** On create choices: the code-defined clients the caller may build one on, each a value and a label. */
+    const val templateChoices = "templateChoices"
+
+    /** On create choices: the customers the platform may file a client under, each a value and a label. */
+    const val customerChoices = "customerChoices"
 
     /**
      * The name of the stored configuration a created client's definition is written to (issue #1054): the client's
@@ -1241,7 +1254,7 @@ data class ClientDef(
                 description = "A client to create under the caller's customer: what its creator chooses."
                 infoProperties(
                     written = true, only = ClientFieldPolicies.creatorFields.toSet(), offerChoices = true,
-                    baseChoices = CLD.publicTemplateOptions,
+                    baseChoices = CLD.customerTemplateOptions,
                 )
                 starterWorkflowsProperty()
             }

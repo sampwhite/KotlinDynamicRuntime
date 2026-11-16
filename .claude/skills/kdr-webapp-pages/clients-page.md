@@ -18,6 +18,19 @@ summary -- whose listings are their own client already (the Users page draws no 
 `client=` in the address would be one they could not clear). The Workflows page takes no client, so that count is
 plain text until it does.
 
+**New client** (issue #1820): the listing's subtitle offers **New client…**, which opens `ClientCreatePanel` (its pure
+half `ClientCreateModel.kt`, covered by `ClientCreateModelTest`) in the card -- the one form behind both creates, the
+platform's (`POST /admin/client/create`) here and a customer's on the Customers page. It asks
+`GET /clientAdmin/client/createChoices` which create the caller makes (`asPlatform`) and what it may name, so its
+choices are the lists the create judges by (`ClientService.basesFor`): for the platform every code-defined base and
+every customer. A draft panel: the client id, name, internal note, customer (none, or one, whose prefix the id must
+then carry), and **Start from** (a blank client, or a template -- only the template's definition in code is built on,
+never what is configured on it, and the hint says so), whether a blank client starts with workflows, and under More
+options a sandbox, the usage (production to start), the audience (following the customer until chosen), and the
+environments (all to start). Only what is plainly missing keeps the draft from being sent (`clientCreateProblems`);
+whether the id is well formed, taken, or fits its customer is the create's to say, in its words. Once made, the
+listing re-reads and the page opens the client's own page.
+
 **An administrator of one client opens it in place** (issue #1082): with no `c=` in the address, a caller who may
 administer and does not see across clients is shown their own client's detail, not a listing of one row
 (`clientsOpenId`, pure). So `/wa/clients` and `/wa/clients/<their client>` are the same page for them, drawn

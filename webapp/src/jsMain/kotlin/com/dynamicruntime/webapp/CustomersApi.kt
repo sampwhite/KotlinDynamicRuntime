@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.ClientStatus
+import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -70,6 +71,14 @@ fun clientRunsText(row: ClientOverview): String = when {
     row.publishedOnly -> "Published only"
     else -> "Latest"
 }
+
+/**
+ * Whether a customer's page offers a New client form (issue #1820): always to an administrator who sees every client;
+ * to the customer's own root administrator unless the customer is on the free plan, which makes no clients. Pure, and
+ * covered under `jsNodeTest`.
+ */
+fun customerOffersNewClient(customer: CustomerSummary, acrossClients: Boolean): Boolean =
+    acrossClients || customer.plan != PLAN.free
 
 /** Where a customer is declared, as its page says it. */
 fun customerOriginText(customer: CustomerSummary): String = if (customer.isSource) "Code" else "Configuration"
