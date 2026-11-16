@@ -142,6 +142,12 @@ Home's cards are the block `$${HCARD.block}`, their items under `$${HCARD.cards}
 named by id, hidden with `$${CFACT.neverName}`, reworded with a new `$${HCARD.title}` or `$${HCARD.text}`. They have no editor, so a
 change is an overlay in the client's configuration.
 
+**Where on Home a card is drawn** is Home's page's to say, not the card's. Home is a page written as copy (the
+`$${HFRAG.home}` file's `$${HFRAG.pageNs}.$${HFRAG.pageHome}` key), and each `cardsBlock` fence in it draws the cards it names, or every
+card it does not leave out. A card is drawn by the first fence that names it, so the shipped page draws the checklist
+above the introduction and the rest below it. To move a card, change the page, as
+[Page widgets](page-widgets.md#cardsblock) describes.
+
 A card whose body is copy is the exception: it names a key of the `home` copy file in `$${HCARD.textCopy}`, and the page
 draws that key's words in place of its `$${HCARD.text}`, so an overlay's `$${HCARD.text}` changes nothing there. Reword such a card's
 body as any copy is reworded, with the copy editor. The platform's are

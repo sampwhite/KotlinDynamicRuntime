@@ -848,6 +848,8 @@ object HDOC {
     const val clientConfiguration = "client-configuration"
     /** For each kind of change to a client, the editor, endpoint, and assistant tool to make it with (issue #1807). Generated. */
     const val makingChanges = "making-changes"
+    /** A client as a whole, read in order: definition, people and forms, bundles, sandbox, layers, pages (issue #1808). Generated. */
+    const val whatAClientIs = "what-a-client-is"
     /** The index of the references (issue #1632), listed as "Reference": every one, with what it covers. Generated. */
     const val referenceIndex = "reference"
     const val apiKeysAndTokens = "api-keys-and-tokens"

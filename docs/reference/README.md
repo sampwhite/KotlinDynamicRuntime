@@ -23,6 +23,7 @@ Read a guide first for how the pieces fit together: [Start here](../start-here.m
 | [Roles and access](roles-and-access.md) | What each role grants, who may call each section of the API, whose data a caller reads, and how to ask why not. |
 | [Client configuration](client-configuration.md) | Every slot of a client's configuration, what its entries hold, and what a write or an edit of one must send. |
 | [Making changes](making-changes.md) | For each kind of change to a client, the editor to make it with, its endpoint, and the assistant's tool. |
+| [What a client is](what-a-client-is.md) | A client as a whole, in the order to read it: its definition, people and forms, bundles, sandbox, layers, and pages. |
 
 ## In the repository only
 
