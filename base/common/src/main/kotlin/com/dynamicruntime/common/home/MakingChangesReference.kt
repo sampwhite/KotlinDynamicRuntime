@@ -193,6 +193,13 @@ val changeGroups: List<ChangeGroup> = listOf(
                 "A card on Home hidden or reworded",
                 bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
             ),
+            // Home is a page document kept as copy (issue #1794), so rearranging it is a change of one copy key.
+            ChangeWay(
+                "Home's page: what it shows, and in what order",
+                "$copyPanel, the `${HFRAG.home}` file's own listing: its `${HFRAG.pageNs}.${HFRAG.pageHome}` key, " +
+                    "written whole, fences and all",
+                CPY.setPath, ATOOL.setCopy,
+            ),
         ),
     ),
     ChangeGroup(
@@ -276,8 +283,10 @@ For what no editor makes, a patch (`POST $${CFEP.bundlePatch}`) changes a bundle
 3. **Dry run it** (`$${CFEP.dryRun}: true`), read what it says, and then send the same patch to save it.
 
 The [client configuration reference](client-configuration.md) says what each slot's entries hold. The menu and Home's
-cards are written as described in [Menu and home cards](menu-and-home-cards.md), and the `$${CCT.workflowDef}` slot's
-entries are explained, piece by piece, in [the conference demo](../demo-client/README.md).
+cards are written as described in [Menu and home cards](menu-and-home-cards.md), Home's page as in
+[Page widgets](page-widgets.md), and the `$${CCT.workflowDef}` slot's entries are explained, piece by piece, in
+[the conference demo](../demo-client/README.md). For how the parts of a client fit together, read
+[What a client is](what-a-client-is.md).
 """
 
 /** One group's section: its heading, and a table of its ways. */

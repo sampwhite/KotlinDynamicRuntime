@@ -81,7 +81,7 @@ object TOOL {
 
     /** The documents `read_doc` may read ([AssistantTools.readableDoc]), beyond the demo client's pages. */
     val docs = listOf(
-        HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts,
+        HDOC.whatAClientIs, HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages, HDOC.expressions, HDOC.facts,
         HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards, HDOC.rolesAndAccess,
     )
 
@@ -255,7 +255,8 @@ object AssistantTools {
             listOf(
                 AssistantTool(
                     ATOOL.readDoc,
-                    "Reads a reference document as Markdown: '${HDOC.makingChanges}' (for each kind of change, the tool to make it " +
+                    "Reads a reference document as Markdown: '${HDOC.whatAClientIs}' (a client as a whole: its definition, " +
+                            "bundles, sandbox, the layers its people see, and its pages), '${HDOC.makingChanges}' (for each kind of change, the tool to make it " +
                             "with -- read it before choosing one), '${HDOC.clientConfiguration}' (every config slot and its fields), " +
                             "'${HDOC.schemaDialect}' (how a trait's data type is written), '${HDOC.validationMessages}' (the codes " +
                             "a refused value is reported with, and how a schema gives one a message), '${HDOC.expressions}' (the " +

@@ -108,6 +108,12 @@ Home's cards are the block `homeCards`, their items under `cards`, and change th
 named by id, hidden with `#never`, reworded with a new `title` or `text`. They have no editor, so a
 change is an overlay in the client's configuration.
 
+**Where on Home a card is drawn** is Home's page's to say, not the card's. Home is a page written as copy (the
+`home` file's `page.home` key), and each `cardsBlock` fence in it draws the cards it names, or every
+card it does not leave out. A card is drawn by the first fence that names it, so the shipped page draws the checklist
+above the introduction and the rest below it. To move a card, change the page, as
+[Page widgets](page-widgets.md#cardsblock) describes.
+
 A card whose body is copy is the exception: it names a key of the `home` copy file in `textCopy`, and the page
 draws that key's words in place of its `text`, so an overlay's `text` changes nothing there. Reword such a card's
 body as any copy is reworded, with the copy editor. The platform's are

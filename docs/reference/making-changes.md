@@ -94,6 +94,7 @@ each kind of change, which to use.
 | A menu item renamed, hidden, or shown | Clients page, **Menu** | `POST /clientAdmin/client/menu/set` | `set_menu_item` | No |
 | A menu item put back as shipped | Clients page, **Menu** | `POST /clientAdmin/client/menu/reset` | `reset_menu_item` | No |
 | A card on Home hidden or reworded | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
+| Home's page: what it shows, and in what order | Clients page, **Copy**, the `home` file's own listing: its `page.home` key, written whole, fences and all | `POST /clientAdmin/client/copy/set` | `set_copy` | No |
 
 ## Images
 
@@ -121,8 +122,10 @@ For what no editor makes, a patch (`POST /clientAdmin/config/bundle/patch`) chan
 3. **Dry run it** (`dryRun: true`), read what it says, and then send the same patch to save it.
 
 The [client configuration reference](client-configuration.md) says what each slot's entries hold. The menu and Home's
-cards are written as described in [Menu and home cards](menu-and-home-cards.md), and the `kdr:workflowDef` slot's
-entries are explained, piece by piece, in [the conference demo](../demo-client/README.md).
+cards are written as described in [Menu and home cards](menu-and-home-cards.md), Home's page as in
+[Page widgets](page-widgets.md), and the `kdr:workflowDef` slot's entries are explained, piece by piece, in
+[the conference demo](../demo-client/README.md). For how the parts of a client fit together, read
+[What a client is](what-a-client-is.md).
 <!-- kdr-generated: end -->
 
 ## About this file
