@@ -348,16 +348,24 @@ fun grantsDemoMailWords(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo
         fragmentOverlay(AFRAG.mail) {
             namespace(MCOPY.common) {
                 key(MCOPY.fromName, "Riverbend Community Fund")
-                key(MCOPY.footer, "From the grants team at the Riverbend Community Fund.")
-                key(MCOPY.sentFrom, $$"Sent from the fund's grant site, ${siteHost}.")
+                // The closing lines centered (issue #1800), as many mails' are: a fenced div each, since each is its own key.
+                key(MCOPY.footer, "::: {.center}\nFrom the grants team at the Riverbend Community Fund.\n:::")
+                key(MCOPY.sentFrom, $$"::: {.center}\nSent from the fund's grant site, ${siteHost}.\n:::")
                 key(MCOPY.htmlStyle, "font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d;")
+                key(
+                    MCOPY.panelStyle,
+                    "background-color: #eef5f0; border: 1px solid #c9dccf; border-radius: 6px; padding: 4px 16px; margin: 16px 0;",
+                )
+                key(MCOPY.accentStyle, "color: #2e7d4f; font-weight: bold;")
+                key(MCOPY.mutedStyle, "color: #6b7c72;")
             }
             namespace(MCOPY.verifyCode) {
                 key(MCOPY.subject, "Your Riverbend sign-in code")
                 key(
                     MCOPY.body,
                     $$"Your verification code is:\n\n[${code}]{.code}\n\n" +
-                        "Enter it on the Riverbend grant site to sign in. It expires in fifteen minutes.",
+                        "Enter it on the Riverbend grant site to sign in. It expires in fifteen minutes.\n\n" +
+                        "[If you did not ask to sign in, you can ignore this mail.]{.muted}",
                 )
             }
             namespace(MCOPY.verifyCodePassword) {
@@ -375,13 +383,15 @@ fun grantsDemoMailWords(cxt: KdrCxtBase = LiteCxt(), client: String = GrantsDemo
                     $$"The Riverbend Community Fund has made you an account on its grant site, for [${address}]{.value}, as " +
                         $$"[${personaLabel}]{.value}.\n\n" +
                         $$"Accept it and sign in here: ${url}\n\n" +
+                        "[The link expires in seven days.]{.accent}\n\n" +
+                        "::: {.panel}\n" +
                         "If the link does not work for you, go to the login page, choose \"Claim an account created for " +
                         "you\", and enter:\n\n" +
                         $$"- Email: [${address}]{.value}\n" +
                         $$"- Client ID: [${client}]{.value}\n" +
                         $$"- Persona: [${personaLabel}]{.value}\n\n" +
-                        $$"A code will then be sent to [${address}]{.value}.\n\n" +
-                        "The link expires in seven days.",
+                        $$"A code will then be sent to [${address}]{.value}.\n" +
+                        ":::",
                 )
             }
             namespace(MCOPY.signInReminder) {

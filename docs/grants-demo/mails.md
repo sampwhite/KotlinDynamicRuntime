@@ -19,13 +19,16 @@ Here is the whole `mailWords` bundle:
       "content": {
         "common": {
           "fromName": "Riverbend Community Fund",
-          "footer": "From the grants team at the Riverbend Community Fund.",
-          "sentFrom": "Sent from the fund's grant site, ${siteHost}.",
-          "htmlStyle": "font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d;"
+          "footer": "::: {.center}\nFrom the grants team at the Riverbend Community Fund.\n:::",
+          "sentFrom": "::: {.center}\nSent from the fund's grant site, ${siteHost}.\n:::",
+          "htmlStyle": "font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d;",
+          "panelStyle": "background-color: #eef5f0; border: 1px solid #c9dccf; border-radius: 6px; padding: 4px 16px; margin: 16px 0;",
+          "accentStyle": "color: #2e7d4f; font-weight: bold;",
+          "mutedStyle": "color: #6b7c72;"
         },
         "verifyCode": {
           "subject": "Your Riverbend sign-in code",
-          "body": "Your verification code is:\n\n[${code}]{.code}\n\nEnter it on the Riverbend grant site to sign in. It expires in fifteen minutes."
+          "body": "Your verification code is:\n\n[${code}]{.code}\n\nEnter it on the Riverbend grant site to sign in. It expires in fifteen minutes.\n\n[If you did not ask to sign in, you can ignore this mail.]{.muted}"
         },
         "verifyCodePassword": {
           "subject": "Your Riverbend password code",
@@ -33,7 +36,7 @@ Here is the whole `mailWords` bundle:
         },
         "invitation": {
           "subject": "Your account with the Riverbend Community Fund",
-          "body": "The Riverbend Community Fund has made you an account on its grant site, for [${address}]{.value}, as [${personaLabel}]{.value}.\n\nAccept it and sign in here: ${url}\n\nIf the link does not work for you, go to the login page, choose \"Claim an account created for you\", and enter:\n\n- Email: [${address}]{.value}\n- Client ID: [${client}]{.value}\n- Persona: [${personaLabel}]{.value}\n\nA code will then be sent to [${address}]{.value}.\n\nThe link expires in seven days."
+          "body": "The Riverbend Community Fund has made you an account on its grant site, for [${address}]{.value}, as [${personaLabel}]{.value}.\n\nAccept it and sign in here: ${url}\n\n[The link expires in seven days.]{.accent}\n\n::: {.panel}\nIf the link does not work for you, go to the login page, choose \"Claim an account created for you\", and enter:\n\n- Email: [${address}]{.value}\n- Client ID: [${client}]{.value}\n- Persona: [${personaLabel}]{.value}\n\nA code will then be sent to [${address}]{.value}.\n:::"
         },
         "signInReminder": {
           "subject": "Signing in to the Riverbend grant site",
@@ -62,9 +65,12 @@ looks.
 | Where it is | Key | As shipped | In the demo |
 | --- | --- | --- | --- |
 | Mail: the name every mail is from, shown in the inbox list and above the subject. | `mail: common.fromName` | KotlinDynamicRuntime | Riverbend Community Fund |
-| Mail: the line closing every mail. | `mail: common.footer` | This message was sent automatically. If you were not expecting it, you can ignore it. | From the grants team at the Riverbend Community Fund. |
-| Mail: the line after the closing one, naming the site the mail came from. | `mail: common.sentFrom` | `Sent from ${siteHost}.` | `Sent from the fund's grant site, ${siteHost}.` |
+| Mail: the line closing every mail. | `mail: common.footer` | This message was sent automatically. If you were not expecting it, you can ignore it. | `::: {.center} From the grants team at the Riverbend Community Fund. :::` |
+| Mail: the line after the closing one, naming the site the mail came from. | `mail: common.sentFrom` | `Sent from ${siteHost}.` | `::: {.center} Sent from the fund's grant site, ${siteHost}. :::` |
 | Mail: the style of every mail as it is drawn, its font, size, and colors. | `mail: common.htmlStyle` | font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color:… | font-family: Georgia, serif; font-size: 16px; line-height: 1.6; color: #1f3b2d; |
+| Mail: the style of a boxed section of a mail, its background, border, and spacing. | `mail: common.panelStyle` | background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 6px; padding: 4px 16px;… | background-color: #eef5f0; border: 1px solid #c9dccf; border-radius: 6px; padding: 4px 16px;… |
+| Mail: the style of a phrase a mail sets in its accent color, such as a deadline. | `mail: common.accentStyle` | color: #4f46e5; font-weight: bold; | color: #2e7d4f; font-weight: bold; |
+| Mail: the style of a phrase a mail sets in a quieter gray, such as an aside. | `mail: common.mutedStyle` | color: #777777; | color: #6b7c72; |
 | Mail: the subject of the code sent to one of the client's people signing in by code. A registration's code uses the same key in the deployment's words, since no client is known yet. | `mail: verifyCode.subject` | Your verification code | Your Riverbend sign-in code |
 | Mail: the body of the code sent to one of the client's people signing in by code. A registration's code uses the same key in the deployment's words, since no client is known yet. | `mail: verifyCode.body` | `Your verification code is: [${code}]{.code} Enter it where you asked for it. It expires in fifteen…` | `Your verification code is: [${code}]{.code} Enter it on the Riverbend grant site to sign in.…` |
 | Mail: the subject of the code sent to one of the client's people setting or changing a password. | `mail: verifyCodePassword.subject` | Your verification code | Your Riverbend password code |
@@ -91,6 +97,14 @@ could read the code, so the shipped code mails keep it out, and so do the demo's
 **The style is the HTML part's.** A mail goes out as text and as HTML, from the one body. `htmlStyle` is the inline
 style of the HTML part, where a client sets its font and colors. Inline only, since mail clients strip style sheets.
 
+**A mail can box a section, color a phrase, and center its closing lines.** The demo's invitation sets its deadline in
+the fund's green with `[The link expires in seven days.]{.accent}`, and puts what to type when the link fails in a
+box: `::: {.panel}` on a line of its own, the lines to box, then `:::`. Its sign-in code mail ends with an aside in a
+quieter gray, `[...]{.muted}`. `panelStyle`, `accentStyle`, and `mutedStyle` are how each looks, inline styles like
+`htmlStyle`. A style is refused when it is saved if it could load something or hide something, such as a `url(` or a
+`display`. The closing lines are each in `::: {.center}`, which needs no style. In the text part, each of these is its
+words alone. The [copy reference](../reference/copy.md#roles) lists the roles.
+
 **Who it is from** is `fromName`, the name a mail app shows in the inbox list and above the subject, beside the
 deployment's sending address. It is plain words, and a client may name itself with `${clientName}`. A deployment can
 word it for every client: a reference deployment's mails are from "Gedra". The code sent to someone registering has no
@@ -103,7 +117,7 @@ site makes `sentFrom` empty.
 
 Sign in by code as one of the fund's people, and the mail that arrives is the fund's. It is from **Riverbend Community
 Fund**, its subject is **Your Riverbend sign-in code**, it closes with the grants team's line and names the fund's grant
-site, and its HTML part is set in a serif.
+site, centered, and its HTML part is set in a serif, with its aside in a quieter gray.
 
 - **On a public reference site,** your demo user is one of the fund's people, but your address signs in as whichever of
   your users is chosen for it. On your **Profile** page, choose **Use for next sign-in** on your Grants demo user, then

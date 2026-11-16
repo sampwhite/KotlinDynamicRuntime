@@ -50,6 +50,7 @@ A line of copy can also hold an expression between `${` and `}`, described in [E
 | `---` | A horizontal rule. |
 | `\| a \| b \|`, then `\|---\|---\|` | A table: a header row, a dividing row, then a row per line. |
 | `<!-- note -->`, on lines of its own | A comment, which is not shown. |
+| `::: {.panel}` on a line of its own, then lines, then `:::` | A fenced div: the lines between, with a role on them all, such as a panel; see [Roles](#roles). |
 
 Some Markdown is not read, and is shown in a simpler form:
 
@@ -60,16 +61,28 @@ Some Markdown is not read, and is shown in a simpler form:
 
 ## Roles
 
-A role sets a phrase or an image apart. It is written in braces after a span in square brackets, `[text]{.value}`, or
-after an image, `![alt](src){.float-left}`. A block may hold several roles, and on an image a `$${MDR.width}` and a
-`$${MDR.height}` in pixels: `{.float-left .icon $${MDR.width}=20}`. Anything else in the braces, such as a misspelled
-`widht=`, leaves the whole block shown as written.
+A role sets a phrase, an image, or a block of lines apart. It is written in braces after a span in square brackets,
+`[text]{.value}`, after an image, `![alt](src){.float-left}`, or after the colons opening a fenced div. The braces may
+hold several roles, and on an image a `$${MDR.width}` and a `$${MDR.height}` in pixels: `{.float-left .icon $${MDR.width}=20}`.
+Anything else in the braces, such as a misspelled `widht=`, leaves the whole block shown as written.
+
+A fenced div holds whole blocks (paragraphs, lists, and the rest), so it is how a box or centering reaches several of
+them. It opens with three colons and its roles on a line of their own, and closes with three colons:
+
+```
+::: {.$${MDR.panel}}
+Your application is in. **Reviewers score it by May 1.**
+:::
+```
+
+Divs may nest, each `:::` closing the innermost. A div that is never closed, or a `:::` with nothing open, is shown as
+written.
 
 $${rolesTable()}
 
-A role that is not one of these, or one written on what it does not apply to, does nothing, so it is caught where a
-misspelling would otherwise go unnoticed: a client's configuration whose copy writes one is refused, and the copy every
-client shares is checked when the server starts.
+A role that is not one of these, or one written on what it does not apply to, does nothing, and a fence with no partner
+is shown as written, so each is caught where a misspelling would otherwise go unnoticed: a client's configuration whose
+copy writes one is refused, and the copy every client shares is checked when the server starts.
 
 ## Images
 
@@ -178,7 +191,11 @@ See the [client configuration reference](client-configuration.md) for the slot, 
 /** Every role, with what it is written on, what it does on a page, and how a mail shows it. */
 private fun rolesTable(): String {
     val rows = markdownRoles.map { role ->
-        val on = if (role.place == MdRolePlace.image) "An image" else "A span"
+        val on = when (role.place) {
+            MdRolePlace.span -> "A span"
+            MdRolePlace.image -> "An image"
+            MdRolePlace.block -> "A fenced div"
+        }
         "| `.${role.name}` | $on | ${role.description} | ${role.inMail} |"
     }
     return (listOf("| Role | Written on | What it does | In a mail |", "|---|---|---|---|") + rows).joinToString("\n")

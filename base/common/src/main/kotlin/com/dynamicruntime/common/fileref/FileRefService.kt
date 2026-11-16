@@ -27,12 +27,15 @@ import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.logging.KdrLogger
+import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.componentImageNames
 import com.dynamicruntime.common.util.imageRefIds
+import com.dynamicruntime.common.util.inlineStyleProblem
 import com.dynamicruntime.common.util.roleProblems
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import java.util.concurrent.ConcurrentHashMap
@@ -382,6 +385,20 @@ class FileRefService : ServiceInitializer, ContentServer {
                 for ((namespace, keys) in content) {
                     for ((key, value) in keys) {
                         reportRoleProblems(cxt, config, layer, namespace, key, value, owner, issues)
+                        // A mail's style that could load or hide something (issue #1800): left out of the mail.
+                        if (layer.fileId == AFRAG.mail && namespace == MCOPY.common && key in MCOPY.styleKeys) {
+                            inlineStyleProblem(value)?.let { problem ->
+                                reportConfigProblem(
+                                    cxt,
+                                    config.issue(
+                                        "$namespace.$key (file '${layer.fileId}' of client '$owner', config '${config.name}'): $problem",
+                                        "Keeping the copy; the mail is sent without this style.",
+                                        GCEL.fragment, layer.fileId,
+                                    ),
+                                    issues,
+                                )
+                            }
+                        }
                         // A widget fence that is wrong (issue #1792): left out where the page is drawn.
                         for (problem in pages.problems(layer.fileId, value)) {
                             reportConfigProblem(

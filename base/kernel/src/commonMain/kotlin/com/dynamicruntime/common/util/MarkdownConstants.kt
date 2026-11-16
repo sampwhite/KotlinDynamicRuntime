@@ -25,6 +25,26 @@ object MDR {
     /** A code a reader reads off and types elsewhere: large, monospaced, spaced out. */
     const val code = "code"
 
+    /** A phrase set in the accent color, to draw the eye (issue #1800): `[Deadline: May 1]{.accent}`. */
+    const val accent = "accent"
+
+    /** A phrase set in a quieter gray, for an aside (issue #1800). */
+    const val muted = "muted"
+
+    /**
+     * A fenced div's box (issue #1800): the blocks it holds set apart from the copy around them.
+     *
+     * ```
+     * ::: {.panel}
+     * Your application is in.
+     * :::
+     * ```
+     */
+    const val panel = "panel"
+
+    /** A fenced div whose blocks are centered (issue #1800), such as a mail's closing lines: `::: {.center}`. */
+    const val center = "center"
+
     /**
      * Ends a floated image here (issue #1382): an empty span, `[]{.clear}`, after which what follows -- the rest of the
      * paragraph, and the blocks after it -- goes below the image rather than beside it. For copy whose text beside an
@@ -62,9 +82,12 @@ object MDR {
     const val imageScheme = "img"
 }
 
-/** What a role is written on (issue #1562): a bracketed span `[text]{.role}`, or an image `![alt](src){.role}`. */
+/**
+ * What a role is written on (issue #1562): a bracketed span `[text]{.role}`, an image `![alt](src){.role}`, or a fenced
+ * div's opening, `::: {.role}` (a block, issue #1800).
+ */
 @Suppress("EnumEntryName")
-enum class MdRolePlace { span, image }
+enum class MdRolePlace { span, image, block }
 
 /**
  * One role copy may write (issue #1562): its [name], what it is written on ([place]), what it does on a page
@@ -75,8 +98,8 @@ class MarkdownRole(val name: String, val place: MdRolePlace, val description: St
 
 /**
  * Every role the renderer's surfaces realize (issue #1562), in the order the copy reference lists them. Each renders as
- * the class [MDR.classPrefix] + its name, which `app.css` styles, and a mail realizes the span roles itself
- * (`MailCopy.decorateValue`). A role added here needs its rule there, which a test holds it to.
+ * the class [MDR.classPrefix] + its name, which `app.css` styles, and a mail realizes the span and block roles itself
+ * (`MailCopy.decorateSpan` and `decorateDiv`). A role added here needs its rule there, which a test holds it to.
  */
 val markdownRoles: List<MarkdownRole> = listOf(
     MarkdownRole(
@@ -90,10 +113,30 @@ val markdownRoles: List<MarkdownRole> = listOf(
         "Large, monospaced, and bold.",
     ),
     MarkdownRole(
+        MDR.accent, MdRolePlace.span,
+        "Sets a phrase in the accent color, to draw the eye to it, such as a deadline.",
+        "In the mail file's `common.accentStyle`, shipped as indigo and bold.",
+    ),
+    MarkdownRole(
+        MDR.muted, MdRolePlace.span,
+        "Sets a phrase in a quieter gray, for an aside a reader may skip.",
+        "In the mail file's `common.mutedStyle`, shipped as gray.",
+    ),
+    MarkdownRole(
         MDR.clear, MdRolePlace.span,
         "Written as an empty span, `[]{.clear}`. Ends a floated image here, so what follows goes below the image rather " +
             "than beside it.",
         "Nothing, since a mail floats no image.",
+    ),
+    MarkdownRole(
+        MDR.panel, MdRolePlace.block,
+        "Sets the blocks it holds in a box, apart from the copy around them.",
+        "A box in the mail file's `common.panelStyle`, shipped as light gray. The text part shows the blocks alone.",
+    ),
+    MarkdownRole(
+        MDR.center, MdRolePlace.block,
+        "Centers the blocks it holds, such as a closing line. With a panel, `{.panel .center}` centers the panel's text.",
+        "Centered.",
     ),
     MarkdownRole(
         MDR.floatLeft, MdRolePlace.image,

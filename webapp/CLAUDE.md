@@ -37,8 +37,10 @@ The backend serves per-component UI text as **Markdown fragment files** through 
 behind a shared cache: a URL names one document, because the `buildId` hashes the merged content rather than
 the underlying file, so two clients reading different copy never share a URL.
 
-**Beyond standard Markdown** the renderer takes two Pandoc-style attributed constructs (issue #795): a bracketed
-span with a role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}`. The roles are
+**Beyond standard Markdown** the renderer takes three Pandoc-style attributed constructs: a bracketed span with a
+role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}` (issue #795), and a fenced
+div, `::: {.panel}` on a line of its own, the blocks it holds, then `:::` (issue #1800: `.panel` a box, `.center`
+centered, and they nest). The roles are
 declared in the kernel's `markdownRoles` (issue #1562), each with its place and what it does; a role not there, or on
 the wrong construct, is a problem of the copy (`roleProblems`), and the generated copy reference lists them. A role
 renders as a `md-`-prefixed class by default (`.md-value`, `.md-code` are styled in `app.css`, and so are an
@@ -46,7 +48,9 @@ image's `.md-float-left` and `.md-float-right`, issue #1382: floated beside the 
 contained in their `.markdown` block, and not floated below 480 px, except an icon's, `{.float-left .icon width=20}`,
 which sits a character's width from its line at any width (issue #1534) -- and `.md-clear`, from an empty `[]{.clear}`,
 which ends a float where the copy puts it, so what follows goes below the image); a surface that
-cannot use a stylesheet -- a mail -- passes `MarkdownHooks(decorateSpan = …)` and realizes the role itself. An
+cannot use a stylesheet -- a mail -- passes `MarkdownHooks(decorateSpan = …, decorateDiv = …)` and realizes the role
+itself. The fenced div's `.md-panel` and `.md-center`, and the span roles `.md-accent` and `.md-muted` (issue #1800), are
+styled in `app.css` too. An
 attribute block holds only role names and numeric `width`/`height`; anything else makes it literal text. A
 backslash escapes any ASCII punctuation (`\*`), and `escapeMarkdown()` applies that to a *value* being substituted
 into copy, so an address like `_ops_@acme.test` reads as written (the mails do this to every param). The
@@ -272,7 +276,10 @@ Current UI-config endpoints:
   sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own, and a value a
   reader copies out is marked in the copy with a role -- `[${address}]{.value}`, `[${code}]{.code}` -- which
   the HTML part realizes as a style-only anchor (so Gmail does not linkify an address or a code) and the text
-  part shows bare. `forHtml` is bound by every render, for a body whose two parts want different words. The copy
+  part shows bare. A panel (`::: {.panel}`), a centered block (`::: {.center}`), and an `{.accent}` or `{.muted}`
+  phrase take the client's `common.panelStyle`, `accentStyle`, and `mutedStyle` (issue #1800), each checked when it is
+  saved (`inlineStyleProblem`) and left out of a mail when it fails; a closing line that opens a fenced div renders as
+  blocks, so a client can center its footer. `forHtml` is bound by every render, for a body whose two parts want different words. The copy
   editor previews each mail as a client's copy renders it, by the same render with sample values
   (`/clientAdmin/client/copy/mailPreview`, issue #1799). The dev autofill (`fetchDevCode`) and the tests read the
   code with the kernel's `verifyCodeInMail`, out of the text part's "verification code is:" and the line after (issue

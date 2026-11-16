@@ -148,6 +148,18 @@ private fun clientCopyApplyTests() = stringSpec {
         copyConfig(client) shouldBe null
     }
 
+    "a mail style that could load or hide something is refused, and one that colors is kept (issue #1800)" {
+        val client = "applystyle"
+        val admin = defineClient(client)
+        val refused = admin.expectError(
+            EXC.badInput, CPY.applyPath, data = apply(AFRAG.mail, set(MCOPY.common, MCOPY.panelStyle, "padding: 8px; display: none")),
+        )
+        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "${MCOPY.common}.${MCOPY.panelStyle}"
+        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "'display: none'"
+        admin.postData(CPY.applyPath, apply(AFRAG.mail, set(MCOPY.common, MCOPY.accentStyle, "color: rgb(46, 125, 79);")))
+        served(client, MCOPY.common, MCOPY.accentStyle, fileId = AFRAG.mail) shouldBe "color: rgb(46, 125, 79);"
+    }
+
     "a key changed twice, a set and reset at once, a reset with nothing stored and an unknown key are refused" {
         val client = "applybad"
         val admin = defineClient(client)
