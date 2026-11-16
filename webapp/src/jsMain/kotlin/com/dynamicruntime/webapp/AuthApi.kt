@@ -74,7 +74,6 @@ fun invitationInfoFrom(info: Map<String, Any?>): InvitationInfo = InvitationInfo
     name = info[AFLD.name] as? String,
 )
 
-@Suppress("ConstPropertyName")
 /**
  * The auth widget-group's backend calls, keyed off the shared kernel constants ([AEP]/[AFLD]/[AFEAT]/[UIC]) so
  * the frontend never re-hardcodes a path or a JSON key the backend serves. A successful login writes the
@@ -84,6 +83,7 @@ fun invitationInfoFrom(info: Map<String, Any?>): InvitationInfo = InvitationInfo
  * A returning user is identified by a **login id** -- a username *or* an email -- so the UI can work purely in
  * emails (the backend resolves either way).
  */
+@Suppress("ConstPropertyName")
 object AuthApi {
     private const val emailContactType = "email"
 
