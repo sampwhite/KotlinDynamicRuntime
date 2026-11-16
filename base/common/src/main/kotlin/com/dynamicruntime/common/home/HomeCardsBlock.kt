@@ -139,7 +139,7 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
 }
 
 /** A Markdown link to a part of the page it is drawn on: `](#id)`. */
-private val inPageLink = Regex("""\]\(#([^)\s]+)\)""")
+private val inPageLink = Regex("""]\(#([^)\s]+)\)""")
 
 /**
  * The links in the home cards' text that lead nowhere on Home (issue #1795), each said with its card: an in-page link

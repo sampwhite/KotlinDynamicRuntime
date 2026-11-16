@@ -21,8 +21,6 @@ import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
-import com.dynamicruntime.kdn.Startup
-import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
