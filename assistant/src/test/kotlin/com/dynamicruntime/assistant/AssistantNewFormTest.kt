@@ -25,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -36,6 +37,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain as shouldContainElement
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -100,6 +102,19 @@ class AssistantNewFormTest : StringSpec({
         text shouldContain "The New form page asks for exactly the traits of the client's creation workflow"
         // Long text (issue #1592): a trait it writes marks its free text, so a form draws a box of several lines.
         text shouldContain "Give it \"g-longText\": true in the trait's dataSchema"
+        // The whole client (issue #1768): the guide to read before choosing a tool, a rule per area, and what stays out.
+        text shouldContain "configure it: its workflows"
+        text shouldContain "read_doc '${HDOC.makingChanges}'"
+        text shouldContain "Prefer a targeted tool to ${ATOOL.patchConfig}"
+        text shouldContain "A menu change changes what is offered, not who may reach a page"
+        text shouldContain "What you cannot do, and how the administrator does it instead:"
+        val guideMarker = "The application's API guide follows"
+        // Every tool the prompt names is one the assistant has, so a renamed tool cannot leave the prompt naming one gone.
+        // The client's id is named too, and may look like a tool's name.
+        val toolWords = text.substringBefore(guideMarker).replace(configured, "")
+        val named = Regex("""\b[a-z]+(?:_[a-z]+)+\b""").findAll(toolWords).map { it.value }.toSet()
+        named.filterNot { it in AssistantTools.byName } shouldBe emptySet()
+        named shouldContainElement ATOOL.setFieldCopy
         // And the message the administrator writes is long text too, so the endpoint catalog draws a box for it.
         SchemaService.get(cxt).schemaStore.endpoints.values.single { it.path == ACNV.messagePath }.inputFields.orEmpty()
             .single { it.name == ACNV.text }.schema[SCH.longText] shouldBe true
