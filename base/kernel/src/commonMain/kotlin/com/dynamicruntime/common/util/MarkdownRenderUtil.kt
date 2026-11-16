@@ -48,6 +48,13 @@ class MarkdownHooks(
      * and must return HTML, so the escaping rule holds through it.
      */
     val decorateCodeBlock: ((language: String, preHtml: String) -> String?)? = null,
+    /**
+     * Realizes a fenced div's roles (issue #1800) around its already-rendered blocks, or returns null for the default:
+     * `<div class="md-panel">…</div>`, which the frontend styles by class. A mail passes a hook that emits inline
+     * styles, as it does for [decorateSpan], and under the same rule: it receives rendered, escaped HTML and must
+     * return HTML.
+     */
+    val decorateDiv: ((roles: List<String>, innerHtml: String) -> String?)? = null,
 )
 
 /** The file ref an image's [src] names -- `ref:logo` names `logo` -- or null when it names none ([MDR.refScheme]). */
@@ -80,6 +87,9 @@ interface MarkdownSink {
     fun code(language: String, body: String): String
     fun rule(): String
     fun table(header: List<String>, aligns: List<String?>, rows: List<List<String>>): String
+
+    /** A fenced div (issue #1800): its [roles] and its blocks, already rendered and joined as a [document]. */
+    fun div(roles: List<String>, inner: String): String
     fun document(blocks: List<String>): String
 
     /**
@@ -171,6 +181,8 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
         }
         return sb.append("</table>\n</div>\n").toString()
     }
+    override fun div(roles: List<String>, inner: String): String =
+        hooks.decorateDiv?.invoke(roles, inner) ?: ("<div class=\"" + roleClasses(roles) + "\">\n" + inner + "</div>\n")
     override fun document(blocks: List<String>): String = blocks.joinToString("")
 }
 
@@ -192,14 +204,17 @@ object TextSink : MarkdownSink {
     override fun rule(): String = ""
     override fun table(header: List<String>, aligns: List<String?>, rows: List<List<String>>): String =
         (listOf(header) + rows).joinToString("\n") { it.joinToString(" | ") }
+    /** Its blocks, set off by blank lines like any others: a panel has no box in plain text. */
+    override fun div(roles: List<String>, inner: String): String = inner
     override fun document(blocks: List<String>): String = blocks.filter { it.isNotEmpty() }.joinToString("\n\n")
 }
 
 /**
  * Matches a KDoc symbol reference -- a bare name in square brackets, dotted members allowed -- and not a `[text](url)`
  * link. The closing bracket is escaped: the JVM takes a bare one, but the browser's engine, in the Unicode mode Kotlin/JS
- * compiles a `Regex` to, refuses it.
+ * compiles a `Regex` to, refuses it. So it stays, though IntelliJ calls it redundant and offers to remove it.
  */
+@Suppress("RegExpRedundantEscape")
 private val kdocReference = Regex("""\[([A-Za-z][\w.]*)\](?!\()""")
 
 /**
@@ -242,11 +257,12 @@ private const val markdownSignificant = "\\*_`[]()!{}<>#"
  * header row, a `| --- |` delimiter row, then body rows -- alignment taken from the delimiter's colons), and
  * the inline constructs: code spans (`` `x` ``), links (`[text](url)`), bold (`**x**`/`__x__`), and italic
  * (`*x*`/`_x_`), and a backslash escape of any ASCII punctuation (`\*` is a literal asterisk) -- and, past
- * standard Markdown, two Pandoc-style **attributed** constructs (issue #795): a bracketed span `[text]{.role}`,
- * and an image `![alt](src){.role width=240}`. See [parseAttrBlock] for what an attribute block may hold, and
- * [MarkdownHooks.decorateSpan] for how a surface realizes a role. The same source renders to plain text with
- * [renderMarkdownText]: **one parser** ([renderBlocks], [renderInline]) drives both through a [MarkdownSink], so
- * the two renderings cannot disagree about what the source says.
+ * standard Markdown, three Pandoc-style **attributed** constructs: a bracketed span `[text]{.role}` and an image
+ * `![alt](src){.role width=240}` (issue #795), and a fenced div, `::: {.role}` on a line of its own, the blocks it
+ * holds, then `:::` (issue #1800, [renderDiv]). See [parseAttrBlock] for what an attribute block may hold, and
+ * [MarkdownHooks.decorateSpan] and [MarkdownHooks.decorateDiv] for how a surface realizes a role. The same source
+ * renders to plain text with [renderMarkdownText]: **one parser** ([renderBlocks], [renderInline]) drives both through
+ * a [MarkdownSink], so the two renderings cannot disagree about what the source says.
  *
  * Deliberately **not** supported (add when the copy needs it): nested lists, reference links, setext headings,
  * and raw inline HTML -- raw HTML is escaped rather than passed through, so a fragment or document can never
@@ -305,8 +321,12 @@ fun String.renderMarkdownText(): String = renderBlocks(this, TextSink)
 
 /** The block walk: [text] split into lines, each block recognized once and handed to [sink] rendered. */
 @KdrPrivate
-fun renderBlocks(text: String, sink: MarkdownSink): String {
-    val lines = text.replace("\r\n", "\n").replace('\r', '\n').split('\n')
+fun renderBlocks(text: String, sink: MarkdownSink): String =
+    sink.document(renderLines(text.replace("\r\n", "\n").replace('\r', '\n').split('\n'), sink))
+
+/** The blocks of [lines], each rendered by [sink]: the walk [renderBlocks] runs, and a fenced div runs on its own lines. */
+@KdrPrivate
+fun renderLines(lines: List<String>, sink: MarkdownSink): List<String> {
     val blocks = mutableListOf<String>()
     var i = 0
     while (i < lines.size) {
@@ -319,6 +339,11 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
         if (!isBlankLine(line)) sink.block(i)
         i = when {
             isBlankLine(line) -> i + 1
+            divOpening(line) != null -> renderDiv(blocks, lines, i, sink)
+            isDivClose(line) -> {
+                sink.note(MarkdownIssue.unmatchedFence, "A closing ':::' with no fenced div open, so it shows as written.", i)
+                renderParagraph(blocks, lines, i, sink)
+            }
             fenceMarker(line) != null -> renderFencedCode(blocks, lines, i, sink)
             headingLevel(line) > 0 -> renderHeading(blocks, line, i, sink)
             isHorizontalRule(line) -> { blocks.add(sink.rule()); i + 1 }
@@ -329,7 +354,7 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
             else -> renderParagraph(blocks, lines, i, sink)
         }
     }
-    return sink.document(blocks)
+    return blocks
 }
 
 // --- block constructs -------------------------------------------------------------------------------------
@@ -338,7 +363,8 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
 @KdrPrivate
 fun startsBlock(line: String): Boolean =
     isBlankLine(line) || fenceMarker(line) != null || headingLevel(line) > 0 || isHorizontalRule(line) ||
-        bulletContent(line) != null || orderedContent(line) != null || isQuoteLine(line) || opensHtmlComment(line)
+        bulletContent(line) != null || orderedContent(line) != null || isQuoteLine(line) || opensHtmlComment(line) ||
+        divOpening(line) != null || isDivClose(line)
 
 /**
  * Whether [line] is wholly an HTML comment, `<!-- ... -->` (issue #1137), which the renderers drop as GitHub does: how a
@@ -398,6 +424,83 @@ fun renderFencedCode(blocks: MutableList<String>, lines: List<String>, start: In
     blocks.add(sink.code(language, body.joinToString("\n")))
     // Skip the closing fence when there is one; an unterminated block simply ends at the last line.
     return if (i < lines.size) i + 1 else i
+}
+
+// --- fenced divs (Pandoc's, issue #1800) ------------------------------------------------------------------
+
+/**
+ * The roles a fenced div opens with at [line], or null when it opens none: three or more colons, then an attribute
+ * block with at least one role and nothing else, `::: {.panel}`. One with no role opens nothing, so its closing `:::`
+ * is reported as having no partner. Its roles are what it means ([MdRolePlace.block]); a width or a height means
+ * nothing on a div, so it is ignored.
+ */
+@KdrPrivate
+fun divOpening(line: String): List<String>? {
+    val t = line.trim()
+    if (!t.startsWith(":::")) return null
+    val rest = t.trimStart(':').trim()
+    val (attrs, length) = parseAttrBlock(rest, 0) ?: return null
+    return if (length == rest.length && attrs.roles.isNotEmpty()) attrs.roles else null
+}
+
+/**
+ * Whether [this] Markdown opens with a fenced div (issue #1800): its first line that is not blank is one. For a surface
+ * that renders a short value as a phrase unless it is written as blocks, as a mail's closing lines are.
+ */
+fun String.opensFencedDiv(): Boolean = lineSequence().firstOrNull { !isBlankLine(it) }?.let { divOpening(it) != null } == true
+
+/** Whether [line] closes a fenced div: three or more colons and nothing else. */
+@KdrPrivate
+fun isDivClose(line: String): Boolean {
+    val t = line.trim()
+    return t.length >= 3 && t.all { it == ':' }
+}
+
+/**
+ * A fenced div opening at [start] (issue #1800): the lines up to the `:::` that closes it, rendered as blocks of their
+ * own and handed to [MarkdownSink.div] with the opening's roles. Divs nest, each closing line closing the innermost, and
+ * a code fence or an HTML comment inside is skipped whole, so a `:::` it shows closes nothing. One that never closes is not a div: its
+ * opening line is text, so the author sees it, and the lines after it render as they would without it.
+ */
+@KdrPrivate
+fun renderDiv(blocks: MutableList<String>, lines: List<String>, start: Int, sink: MarkdownSink): Int {
+    val roles = divOpening(lines[start]) ?: return start + 1
+    var depth = 1
+    var j = start + 1
+    while (j < lines.size) {
+        val line = lines[j]
+        val marker = fenceMarker(line)
+        val commentEnd = htmlCommentEnd(lines, j)
+        if (commentEnd != null) {
+            j = commentEnd
+            continue
+        } else if (marker != null) {
+            j++
+            while (j < lines.size && fenceMarker(lines[j]) != marker) j++
+        } else if (divOpening(line) != null) {
+            depth++
+        } else if (isDivClose(line)) {
+            depth--
+            if (depth == 0) break
+        }
+        j++
+    }
+    if (j >= lines.size) {
+        sink.note(MarkdownIssue.unmatchedFence, "The fenced div opened here is never closed with ':::', so it shows as written.", start)
+        blocks.add(sink.paragraph(renderInline(lines[start].trim(), 0, sink)))
+        return start + 1
+    }
+    val inner = renderLines(lines.subList(start + 1, j), OffsetSink(sink, start + 1))
+    // Told the opening's line again, after the blocks inside moved it on, so a report places the div's roles there.
+    sink.block(start)
+    blocks.add(sink.div(roles, sink.document(inner)))
+    return j + 1
+}
+
+/** [sink] for the lines of a fenced div, which start [offset] lines into the document: places what it reports there. */
+private class OffsetSink(private val sink: MarkdownSink, private val offset: Int) : MarkdownSink by sink {
+    override fun block(line: Int) = sink.block(line + offset)
+    override fun note(code: MarkdownIssue, message: String, line: Int) = sink.note(code, message, line + offset)
 }
 
 /** The ATX heading level of [line] (1..6), or 0 when it is not a heading. */

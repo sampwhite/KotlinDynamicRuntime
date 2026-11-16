@@ -61,6 +61,17 @@ class CopyMailPreviewTest : StringSpec({
         invitation shouldContain MailPreview.sampleToken
         invitation shouldContain "Client ID: ${GrantsDemo.client}"
         invitation shouldContain MailPreview.sampleAddress
+        // Its recipe in a panel, its deadline in the accent, and its closing lines centered, each in the fund's styles
+        // (issue #1800); the text part has the words alone.
+        val invitationHtml = preview(admin, MCOPY.invitation)[CPY.html] as String
+        invitationHtml shouldContain "<div style=\"background-color: #eef5f0; border: 1px solid #c9dccf;"
+        invitationHtml shouldContain "<span style=\"color: #2e7d4f; font-weight: bold;\">The link expires in seven days.</span>"
+        invitationHtml shouldContain "<div style=\"text-align: center;\">\n<p>From the grants team at the Riverbend Community Fund.</p>"
+        invitation shouldContain "The link expires in seven days.\n\nIf the link does not work for you"
+        invitation shouldNotContain ":::"
+        invitation shouldNotContain "{."
+        // The sign-in code's aside, in the fund's muted gray.
+        html shouldContain "<span style=\"color: #6b7c72;\">If you did not ask to sign in, you can ignore this mail.</span>"
     }
 
     "for a client with a sandbox, the words are its sandbox's, and the mail is still the client's" {

@@ -25,6 +25,7 @@ A line of copy can also hold an expression between `${` and `}`, described in [E
 | `---` | A horizontal rule. |
 | `\| a \| b \|`, then `\|---\|---\|` | A table: a header row, a dividing row, then a row per line. |
 | `<!-- note -->`, on lines of its own | A comment, which is not shown. |
+| `::: {.panel}` on a line of its own, then lines, then `:::` | A fenced div: the lines between, with a role on them all, such as a panel; see [Roles](#roles). |
 
 Some Markdown is not read, and is shown in a simpler form:
 
@@ -35,23 +36,39 @@ Some Markdown is not read, and is shown in a simpler form:
 
 ## Roles
 
-A role sets a phrase or an image apart. It is written in braces after a span in square brackets, `[text]{.value}`, or
-after an image, `![alt](src){.float-left}`. A block may hold several roles, and on an image a `width` and a
-`height` in pixels: `{.float-left .icon width=20}`. Anything else in the braces, such as a misspelled
-`widht=`, leaves the whole block shown as written.
+A role sets a phrase, an image, or a block of lines apart. It is written in braces after a span in square brackets,
+`[text]{.value}`, after an image, `![alt](src){.float-left}`, or after the colons opening a fenced div. The braces may
+hold several roles, and on an image a `width` and a `height` in pixels: `{.float-left .icon width=20}`.
+Anything else in the braces, such as a misspelled `widht=`, leaves the whole block shown as written.
+
+A fenced div holds whole blocks (paragraphs, lists, and the rest), so it is how a box or centering reaches several of
+them. It opens with three colons and its roles on a line of their own, and closes with three colons:
+
+```
+::: {.panel}
+Your application is in. **Reviewers score it by May 1.**
+:::
+```
+
+Divs may nest, each `:::` closing the innermost. A div that is never closed, or a `:::` with nothing open, is shown as
+written.
 
 | Role | Written on | What it does | In a mail |
 |---|---|---|---|
 | `.value` | A span | Sets a substituted value apart from the prose, such as an address or a client, so a reader can see what to copy. | In bold. |
 | `.code` | A span | A code a reader reads off and types elsewhere: monospaced, bold, and spaced out. | Large, monospaced, and bold. |
+| `.accent` | A span | Sets a phrase in the accent color, to draw the eye to it, such as a deadline. | In the mail file's `common.accentStyle`, shipped as indigo and bold. |
+| `.muted` | A span | Sets a phrase in a quieter gray, for an aside a reader may skip. | In the mail file's `common.mutedStyle`, shipped as gray. |
 | `.clear` | A span | Written as an empty span, `[]{.clear}`. Ends a floated image here, so what follows goes below the image rather than beside it. | Nothing, since a mail floats no image. |
+| `.panel` | A fenced div | Sets the blocks it holds in a box, apart from the copy around them. | A box in the mail file's `common.panelStyle`, shipped as light gray. The text part shows the blocks alone. |
+| `.center` | A fenced div | Centers the blocks it holds, such as a closing line. With a panel, `{.panel .center}` centers the panel's text. | Centered. |
 | `.float-left` | An image | Floats the image left of the text that follows. On a screen narrower than 480 pixels, it sits above the text instead. | Nothing: a mail shows an image as its alt text. |
 | `.float-right` | An image | Floats the image right of the text that follows. On a screen narrower than 480 pixels, it sits above the text instead. | Nothing: a mail shows an image as its alt text. |
 | `.icon` | An image | With a float, keeps a small image beside its line at any width, a character's space from it: `{.float-left .icon width=20}`. | Nothing: a mail shows an image as its alt text. |
 
-A role that is not one of these, or one written on what it does not apply to, does nothing, so it is caught where a
-misspelling would otherwise go unnoticed: a client's configuration whose copy writes one is refused, and the copy every
-client shares is checked when the server starts.
+A role that is not one of these, or one written on what it does not apply to, does nothing, and a fence with no partner
+is shown as written, so each is caught where a misspelling would otherwise go unnoticed: a client's configuration whose
+copy writes one is refused, and the copy every client shares is checked when the server starts.
 
 ## Images
 

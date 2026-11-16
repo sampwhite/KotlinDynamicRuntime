@@ -47,6 +47,8 @@ import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.mail.MCOPY
+import com.dynamicruntime.common.mail.MailCopy
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
@@ -54,6 +56,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.sha256Hex
@@ -73,6 +76,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import java.io.File
 import java.nio.file.Files
 
@@ -803,7 +807,7 @@ private fun clientFileRefsTests() = stringSpec {
         fun futureOf(entries: List<Map<String, Any?>>) = entries.filter { it[GE.traitId] == future }.map { it[GE.data] }
         val both = listOf(mapOf("id" to "a"), mapOf("id" to "b"))
 
-        // An edit of another slot, as a copy or menu editor makes one -- trialled, as theirs are: a slot this node
+        // An edit of another slot, as a copy or menu editor makes one -- trialed, as theirs are: a slot this node
         // does not read is nothing the write did, so it is not what the trial judges the write by.
         val patched = svc.patchConfigs(writer, trial = true) { edit(classId) { current ->
             current + (CCT.cfactDef to listOf(mapOf(CCT.name to "carryTwo", CCT.group to "carry", CCT.description to "Two.")))
@@ -828,6 +832,32 @@ private fun clientFileRefsTests() = stringSpec {
     }
 
     fun problemsOf(client: String) = ClientConfigIssues.get(forgiving).issuesFor(client).map { it.message }
+
+    "a mail style that fails the check is reported at load and left out of the mail (issue #1800)" {
+        val w = forgiving
+        val client = "mailstyleload"
+        defineClient(client, w)
+        // Stored in-process, as a style saved before the check was would be.
+        GedraConfigService.get(w).writeConfig(
+            writerOf(client, w),
+            gedraConfig(w, "mailwords", clientNamespace(client), client) {
+                fragmentOverlay(AFRAG.mail) {
+                    namespace(MCOPY.common) {
+                        key(MCOPY.panelStyle, "padding: 8px; display: none")
+                        // A footer that merely starts with a list's mark stays the phrase it always was.
+                        key(MCOPY.footer, "- The desk")
+                    }
+                    namespace(MCOPY.signInReminder) { key(MCOPY.body, "::: {.panel}\nBoxed.\n:::") }
+                }
+            },
+        )
+        GedraConfigReload.reloadClient(w, client)
+        problemsOf(client).single { it.contains(MCOPY.panelStyle) } shouldContain "'display: none'"
+        val html = MailCopy.render(w, client, MCOPY.signInReminder, emptyMap()).html
+        html shouldContain "<div>\n<p>Boxed.</p>\n</div>"
+        html shouldNotContain "display"
+        html shouldContain "<p style=\"font-size: 13px; color: #777777;\">- The desk</p>"
+    }
 
     "a load keeps the refs it can serve and says of each other one why it left it out" {
         val w = forgiving
@@ -919,7 +949,7 @@ private fun clientFileRefsTests() = stringSpec {
     }
 
     // A client with a sandbox runs what it published, so its drafts are loaded only by the sandbox -- and a problem a
-    // draft already has is recorded there. The next write to the client has to recognise it as one it already had.
+    // draft already has is recorded there. The next write to the client has to recognize it as one it already had.
     "a draft ref whose file went missing does not refuse the client's later edits" {
         val w = forgiving
         val client = "refdraft"
@@ -1123,6 +1153,7 @@ class SourceFileRefComponent : ComponentDefinition {
         },
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val client = "srcref1153"
     }
@@ -1153,6 +1184,7 @@ class RefLimitComponent : ComponentDefinition {
             for (n in 1..count) fileRef("s$n") { local(root, "pic.png") }
         }
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val root = "art"
         const val over = "reflimitover"

@@ -12,6 +12,8 @@ import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.MarkdownHooks
 import com.dynamicruntime.common.util.escapeMarkdown
 import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.inlineStyleProblem
+import com.dynamicruntime.common.util.opensFencedDiv
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
 import com.dynamicruntime.common.util.renderMarkdownText
@@ -31,6 +33,18 @@ object MCOPY {
     const val common = "common"
     const val footer = "footer"
     const val htmlStyle = "htmlStyle"
+
+    /**
+     * The inline styles of the roles a mail realizes from its copy (issue #1800): a [MDR.panel]'s box, and the
+     * [MDR.accent] and [MDR.muted] phrases. Client-written CSS, as [htmlStyle] is, and held with it to
+     * `inlineStyleProblem` ([styleKeys]).
+     */
+    const val panelStyle = "panelStyle"
+    const val accentStyle = "accentStyle"
+    const val mutedStyle = "mutedStyle"
+
+    /** The [common] keys whose values are inline styles (issue #1800): checked when a client saves them, and as a mail is drawn. */
+    val styleKeys: List<String> = listOf(htmlStyle, panelStyle, accentStyle, mutedStyle)
 
     /**
      * Who every mail is from, as the From header names it (issue #1804): plain words, which a client rewords to name
@@ -189,24 +203,64 @@ object MailCopy {
         val forHtml = sanitized.mapValues { (name, v) ->
             if (v is String && isHttpUrl(v)) "[${v.escapeMarkdown()}]($v)" else safe[name]
         } + (MCOPY.forHtmlParam to true)
-        val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
+        // The client's styles (issue #1800), each one that fails the check left out, so a style a client saved before
+        // the check, or loaded forgiven, never reaches a mail.
+        fun style(key: String): String = copy(MCOPY.common, key).takeIf { inlineStyleProblem(it) == null }.orEmpty()
+        val styles = MailStyles(panel = style(MCOPY.panelStyle), accent = style(MCOPY.accentStyle), muted = style(MCOPY.mutedStyle))
+        val hooks = MarkdownHooks(
+            decorateSpan = { roles, inner -> decorateSpan(roles, inner, styles) },
+            decorateDiv = { roles, inner -> decorateDiv(roles, inner, styles) },
+        )
+        // A closing line is a phrase, as it always was, unless it opens a fenced div (issue #1800): then it is blocks,
+        // so a client can center its footer, and a footer that merely starts with "- " or "# " keeps reading as it did.
         val rendered = body.evalTemplate(forHtml, env = env).renderMarkdown(hooks) +
-            closing.joinToString("") { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml, env = env).renderMarkdownInline(hooks) + "</p>" }
+            closing.joinToString("") {
+                val line = it.evalTemplate(forHtml, env = env)
+                if (line.opensFencedDiv()) {
+                    "<div style=\"$footerStyle\">\n" + line.renderMarkdown(hooks) + "</div>\n"
+                } else {
+                    "<p style=\"$footerStyle\">" + line.renderMarkdownInline(hooks) + "</p>"
+                }
+            }
         // Who it is from (issue #1804), as plain words: Markdown reduced to its text, as the subject reads.
         val fromName = copy(MCOPY.common, MCOPY.fromName).evalTemplate(sanitized, env = env).renderMarkdownText().trim()
-        return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)), fromName)
+        return RenderedMail(subject, text, wrapHtml(rendered, style(MCOPY.htmlStyle)), fromName)
+    }
+
+    /** The client's styles for the roles a mail realizes (issue #1800), each checked, and empty where it set none. */
+    private class MailStyles(val panel: String, val accent: String, val muted: String)
+
+    /**
+     * How a span's role is realized in a mail (issue #795): the [MDR.code] role as the code style, [MDR.value] as bold,
+     * each an anchor with no `href` so it is never linkified (see the class note); [MDR.accent] and [MDR.muted] in the
+     * client's styles (issue #1800); any other role takes the renderer's default. Receives rendered, escaped HTML and
+     * wraps it, so nothing here can re-open the escaping, and a client's style is escaped for its attribute.
+     */
+    private fun decorateSpan(roles: List<String>, innerHtml: String, styles: MailStyles): String? = when {
+        MDR.code in roles -> "<a style=\"$codeStyle\">$innerHtml</a>"
+        MDR.value in roles -> "<a style=\"$valueStyle\">$innerHtml</a>"
+        MDR.accent in roles -> styled("span", styles.accent, innerHtml)
+        MDR.muted in roles -> styled("span", styles.muted, innerHtml)
+        else -> null
     }
 
     /**
-     * How a role is realized in a mail (issue #795): the [MDR.code] role as the code style, [MDR.value] as bold, each
-     * an anchor with no `href` so it is never linkified (see the class note); any other role takes the renderer's
-     * default. Receives rendered, escaped HTML and wraps it, so nothing here can re-open the escaping.
+     * How a fenced div's roles are realized in a mail (issue #1800): a [MDR.panel] as a box in the client's panel style,
+     * [MDR.center] as centered, the two together as both; any other role takes the renderer's default.
      */
-    private fun decorateValue(roles: List<String>, innerHtml: String): String? = when {
-        MDR.code in roles -> "<a style=\"$codeStyle\">$innerHtml</a>"
-        MDR.value in roles -> "<a style=\"$valueStyle\">$innerHtml</a>"
-        else -> null
+    private fun decorateDiv(roles: List<String>, innerHtml: String, styles: MailStyles): String? {
+        if (MDR.panel !in roles && MDR.center !in roles) return null
+        val style = listOfNotNull(styles.panel.takeIf { MDR.panel in roles }, centerStyle.takeIf { MDR.center in roles })
+            .joinToString(" ")
+        return styled("div", style, "\n" + innerHtml) + "\n"
     }
+
+    /** [innerHtml] in a [tag] with [style], escaped for its attribute; no attribute when the style is empty. */
+    private fun styled(tag: String, style: String, innerHtml: String): String =
+        if (style.isBlank()) "<$tag>$innerHtml</$tag>" else "<$tag style=\"${escapeHtml(style)}\">$innerHtml</$tag>"
+
+    /** A centered block's style: the one a mail sets itself, since centering needs no client's choice. */
+    private const val centerStyle = "text-align: center;"
 
     /** A value's emphasis, as an anchor with no `href` so it is never linkified (see the class note). */
     private const val valueStyle = "font-weight: bold; color: inherit; text-decoration: none;"

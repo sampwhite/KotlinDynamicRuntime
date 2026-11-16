@@ -49,8 +49,17 @@ enum class MarkdownIssue : ProblemCode {
      */
     unknownRole,
 
-    /** A role written on what it does not apply to (issue #1562): an image role on a span, or a span role on an image. */
+    /**
+     * A role written on what it does not apply to (issue #1562): an image role on a span, a span role on an image, or a
+     * fenced div's role on either (issue #1800).
+     */
     misplacedRole,
+
+    /**
+     * A fenced div's fence with no partner (issue #1800): an opening never closed, or a closing with nothing open. The
+     * fence shows as written.
+     */
+    unmatchedFence,
 
     /**
      * Inline constructs nested past the cap -- the one fault that stops the render. A guard: each inline construct
@@ -179,11 +188,16 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
         return html.span(roles, inner)
     }
 
+    override fun div(roles: List<String>, inner: String): String {
+        checkRoles(roles, MdRolePlace.block)
+        return html.div(roles, inner)
+    }
+
     /** Reports each of [roles] that is no declared role, or one that is declared for the other [place] (issue #1562). */
     private fun checkRoles(roles: List<String>, place: MdRolePlace) {
         for (name in roles) {
             val role = markdownRoles.firstOrNull { it.name == name }
-            val (what, applies) = if (place == MdRolePlace.image) "an image" to "a span" else "a span" to "an image"
+            val what = placeName(place)
             when {
                 role == null -> problems.add(
                     mdWarning(
@@ -196,12 +210,19 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
                 role.place != place -> problems.add(
                     mdWarning(
                         MarkdownIssue.misplacedRole,
-                        "The role '.$name' is written on $what, but it applies only to $applies, so it does nothing there.",
+                        "The role '.$name' is written on $what, but it applies only to ${placeName(role.place)}, so it does " +
+                            "nothing there.",
                         line + 1,
                     ),
                 )
             }
         }
+    }
+
+    private fun placeName(place: MdRolePlace): String = when (place) {
+        MdRolePlace.span -> "a span"
+        MdRolePlace.image -> "an image"
+        MdRolePlace.block -> "a fenced div"
     }
 
     private fun record(target: String, image: Boolean) {
@@ -265,12 +286,15 @@ fun String.componentImageNames(): List<String> = analyzeMarkdown().links.mapNotN
 
 /**
  * What is wrong with the roles [this] Markdown writes (issue #1562): each role no surface realizes, and each written on
- * what it does not apply to, as [MarkdownIssue.unknownRole] and [MarkdownIssue.misplacedRole] problems. For a check of
- * copy, which reports them rather than letting a misspelled role render as nothing.
+ * what it does not apply to, as [MarkdownIssue.unknownRole] and [MarkdownIssue.misplacedRole] problems, and each fenced
+ * div's fence with no partner, as [MarkdownIssue.unmatchedFence] (issue #1800). For a check of copy, which reports them
+ * rather than letting a misspelled role render as nothing, or a panel show its fence.
  */
 fun String.roleProblems(): List<Problem> =
-    if (!contains("{.")) emptyList()
-    else analyzeMarkdown().problems.filter { it.code == MarkdownIssue.unknownRole || it.code == MarkdownIssue.misplacedRole }
+    if (!contains("{.") && !contains(":::")) emptyList()
+    else analyzeMarkdown().problems.filter { it.code in roleProblemCodes }
+
+private val roleProblemCodes = setOf(MarkdownIssue.unknownRole, MarkdownIssue.misplacedRole, MarkdownIssue.unmatchedFence)
 
 /** A target with no scheme that is not a same-document anchor or protocol-relative: a path the resolver maps. */
 private fun isRelativeTarget(target: String): Boolean {

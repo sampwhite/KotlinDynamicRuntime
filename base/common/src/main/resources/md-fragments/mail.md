@@ -30,7 +30,11 @@
    `testDeploymentNote` follows that on a public test deployment only (issue #1150). `fromName` is who every mail is
    from, the From header's name beside the deployment's address (issue #1804): plain words, Markdown reduced to text;
    a client names itself with `${clientName}`, and empty sends the address alone. The registration code has no client,
-   so it is always the deployment's. -/
+   so it is always the deployment's. `panelStyle`, `accentStyle`, and `mutedStyle` (issue #1800) are the inline
+   styles of a panel (`::: {.panel}`, the blocks, then `:::`) and of the `[text]{.accent}` and `[text]{.muted}` roles,
+   which a client sets beside its body's; a `::: {.center}` block, a centered closing line say, needs no style. All
+   four styles are checked when a client saves them: nothing that loads or hides something, so no `url(`, `display`,
+   or `position`. -/
 # @common
 /-where Mail: the name every mail is from, shown in the inbox list and above the subject. -/
 # +fromName KotlinDynamicRuntime
@@ -40,6 +44,12 @@
 # +sentFrom Sent from ${siteHost}.
 /-where Mail: the style of every mail as it is drawn, its font, size, and colors. -/
 # +htmlStyle font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color: #222222;
+/-where Mail: the style of a boxed section of a mail, its background, border, and spacing. -/
+# +panelStyle background-color: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 6px; padding: 4px 16px; margin: 16px 0;
+/-where Mail: the style of a phrase a mail sets in its accent color, such as a deadline. -/
+# +accentStyle color: #4f46e5; font-weight: bold;
+/-where Mail: the style of a phrase a mail sets in a quieter gray, such as an aside. -/
+# +mutedStyle color: #777777;
 /-where none: a public test deployment's own warning. -/
 # +testDeploymentNote This deployment is for testing and development only, and its data may be reset at any time.
 
