@@ -104,7 +104,7 @@ class ClientSelfServeCreateTest : StringSpec({
             AEP.createOwnClient,
             mapOf(
                 CLD.name to "Branded", CLD.homeBrand to " Maker Co ", CLD.homeTitle to "Welcome to Maker",
-                CLD.homeIntro to "**Hello** there.", CLD.homeNote to "   ",
+                CLD.homeIntro to "**Hello** there.",
             ),
         )[CLD.client].toOptStr().shouldNotBeNull()
         // In the editors' own config, published -- though the client has a sandbox, whose copy edits are drafts.
@@ -114,7 +114,7 @@ class ClientSelfServeCreateTest : StringSpec({
         val copyRow = GedraConfigService.get(cxt).readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
             .shouldNotBeNull()
         copyRow.isPublished shouldBe true
-        // What the client's home page reads: trimmed, and a blank note left out, so the shipped one stands.
+        // What the client's home page reads: trimmed.
         val home = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, client).shouldNotBeNull().content[HFRAG.homeNs]
             .shouldNotBeNull()
         home[HFRAG.brand] shouldBe "Maker Co"
@@ -142,7 +142,7 @@ class ClientSelfServeCreateTest : StringSpec({
     }
 
     "only the home keys a self-serve create sets are taken, each trimmed, a blank one left out" {
-        ClientSelfServeCreate.homeCopy(mapOf(HFRAG.brand to " B ", HFRAG.note to " ", HFRAG.intro to "I", "other" to "x")) shouldBe
+        ClientSelfServeCreate.homeCopy(mapOf(HFRAG.brand to " B ", HFRAG.title to " ", HFRAG.intro to "I", "other" to "x")) shouldBe
             mapOf(HFRAG.home to mapOf(HFRAG.homeNs to mapOf(HFRAG.brand to "B", HFRAG.intro to "I")))
         ClientSelfServeCreate.homeCopy(mapOf(HFRAG.title to "  ")) shouldBe emptyMap()
     }

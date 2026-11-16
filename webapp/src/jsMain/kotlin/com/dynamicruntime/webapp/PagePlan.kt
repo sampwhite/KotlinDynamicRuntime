@@ -153,11 +153,11 @@ class PageJumpRow(val buttons: List<Pair<String, String>>, val links: String?) {
 }
 
 /**
- * The jump row of the page [parts] that the fence [row] draws (issue #1794). It is led by a button for each drawn card
- * that is the page's call to action ([homeCardJumpButtons]). Then come the fence's copy, links written in Markdown, a
- * link to each other drawn fence with a `jumpLabel`, and one to each drawn card that asks for one
- * ([homeCardJumpLinks]), written in the copy's style ([withCardJumpLinks]). A link to a fence or a card not drawn for
- * this caller is left out ([jumpLinksFor]). [cardsOf] gives a `cardsBlock` fence's cards. Pure, covered under
+ * The jump row of the page [parts] that the fence [row] draws (issues #1794, #1795). It is led by a button for each
+ * drawn card that is the page's call to action ([homeCardJumpButtons]). Then come the fence's copy, links written in
+ * Markdown and drawn as written, a link to each other drawn fence with a `jumpLabel`, and one to each drawn card that
+ * asks for one ([homeCardJumpLinks]), written in the copy's style ([jumpRowLinks]). Only what is
+ * drawn is linked, so no link leads nowhere. [cardsOf] gives a `cardsBlock` fence's cards. Pure, covered under
  * `jsNodeTest`.
  */
 fun pageJumpRow(
@@ -171,7 +171,5 @@ fun pageJumpRow(
     val fenceLinks = placed.filter { it !== row }.mapNotNull { part ->
         part.fence.jumpLabel?.takeIf { it.isNotBlank() }?.let { it to part.elementId }
     }
-    val drawn = placed.map { it.elementId }.toSet() + cards.filterNot { it.leadsJumpRow }.map { homeCardElementId(it.id) }
-    val source = withCardJumpLinks(row.copy, fenceLinks + homeCardJumpLinks(cards, assistantView))
-    return PageJumpRow(homeCardJumpButtons(cards), jumpLinksFor(source, drawn))
+    return PageJumpRow(homeCardJumpButtons(cards), jumpRowLinks(row.copy, fenceLinks + homeCardJumpLinks(cards, assistantView)))
 }

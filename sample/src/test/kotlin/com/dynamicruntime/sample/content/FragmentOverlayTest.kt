@@ -21,8 +21,6 @@ import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
-import com.dynamicruntime.kdn.Startup
-import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.sample.SampleTestInstances
 import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
@@ -231,6 +229,6 @@ private fun sampleImageTests() = stringSpec {
 
     "acme's home page shows it" {
         val copy = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, SC.acme)
-        copy?.content?.get("home")?.get("note").orEmpty() shouldContain "img:${SF.siteVisitFlow}"
+        copy?.content?.get("home")?.get("intro").orEmpty() shouldContain "img:${SF.siteVisitFlow}"
     }
 }

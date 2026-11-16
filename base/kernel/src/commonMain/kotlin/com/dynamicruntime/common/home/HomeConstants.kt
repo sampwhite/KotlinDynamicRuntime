@@ -266,15 +266,14 @@ object HFLD {
 }
 
 /**
- * The ids the public home page's sections had (issue #1576), which the home copy's jump links pointed at, as
- * `#home.demos`. Home is drawn from its page document now (issue #1794), each part in an element `page.<id>`, so no
- * element has these ids; they are kept only for the webapp's `publicHomeSections` and its tests, and go with them
- * (issue #1795).
+ * The ids of Home's document's parts that code links to (issue #1795), each drawn in an element `page.<id>`
+ * (`PGW.elementIdPrefix`): a card's text may link one, as the assistant's "Design your own forms" links the create card.
+ * The home page's test holds the shipped document to having each.
  */
 @Suppress("ConstPropertyName")
-object HSEC {
-    const val demos = "home.demos"
-    const val ownClient = "home.own-client"
+object HPART {
+    /** The part that creates a person's own client, or opens the one they made. */
+    const val ownClient = "ownClient"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */
@@ -516,19 +515,17 @@ object HACT {
 object HFRAG {
     const val home = "home"
 
-    /** The home file's namespace for the home page's own copy: its wordmark, title, intro, and note. */
+    /** The home file's namespace for the home page's own copy: its wordmark, title, intro, and jump links. */
     const val homeNs = "home"
 
     /** The home page's copy keys a self-serve create sets (issue #1336). */
     const val brand = "brand"
     const val title = "title"
     const val intro = "intro"
-    const val note = "note"
 
     /**
-     * The home page's jump links (issues #1576, #1794): the copy of its `jumpLinks` fence, Markdown links that lead the
-     * row under the title, before the links to the page's parts that have a jumpLabel. A link to a part (`#page.demos`)
-     * is kept only where that part is drawn for the caller; any other link as written.
+     * The home page's jump links (issues #1576, #1794, #1795): the copy of its `jumpLinks` fence, Markdown links that
+     * lead the row under the title, drawn as written, before the links to the page's parts that have a jumpLabel.
      */
     const val jumpLinks = "jumpLinks"
 

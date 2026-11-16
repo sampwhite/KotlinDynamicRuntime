@@ -1,10 +1,17 @@
 package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.page.PGW
+import com.dynamicruntime.common.page.PageFenceSource
+import com.dynamicruntime.common.page.readPageFence
+import com.dynamicruntime.common.page.splitPageDocument
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.uiblock.uiBlock
+import com.dynamicruntime.common.util.toJsonListOfMaps
 
 /**
  * The home cards, as data (issue #1636): what Home shows each caller beyond the copy everyone in the client reads.
@@ -128,5 +135,28 @@ fun homeCardsBlock(): UiBlockSource = uiBlock(
             ),
             cfactExpression = CFACTS.isDeploymentOperator,
         )
+    }
+}
+
+/** A Markdown link to a part of the page it is drawn on: `](#id)`. */
+private val inPageLink = Regex("""]\(#([^)\s]+)\)""")
+
+/**
+ * The links in the home cards' text that lead nowhere on Home (issue #1795), each said with its card: an in-page link
+ * (`#id`) names a part of Home's document as shipped (`page.<id>`, [shippedHomeDocument]) or a home card
+ * (`home.card.<id>`), and one naming neither is dead. Read over the cards every client shares, as merged on [cxt]'s node,
+ * so a component's cards are held to it too. A card's link once went dead silently when a part's id changed (#1794);
+ * the home page's tests call this, the assistant's among them.
+ */
+fun homeCardDeadLinks(cxt: KdrCxt): List<String> {
+    val parts = shippedHomeDocument()?.let { document ->
+        splitPageDocument(document).filterIsInstance<PageFenceSource>()
+            .mapNotNull { readPageFence(it).getOrNull()?.id }.map { PGW.elementIdPrefix + it }
+    }.orEmpty()
+    val cards = UiBlockService.get(cxt).merged(cxt, HCARD.block, null).content[HCARD.cards].toJsonListOfMaps()
+    val targets = parts.toSet() + cards.mapNotNull { it[HFLD.id] as? String }.map { HCARD.elementIdPrefix + it }
+    return cards.flatMap { card ->
+        inPageLink.findAll(card[HCARD.text] as? String ?: "").map { it.groupValues[1] }.filterNot { it in targets }
+            .map { "The home card '${card[HFLD.id]}' links '#$it', which nothing on Home has." }.toList()
     }
 }

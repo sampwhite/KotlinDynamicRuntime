@@ -11,10 +11,11 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
-import com.dynamicruntime.common.home.HSEC
+import com.dynamicruntime.common.home.HPART
 import com.dynamicruntime.common.home.homeCard
 import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.menuItem
+import com.dynamicruntime.common.page.PGW
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -125,7 +126,7 @@ class AssistantComponent : ComponentDefinition {
                 )
                 homeCard(
                     ASST.createHomeCard, "Design your own forms",
-                    "[Create a client of your own](#${HSEC.ownClient}) and the workflow assistant helps you build it: " +
+                    "[Create a client of your own](#${PGW.elementIdPrefix}${HPART.ownClient}) and the workflow assistant helps you build it: " +
                         "describe the form you want people to fill in and the steps it goes through, and it drafts them " +
                         "for you to try.",
                     // Not once the person has made their client (issue #1743): the page's own-client section opens it.

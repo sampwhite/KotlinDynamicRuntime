@@ -131,13 +131,15 @@ class PagePlanTest {
         val doc = fence("""{"id": "jump", "widget": "jumpLinks", "copy": "pages.links"}""") + "\n" +
             fence("""{"id": "cards", "widget": "cardsBlock", "block": "${HCARD.block}"}""") + "\n" +
             fence("""{"id": "demos", "widget": "hero", "jumpLabel": "Try a demo"}""")
-        val linksCopy = Copy(mapOf("pages" to mapOf("links" to "- [Start here](/docs/start-here.md)\n- [Gone](#page.gone)")))
+        val linksCopy = Copy(mapOf("pages" to mapOf("links" to "- [Start here](/docs/start-here.md)\n- [Elsewhere](#page.elsewhere)")))
         val parts = planPage(doc, linksCopy, emptyMap(), drawable = { true }, shows = { true })
         val row = pageJumpRow(parts, parts.first() as PagePlaced, { cards }, null)
-        // The call to action is a button; the copy's links lead, then the fences', then the cards'.
+        // The call to action is a button; the copy's links lead, drawn as written (issue #1795), then the fences', then
+        // the cards' -- each only for what is drawn.
         assertEquals(listOf("Register" to "register"), row.buttons)
         assertEquals(
-            "- [Start here](/docs/start-here.md)\n- [Try a demo](#page.demos)\n- [Getting started](#home.card.checklist)",
+            "- [Start here](/docs/start-here.md)\n- [Elsewhere](#page.elsewhere)\n- [Try a demo](#page.demos)\n" +
+                "- [Getting started](#home.card.checklist)",
             row.links,
         )
         // With nothing drawn further down and no copy, the row has nothing to hold.

@@ -1116,8 +1116,7 @@ button.wf-cell-folded { display: none; }
 .wf-reasons { margin: 0; padding-left: 18px; }
 /* A workflow's help under its title, and the home page's note under its intro (issue #1221): copy, read as such. */
 .wf-help { color: var(--text-muted); margin: 4px 0 8px; }
-.wf-help p, .page-part-note p { margin: 4px 0; }
-.page-part-note { margin-top: 12px; }
+.wf-help p { margin: 4px 0; }
 /* The home page's jump links (issue #1576): a recessive row of links under the title, wrapping on a phone. */
 /* A call to action leads the row as a button (issue #1698), the copy's links beside it, so a phone has it on its first
    screen. */

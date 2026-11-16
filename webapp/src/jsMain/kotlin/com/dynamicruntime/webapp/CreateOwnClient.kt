@@ -352,7 +352,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                         li { +"A person creates one; once yours is made, this card opens it." }
                     }
                     textField("Name", name, disabled = busy, placeholder = "The name people see", maxLength = 80) { name = it }
-                    // "Internal": the home page below has a note of its own, which the client's people do see.
+                    // "Internal": the home page's introduction below is what the client's people see.
                     textField("Internal note", description, disabled = busy, placeholder = "Optional: who, what or why; only administrators see it") { description = it }
                     choiceRow("Time zone") {
                         TimeZonePicker {
@@ -411,16 +411,14 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                         setHome(CLD.homeBrand, it)
                     }
                     textField("Title", homeText(CLD.homeTitle), disabled = busy, placeholder = "Welcome", maxLength = CLD.homeTitleMaxLength) { setHome(CLD.homeTitle, it) }
-                    for ((field, label) in listOf(CLD.homeIntro to "Introduction", CLD.homeNote to "Note")) {
-                        choiceRow(label) {
-                            TextArea {
-                                value = homeText(field)
-                                disabled = busy
-                                placeholder = if (field == CLD.homeIntro) "What your client is for. Markdown." else "Optional, beneath the introduction. Markdown."
-                                maxLength = CLD.homeTextMaxLength
-                                asDynamic()["rows"] = fittedRows(homeText(field), 2, 8)
-                                onChange = { e -> setHome(field, e.target.value as String) }
-                            }
+                    choiceRow("Introduction") {
+                        TextArea {
+                            value = homeText(CLD.homeIntro)
+                            disabled = busy
+                            placeholder = "What your client is for. Markdown."
+                            maxLength = CLD.homeTextMaxLength
+                            asDynamic()["rows"] = fittedRows(homeText(CLD.homeIntro), 2, 8)
+                            onChange = { e -> setHome(CLD.homeIntro, e.target.value as String) }
                         }
                     }
                     for (def in WebAssetKinds.slotDefs) {

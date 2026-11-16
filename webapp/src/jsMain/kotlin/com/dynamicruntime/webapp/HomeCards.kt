@@ -233,8 +233,11 @@ fun <T : Any> useCardRead(wanted: Boolean, decidedAt: Int, key: String?, what: S
     return value
 }
 
-/** The element id of card [id], so an address can name it. A dot, as the public home's sections have (`HSEC`). */
-fun homeCardElementId(id: String): String = "home.card.$id"
+/**
+ * The element id of card [id], so an address can name it. Its dot keeps it apart from the id Markdown gives a heading
+ * (`headingSlug`), which never has one, as a page part's (`page.<id>`) is kept apart.
+ */
+fun homeCardElementId(id: String): String = HCARD.elementIdPrefix + id
 
 /**
  * The primary button's words for the assistant's [card] (issue #1636), from what the assistant's status says ([view],

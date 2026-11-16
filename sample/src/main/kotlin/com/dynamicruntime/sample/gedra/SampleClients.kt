@@ -409,11 +409,12 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                         "administrator, so all of it is yours to look at and change.\n\n" +
                         "Open **Forms** from the menu, and choose **Create a form** to file an expense report. **My client**, " +
                         "on the **Your client** card on this page, holds Acme's configuration: a change you make there is a " +
-                        "draft, which you try in Acme's sandbox before you publish it.",
+                        "draft, which you try in Acme's sandbox before you publish it.\n\n" +
+                        // An image the sample component ships (issue #1339), the same for every client that names it, served
+                        // from the component's resources. Once a note beneath the intro, a slot the home page's document
+                        // replaced (issue #1795).
+                        "![How a site visit flows: request, visit, report](img:${SF.siteVisitFlow})\n\nEvery site visit goes the same way.",
                 )
-                // An image the sample component ships (issue #1339), in the note beneath the intro, which is empty as
-                // shipped: the same image for every client that names it, served from the component's resources.
-                key("note", "![How a site visit flows: request, visit, report](img:${SF.siteVisitFlow})\n\nEvery site visit goes the same way.")
             }
             // What a form with no workflows shows in the forms list's workflow column (issue #791).
             namespace(HFRAG.formsNs) {

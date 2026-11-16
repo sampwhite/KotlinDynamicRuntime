@@ -416,7 +416,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "Creates the caller's own self-serve client (issue #1113), for a person signed in to '${CL.public}', who " +
             "creates one. Its id is generated from its name ('${CUST.free}${CUST.separator}...'); it has no " +
             "customer, so it is on the free plan, and it has a sandbox. The creator gets their own admin user there, " +
-            "and the session moves to it. Its home page's wordmark, title, intro and note may be given too (issue " +
+            "and the session moves to it. Its home page's wordmark, title, and intro may be given too (issue " +
             "#1336): written and published with the client, so they show at once. Otherwise refused for what the " +
             "platform's create refuses, in the same words.",
         HttpMethod.POST,
@@ -430,10 +430,6 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             }
             field(CLD.homeTitle, "The home page's title.") { maxLength = CLD.homeTitleMaxLength }
             field(CLD.homeIntro, "The home page's introduction, in Markdown.") {
-                maxLength = CLD.homeTextMaxLength
-                longText = true
-            }
-            field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.") {
                 maxLength = CLD.homeTextMaxLength
                 longText = true
             }

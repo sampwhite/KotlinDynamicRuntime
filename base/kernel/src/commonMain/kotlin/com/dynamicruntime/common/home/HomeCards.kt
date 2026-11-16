@@ -19,6 +19,9 @@ object HCARD {
     /** The block's array of cards, and the home config's `state` entry holding this caller's. */
     const val cards = "cards"
 
+    /** A card's element id on Home is this and its id, `home.card.register`, so a link or an address can name it. */
+    const val elementIdPrefix = "home.card."
+
     /** A card's heading. */
     const val title = "title"
 

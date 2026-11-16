@@ -113,10 +113,10 @@ class ComponentImageTest : StringSpec({
 
     "copy every client shares naming an image no component ships is a fragment problem" {
         val copy = fragmentInline(HFRAG.home, origin = "imageTest") {
-            namespace("home") { key("note", "![Shipped](img:${ImageFixture.dot}) and ![Not shipped](img:imgfix:none)") }
+            namespace("home") { key(HFRAG.intro, "![Shipped](img:${ImageFixture.dot}) and ![Not shipped](img:imgfix:none)") }
         }
         sharedCopyNamingNoImage(cxt, listOf(copy)) shouldBe
-            listOf("'${HFRAG.home}' home.note shows the image img:imgfix:none, which no component ships")
+            listOf("'${HFRAG.home}' home.intro shows the image img:imgfix:none, which no component ships")
     }
 
     "a client's copy naming an image no component ships is refused with its configuration" {
@@ -129,7 +129,7 @@ class ComponentImageTest : StringSpec({
                         enabledEnvironments = setOf(ENV.unit, ENV.local),
                     ),
                 )
-                fragmentOverlay(HFRAG.home) { namespace("home") { key("note", note) } }
+                fragmentOverlay(HFRAG.home) { namespace("home") { key(HFRAG.intro, note) } }
             }
             GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("imgcopy", client), config)
             GedraConfigReload.reloadClient(cxt, client)

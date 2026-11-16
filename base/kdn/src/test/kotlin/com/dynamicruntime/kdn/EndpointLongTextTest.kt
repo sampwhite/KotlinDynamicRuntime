@@ -29,8 +29,8 @@ class EndpointLongTextTest : StringSpec({
         longTextOf(CPY.setPath, COV.value) shouldBe mapOf(COV.value to true)
         longTextOf(DSV.headingEdit, DSV.label, DSV.description) shouldBe mapOf(DSV.label to false, DSV.description to true)
         longTextOf(DSV.sharedHeadingEdit, DSV.label, DSV.description) shouldBe mapOf(DSV.label to false, DSV.description to true)
-        longTextOf(AEP.createOwnClient, CLD.homeTitle, CLD.homeIntro, CLD.homeNote) shouldBe
-            mapOf(CLD.homeTitle to false, CLD.homeIntro to true, CLD.homeNote to true)
+        longTextOf(AEP.createOwnClient, CLD.homeTitle, CLD.homeIntro) shouldBe
+            mapOf(CLD.homeTitle to false, CLD.homeIntro to true)
     }
 
     "a trait narrowing's introduction is long text, and its name is not" {

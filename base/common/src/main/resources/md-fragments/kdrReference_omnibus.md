@@ -48,12 +48,9 @@ If you registered here before, log in instead. An account lasts only until the s
 
 # @home
 
-/- "Start here" leading the row of jump links (issue #1576), before the page's parts that name themselves (issue #1794),
-   and before that the Register card (issue #1652), named here so it leads: a link to a card not drawn for the caller is
-   left out, so a signed-in visitor sees "Start here" first, and one who has not signed in sees Register and "Start
-   here". -/
+/- "Start here" leading the row of jump links (issue #1576), before the page's parts that name themselves (issue
+   #1794). Register leads it for a visitor who has not signed in, as a button its card puts there (issue #1698). -/
 # +jumpLinks
-- [Register](#home.card.register)
 - [Start here](/docs/start-here.md)
 
 

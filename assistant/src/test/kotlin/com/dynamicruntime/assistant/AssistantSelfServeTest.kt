@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.homeCardDeadLinks
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.user.ADEP
@@ -30,6 +31,7 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -57,6 +59,11 @@ class AssistantSelfServeTest : StringSpec({
     )
     val cxt = boot("assistantSelfServe1568", selfServe = true)
     val service = AssistantService.get(cxt)
+
+    "the assistant's cards link only to what Home draws, as its create card links the page's own-client part" {
+        // Its "Design your own forms" once linked an id Home no longer had (issues #1794, #1795).
+        homeCardDeadLinks(cxt).shouldBeEmpty()
+    }
 
     /** A person's own client, made from `public`, and the person: now its administrator there. */
     fun ownClient(on: KdrCxt, email: String): Pair<String, TestUser> {
