@@ -81,7 +81,7 @@ block and, in its content, each item it changes. The menu's block is `$${HMENU.b
 | `$${HFLD.id}` | Which item. Required, and never changed: it is how every layer finds the item. |
 | `$${HFLD.label}` | The words shown. |
 | `$${UIB.cfactExpression}` | Who is offered it, as a test written in [facts](facts.md). |
-| `$${UIB.action}` | What choosing it does: a string opens that page, and an array calls a function, then its arguments. |
+| `$${UIB.action}` | What choosing it does: a string opens that page, and an array calls a function, then its arguments. `["$${HACT.openPage.name}", "<key>"]` opens a [page of the client's own](page-widgets.md#pages-of-your-own), which the client must have. |
 | `$${UIB.parentId}` | The item it sits under, for one level of nesting. A parent is drawn as a group header and has no action of its own. |
 | `$${UIB.displayOrder}` | Where it sorts. The platform's items are spaced $${UIB.orderStep} apart, so an item can land between two. |
 
@@ -142,11 +142,12 @@ Home's cards are the block `$${HCARD.block}`, their items under `$${HCARD.cards}
 named by id, hidden with `$${CFACT.neverName}`, reworded with a new `$${HCARD.title}` or `$${HCARD.text}`. They have no editor, so a
 change is an overlay in the client's configuration.
 
-**Where on Home a card is drawn** is Home's page's to say, not the card's. Home is a page written as copy (the
+**Where a card is drawn** is a page's to say, not the card's. Home is a page written as copy (the
 `$${HFRAG.home}` file's `$${HFRAG.pageNs}.$${HFRAG.pageHome}` key), and each `cardsBlock` fence in it draws the cards it names, or every
 card it does not leave out. A card is drawn by the first fence that names it, so the shipped page draws the checklist
 above the introduction and the rest below it. To move a card, change the page, as
-[Page widgets](page-widgets.md#cardsblock) describes.
+[Page widgets](page-widgets.md#cardsblock) describes. A [page of the client's own](page-widgets.md#pages-of-your-own)
+draws cards the same way, so a card may appear there as well as on Home.
 
 A card whose body is copy is the exception: it names a key of the `home` copy file in `$${HCARD.textCopy}`, and the page
 draws that key's words in place of its `$${HCARD.text}`, so an overlay's `$${HCARD.text}` changes nothing there. Reword such a card's

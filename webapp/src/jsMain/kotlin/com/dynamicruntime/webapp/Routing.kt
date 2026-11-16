@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 
 /**
@@ -126,6 +127,9 @@ object HP {
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 
+    /** A page document's page (issue #1796): the id of the page, a key of the home file's page documents. */
+    const val pageId = "pageId"
+
     /**
      * Documents page: the heading of the open document to scroll to (issue #1136) -- the `#section` a link into the
      * document named. It is the address's anchor (`/wa/docs/readme#configuration`), as an in-page link's is: the
@@ -229,6 +233,7 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageCatalog, "catalog"),
     RouteDef(HMENU.pageDocs, "docs"),
     RouteDef(HMENU.pageDocs, "docs/:${HP.doc}", anchor = HP.section),
+    RouteDef(HMENU.pagePage, "page/:${HP.pageId}"),
     RouteDef(HMENU.pageLogin, "login"),
     RouteDef(HMENU.pageRegister, "register"),
     RouteDef(HMENU.pageClaim, "claim"),
@@ -787,3 +792,13 @@ private fun decodeUri(s: String): String = try {
 } catch (_: Throwable) {
     s
 }
+
+/**
+ * The route of the page document [id] (issue #1796): `/wa/page/<id>`, which a menu item's `openPage` opens -- or Home's
+ * own address for Home's page, so Home has one.
+ */
+fun pageDocumentRoute(id: String): List<Pair<String, String>> =
+    if (isPageDocumentId(id)) listOf(HP.page to HMENU.pagePage, HP.pageId to id) else emptyList()
+
+/** Whether [id] names a page document other than Home's (issue #1796): a page drawn at `/wa/page/<id>`. Pure. */
+fun isPageDocumentId(id: String?): Boolean = !id.isNullOrEmpty() && id != HFRAG.pageHome

@@ -5,15 +5,13 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.isVariableName
 
 /**
- * What a page document's fences are judged against (issue #1792): the [catalog] of widget kinds, whether the copy is
- * [shipped] (a component's or a flavor's) or a client's own, whether a `copy` key exists in the page's own fragment
- * file ([copyKeyExists]), the cfacts a condition may name at all ([knownCfacts]), and those a page can see
+ * What a page document's fences are judged against (issue #1792): the [catalog] of widget kinds, whether a `copy` key
+ * exists in the page's own fragment file ([copyKeyExists]), the cfacts a condition may name at all ([knownCfacts]), and those a page can see
  * ([pageCfacts]): the facts about the request that are sent to the frontend (issue #1793), which are all a condition
  * judged in the browser, for a caller and not a form, can hold on.
  */
 class PageCheckScope(
     val catalog: PageWidgetCatalog,
-    val shipped: Boolean,
     val copyKeyExists: (namespace: String, key: String) -> Boolean,
     val knownCfacts: Set<String>,
     val pageCfacts: Set<String>,
@@ -26,12 +24,12 @@ class PageCheckScope(
  *
  *  - is closed, and its JSON is an object;
  *  - has an `id` that is a variable name, unique in the document;
- *  - names a widget kind the catalog has, which this copy may place -- or, naming none, has a `copy` to show;
+ *  - names a widget kind the catalog has -- or, naming none, has a `copy` to show;
  *  - has parameters that fit its kind's schema, and no parameter the kind does not have;
  *  - names a `copy` key as `namespace.key`, which exists in the page's fragment file;
  *  - has a condition that parses and names only cfacts sent to the frontend: one naming another would never hold, and
  *    nothing would say why;
- *  - gives its fence keys (`id`, `widget`, `copy`, the condition, `jumpLabel`) as text.
+ *  - gives its fence keys (`id`, `widget`, `copy`, the condition, `jumpLabel`, `\$comment`) as text.
  */
 fun pageDocumentProblems(text: String, scope: PageCheckScope): List<String> {
     if (!text.contains(PGW.infoString)) return emptyList()
@@ -68,9 +66,6 @@ private fun fenceKindProblem(fence: PageFence, scope: PageCheckScope): String? {
         ?: return if (fence.copy == null) "names neither a ${PGW.widget} nor a ${PGW.copy}, so it would draw nothing." else null
     val kind = scope.catalog.kind(widget)
         ?: return "names the widget '$widget', which is not one of ${scope.catalog.kinds.joinToString(", ") { "'${it.name}'" }}."
-    if (!scope.shipped && kind.placement == PageWidgetPlacement.shippedCopy) {
-        return "places the widget '$widget', which only ${kind.placement.words} may place."
-    }
     val type = scope.catalog.paramsType(kind)
     val unknown = fence.params.keys - type.properties.keys
     if (unknown.isNotEmpty()) {

@@ -394,6 +394,13 @@ object HMENU {
     // own routing (issue #483).
     /** The home page (issue #1730): the app root, which the router writes with no page at all. */
     const val pageHome = "home"
+
+    /**
+     * A page document by its id (issue #1796), `/wa/page/<id>`: a key of the home file's [HFRAG.pageNs], which a
+     * client or a flavor adds of its own, drawn by the same renderer as Home. A menu item opens one with
+     * [HACT.openPage].
+     */
+    const val pagePage = "page"
     const val pageCatalog = "catalog"
     const val pageDocs = "docs"
     const val pageUsers = "users"
@@ -500,6 +507,13 @@ object HACT {
      * what `openPath` does.
      */
     val openPath = UiActionDef("openPath", arity = 1)
+
+    /**
+     * Open a page document by its id (issue #1796), in the app: `/wa/page/<id>` ([HMENU.pagePage]). The one parameter
+     * is the id, a key of the home file's page documents ([HFRAG.pageNs]) -- how a client's menu offers a page of its
+     * own. An id that is not a name opens nothing.
+     */
+    val openPage = UiActionDef("openPage", arity = 1)
 
     /**
      * Become the **deployment admin** -- `admin` plus `allClients` -- in one click (issue #1183): the `becomeUser`

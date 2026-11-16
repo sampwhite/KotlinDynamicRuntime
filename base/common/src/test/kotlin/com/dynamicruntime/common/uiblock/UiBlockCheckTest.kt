@@ -90,6 +90,18 @@ class UiBlockCheckTest : StringSpec({
         uiBlockProblems(listOf(blockCalling("/forms/123")), everywhere(emptySet())).shouldBeEmpty()
     }
 
+    "an openPage call names a page its client is served, by a name" {
+        // Issue #1796: a page that is not there opens the not-found page; a name that is not one opens nothing.
+        val pages: (String?) -> Set<String>? = { setOf("club") }
+        fun opening(page: Any?) = uiBlockProblems(listOf(blockCalling(listOf(HACT.openPage.name, page))), everywhere(emptySet()), pages)
+        opening("club").shouldBeEmpty()
+        opening("nowhere").single() shouldContain "page documents (`page`) do not have"
+        opening("../admin").single() shouldContain "which is not a name"
+        opening(7).single() shouldContain "which is not a name"
+        // Where the pages cannot be known, only the name is checked.
+        uiBlockProblems(listOf(blockCalling(listOf(HACT.openPage.name, "nowhere"))), everywhere(emptySet())).shouldBeEmpty()
+    }
+
     "every problem is reported in one pass" {
         val orphan = uiBlockOverlay("noSuchBlock", origin = "a", client = null) { set("title", "x") }
         uiBlockProblems(listOf(block("isAdmn"), orphan), everywhere(emptySet())).size shouldBe 2

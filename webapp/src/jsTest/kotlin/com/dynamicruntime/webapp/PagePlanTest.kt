@@ -80,6 +80,15 @@ class PagePlanTest {
     }
 
     @Test
+    fun aTitleIsItsCopyOrItsText() {
+        // Issue #1796: a client's own page adds no key but its document, so its title may be literal.
+        fun title(json: String) = pageTitleOf(plan(fence(json)).single() as PagePlaced)
+        assertEquals("Welcome", title("""{"id": "t", "widget": "pageTitle", "copy": "home.title", "text": "Ignored"}"""))
+        assertEquals("Our club", title("""{"id": "t", "widget": "pageTitle", "text": "Our club"}"""))
+        assertNull(title("""{"id": "t", "widget": "pageTitle", "text": " "}"""))
+    }
+
+    @Test
     fun aKindTheSurfaceDoesNotDrawIsLeftOut() {
         val parts = planPage(
             fence("""{"id": "x", "widget": "hero"}"""), copy, emptyMap(), drawable = { it != PageWidgets.hero }, shows = { true },
@@ -115,6 +124,21 @@ class PagePlanTest {
         // Only the home cards reach the page.
         val other = (plan(fence("""{"id": "c", "widget": "cardsBlock", "block": "otherCards"}""")).single() as PagePlaced).fence
         assertEquals(emptyList(), pageCardsOf(other, cards))
+    }
+
+    @Test
+    fun aPageReadsOnlyTheCardsItCanDraw() {
+        // Issue #1796: what its cards blocks name, whatever their conditions; a page with none reads none.
+        fun drawable(doc: String) = pageDrawableCards(doc, cards).map { it.id }
+        val block = """"id": "c", "widget": "cardsBlock", "block": "${HCARD.block}""""
+        assertEquals(listOf("administer"), drawable(fence("""{$block, "ids": ["administer"]}""")))
+        assertEquals(
+            listOf("register", "administer"),
+            drawable(fence("""{$block, "except": ["checklist"], "cfactExpression": "kdr:anonymous"}""")),
+        )
+        assertEquals(emptyList(), drawable("Words only.\n" + fence("""{"id": "t", "widget": "pageTitle", "text": "Hi"}""")))
+        // A fence never closed draws nothing, so its cards are not read.
+        assertEquals(emptyList(), drawable("```${PGW.infoString}\n{$block}\n"))
     }
 
     @Test

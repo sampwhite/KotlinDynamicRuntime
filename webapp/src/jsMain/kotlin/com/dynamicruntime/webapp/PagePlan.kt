@@ -137,6 +137,19 @@ fun pageCardsOf(fence: PageFence, cards: List<HomeCard>): List<HomeCard> {
 }
 
 /**
+ * The cards of [cards] the page [document] can draw (issue #1796): those its `cardsBlock` fences name, whatever their
+ * conditions, so a page reads the live data of only the cards it may show -- a page drawing one card, or none, reads
+ * nothing for the rest. In [cards]' order. Pure, covered under `jsNodeTest`.
+ */
+fun pageDrawableCards(document: String, cards: List<HomeCard>): List<HomeCard> {
+    val named = splitPageDocument(document).filterIsInstance<PageFenceSource>().filter { it.closed }
+        .mapNotNull { readPageFence(it).getOrNull() }
+        .filter { it.widget == PageWidgets.cardsBlock.name }
+        .flatMapTo(HashSet()) { fence -> pageCardsOf(fence, cards).map { it.id } }
+    return cards.filter { it.id in named }
+}
+
+/**
  * The cards each `cardsBlock` fence of the page [parts] draws (issue #1794), by its element id: its own ([pageCardsOf]),
  * less any a fence before it draws, so a card is drawn once whatever a document names, and its element id is one.
  * Pure, covered under `jsNodeTest`.
@@ -146,6 +159,13 @@ fun pageCardsByFence(parts: List<PagePart>, cards: List<HomeCard>): Map<String, 
     return parts.filterIsInstance<PagePlaced>().filter { it.kind == PageWidgets.cardsBlock }
         .associate { part -> part.elementId to pageCardsOf(part.fence, cards).filter { drawn.add(it.id) } }
 }
+
+/**
+ * The words a `pageTitle` fence draws (issue #1796): its copy, or failing that its literal `text`, which a client's own
+ * page uses since it adds no key but its document; null when both are blank. Pure.
+ */
+fun pageTitleOf(part: PagePlaced): String? =
+    part.copy ?: (part.fence.params[PGW.text] as? String)?.takeIf { it.isNotBlank() }
 
 /** The row a `jumpLinks` fence draws: the call-to-action buttons, each label to the page it opens, then the links. */
 class PageJumpRow(val buttons: List<Pair<String, String>>, val links: String?) {

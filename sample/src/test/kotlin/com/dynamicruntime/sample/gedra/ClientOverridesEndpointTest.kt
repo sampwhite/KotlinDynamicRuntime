@@ -65,6 +65,8 @@ class ClientOverridesEndpointTest : StringSpec({
             "${SF.content}:${SF.welcome}.${SF.title}", "${SF.content}:${SF.welcome}.${SF.support}",
             "${HFRAG.home}:home.brand", "${HFRAG.home}:${HFRAG.formsNs}.${HFRAG.noWorkflows}",
             "${HFRAG.home}:home.${HFRAG.title}", "${HFRAG.home}:home.${HFRAG.intro}",
+            // A page of its own (issue #1796): a key it adds, which no base declares, and no orphan.
+            "${HFRAG.home}:${HFRAG.pageNs}.${SF.siteVisitsPage}",
             "${AFRAG.mail}:${MCOPY.common}.${MCOPY.footer}",
         )
         val brand = rows.getValue("${HFRAG.home}:home.brand")
@@ -82,6 +84,7 @@ class ClientOverridesEndpointTest : StringSpec({
         rows.keys shouldBe setOf(
             "${SB.nav}:${SB.overview}", "${SB.nav}:${SB.siteAudits}",
             "${HMENU.block}:${HMENU.cfactReference}", "${HMENU.block}:${HMENU.workflows}",
+            "${HMENU.block}:${SF.siteVisitsPage}",
         )
         val overview = rows.getValue("${SB.nav}:${SB.overview}")
         overview[COV.path] shouldBe SB.items
@@ -96,6 +99,8 @@ class ClientOverridesEndpointTest : StringSpec({
         val workflows = rows.getValue("${HMENU.block}:${HMENU.workflows}")
         workflows[COV.hidden] shouldBe false
         fields(workflows).getValue(UIB.cfactExpression)[COV.baseValue] shouldBe CFACT.neverName
+        // Its own page's menu item (issue #1796), added.
+        rows.getValue("${HMENU.block}:${SF.siteVisitsPage}")[COV.added] shouldBe true
     }
 
     "globex changes only its mail footer, and the overview counts both" {
@@ -105,9 +110,10 @@ class ClientOverridesEndpointTest : StringSpec({
 
         val listed = admin.getItems(UADEP.clientsOverview).associateBy { it[CLD.clientId] as String }
         // Eight once its home page had a title and an introduction of its own (issue #1692); seven since the note under
-        // its introduction, with the sample's image, joined the introduction (issue #1795).
-        (listed.getValue(SC.acme)[CLD.copyOverrides] as Number).toInt() shouldBe 7
-        (listed.getValue(SC.acme)[CLD.blockOverrides] as Number).toInt() shouldBe 4
+        // its introduction joined the introduction (issue #1795); eight with a page of its own (issue #1796), and five
+        // block overrides with the menu item opening it.
+        (listed.getValue(SC.acme)[CLD.copyOverrides] as Number).toInt() shouldBe 8
+        (listed.getValue(SC.acme)[CLD.blockOverrides] as Number).toInt() shouldBe 5
         (listed.getValue(SC.globex)[CLD.copyOverrides] as Number).toInt() shouldBe 1
         (listed.getValue(SC.globex)[CLD.blockOverrides] as Number).toInt() shouldBe 0
     }

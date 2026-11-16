@@ -247,6 +247,8 @@ val App = FC<Props> {
                         ErrorBoundary {
                             key = (
                                 page + (routeParams()[debugToolParam]?.let { ":$it" } ?: "") +
+                                    // One page document to another is a new page, as one debug tool to another is.
+                                    (if (page == pagePage) routeParams()[HP.pageId]?.let { "/$it" }.orEmpty() else "") +
                                     (if (page in restartOnRevisit) "#$revisit" else "")
                             ).unsafeCast<Key>()
                             fallback = ErrorFallback
@@ -254,6 +256,8 @@ val App = FC<Props> {
                             when (page) {
                                 pageCatalog -> EndpointCatalog {}
                                 pageDocs -> DocsPage {}
+                                // A page document by its id (issue #1796), drawn as Home is.
+                                pagePage -> PageScreen { pageId = routeParams()[HP.pageId].orEmpty() }
                                 pageLogin -> AuthFlow { mode = pageLogin }
                                 pageRegister -> AuthFlow { mode = pageRegister }
                                 pageInvite -> InvitePage {}
@@ -333,6 +337,7 @@ val App = FC<Props> {
 private const val pageCatalog = "catalog"
 // The documents page (issue #554): the listing, or one document -- and where a bare `#doc=<id>` lands.
 private const val pageDocs = HMENU.pageDocs
+private const val pagePage = HMENU.pagePage
 private const val pageLogin = "login"
 private const val pageRegister = "register"
 
@@ -434,6 +439,8 @@ private fun currentPage(): String {
     return when {
         params[HP.page] == pageCatalog || params.containsKey(HP.method) -> pageCatalog
         params[HP.page] == pageDocs || params.containsKey(HP.doc) -> pageDocs
+        // A page document by its id (issue #1796); Home's own, or none, is Home.
+        params[HP.page] == pagePage -> if (isPageDocumentId(params[HP.pageId])) pagePage else HMENU.pageHome
         params[HP.page] == pageLogin -> pageLogin
         params[HP.page] == pageRegister -> pageRegister
         params[HP.page] == pageInvite -> pageInvite

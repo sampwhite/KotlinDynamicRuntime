@@ -4,6 +4,9 @@ import com.dynamicruntime.common.cfact.CFactPredicate
 import com.dynamicruntime.common.cfact.CallerCfacts
 import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.cfact.parseCFactOrAlways
+import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.pageDocumentIds
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GCEL
@@ -11,9 +14,12 @@ import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.home.HACT
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.ConcurrentHashMap
 
@@ -50,13 +56,15 @@ class UiBlockService : ServiceInitializer {
      * #841): an overlay at fault is dropped, under the check mode of the config holding it, and a component's own
      * block refuses the boot outside production.
      *
-     * Two things are checked, and they are the two that otherwise fail silently:
+     * These are checked, each a mistake that otherwise fails silently:
      *
      * - **An overlay naming a block nobody registered.** Nothing would fail: the overlay would merge onto
      *   nothing and its content would never be served, so the customer-specific item simply never appears.
      * - **Every cfact expression, against every client's registry.** A bad name is refused at parse, and this
      *   is where every expression is parsed for the first time. Per client, because the vocabulary varies by
      *   client (issue #455) and an expression valid globally may name nothing at one customer.
+     * - **A page an `openPage` call names** (issue #1796), which must be one of the page documents of the client
+     *   whose layer names it; otherwise its menu item opens a page that is not there.
      */
     override fun checkInit(cxt: KdrCxt) {
         val sources = registeredUiBlocks(cxt)
@@ -80,8 +88,12 @@ class UiBlockService : ServiceInitializer {
         sources: List<UiBlockSource>,
         judged: List<UiBlockSource>,
         allowedFor: (String?) -> Set<String> = { client -> SchemaService.get(cxt).cfactsFor(client).names },
+        pagesFor: (String?) -> Set<String>? = { client ->
+            pageDocumentIds(MarkdownFragmentService.registeredFragmentSources(cxt), client)
+        },
     ): List<UiBlockSource> {
-        val faults = uiBlockFaults(sources, allowedFor)
+        val pages = HashMap<String?, Set<String>?>()
+        val faults = uiBlockFaults(sources, allowedFor) { client -> pages.getOrPut(client) { pagesFor(client) } }
         val configs = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
         val dropped = mutableListOf<UiBlockSource>()
         val issues = mutableListOf<GedraConfigIssue>()
@@ -182,12 +194,16 @@ class UiBlockService : ServiceInitializer {
         removed: List<UiBlockSource>,
         added: List<UiBlockSource>,
         cfactNames: Set<String>,
+        /** The candidate fragment layers, the trial's of [MarkdownFragmentService]: a page a menu item opens is in them. */
+        fragments: List<FragmentSource>,
     ) {
         if (added.isEmpty()) return
         val sources = registeredUiBlocks(cxt).filter { held -> removed.none { it === held } } + added
-        dropFaultyOverlays(cxt, sources, added) { c ->
-            if (c == client) cfactNames else SchemaService.get(cxt).cfactsFor(c).names
-        }
+        dropFaultyOverlays(
+            cxt, sources, added,
+            allowedFor = { c -> if (c == client) cfactNames else SchemaService.get(cxt).cfactsFor(c).names },
+            pagesFor = { c -> pageDocumentIds(fragments, c) },
+        )
     }
 
     @Suppress("ConstPropertyName")
@@ -207,15 +223,18 @@ class UiBlockService : ServiceInitializer {
 /**
  * Everything wrong with [sources], as messages (issue #457) -- the pure half of [UiBlockService.checkInit].
  *
- * Takes [allowedFor] rather than reading a service, for the reason `SchemaService.checkOptionsSources` does:
+ * Takes [allowedFor] and [pagesFor] rather than reading a service, for the reason `SchemaService.checkOptionsSources` does:
  * a test can then ask what a real set of blocks would say when checked against a vocabulary that is missing
  * something, which is the only way to see that the walk reaches the expressions at all rather than quietly
  * finding nothing.
  *
  * Every problem is collected before any is reported, so somebody fixing a block sees all of them in one boot.
  */
-fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<String>): List<String> =
-    uiBlockFaults(sources, allowedFor).map { it.message }
+fun uiBlockProblems(
+    sources: List<UiBlockSource>,
+    allowedFor: (String?) -> Set<String>,
+    pagesFor: (String?) -> Set<String>? = { null },
+): List<String> = uiBlockFaults(sources, allowedFor, pagesFor).map { it.message }
 
 /**
  * One problem [uiBlockFaults] found, and the **layer** it is attributed to (issue #841) -- the overlay that
@@ -228,7 +247,15 @@ class UiBlockFault(val layer: UiBlockSource, val message: String)
  * client's merged block that the shared merge does not have came from the client's overlay; one the shared merge
  * has too is the base block's, and is reported once rather than again for every client.
  */
-fun uiBlockFaults(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<String>): List<UiBlockFault> {
+fun uiBlockFaults(
+    sources: List<UiBlockSource>,
+    allowedFor: (String?) -> Set<String>,
+    /**
+     * The page documents a client is served ([pageDocumentIds]), which an `openPage` call must name (issue #1796); null
+     * where none can be known, which checks only that the page is named by a name.
+     */
+    pagesFor: (String?) -> Set<String>? = { null },
+): List<UiBlockFault> {
     val problems = mutableListOf<UiBlockFault>()
     val declared = sources.filter { !it.isOverlay }.map { it.blockId }.toSet()
     for (overlay in sources.filter { it.isOverlay }) {
@@ -242,26 +269,29 @@ fun uiBlockFaults(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<Str
             )
         }
     }
-    // Actions are checked once per block rather than per client: the vocabulary is hardwired in shared code
-    // (`UiActions`), so unlike a cfact name it cannot differ between customers.
+    // Actions are checked once per layer rather than per client: the vocabulary is hardwired in shared code
+    // (`UiActions`), so unlike a cfact name it cannot differ between customers. A page an `openPage` names can, so it is
+    // looked for in the pages of the layer's own client (issue #1796).
     for (source in sources) {
-        collectActions(source.content).forEach { call ->
-            val declared = UiActions.forName(call.first)
+        collectCalls(source.content).forEach { call ->
+            val name = call.first() as String
+            val arity = call.size - 1
+            val declared = UiActions.forName(name)
+            val at = "UiBlock '${source.blockId}' (${source.origin})"
             when {
                 declared == null -> problems.add(
                     UiBlockFault(
                         source,
-                        "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}', which no frontend " +
-                            "function declares. A name nothing implements is a click that does nothing.",
+                        "$at calls '$name', which no frontend function declares. A name nothing implements is a click " +
+                            "that does nothing.",
                     ),
                 )
-                declared.arity != call.second -> problems.add(
-                    UiBlockFault(
-                        source,
-                        "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}' with ${call.second} " +
-                            "parameter(s); it takes ${declared.arity}.",
-                    ),
+                declared.arity != arity -> problems.add(
+                    UiBlockFault(source, "$at calls '$name' with $arity parameter(s); it takes ${declared.arity}."),
                 )
+                declared == HACT.openPage -> openPageProblem(call[1], pagesFor(source.client))?.let {
+                    problems.add(UiBlockFault(source, "$at $it"))
+                }
             }
         }
     }
@@ -456,20 +486,35 @@ private fun matches(node: Map<String, Any?>, present: Set<String>, predicate: (S
     return predicate(expression).matches(present)
 }
 
-/** Every call anywhere in [node] as `(name, parameterCount)`, for the boot check; routes are not calls. */
-fun collectActions(node: Map<String, Any?>): List<Pair<String, Int>> {
-    val out = mutableListOf<Pair<String, Int>>()
+/** Every call anywhere in [node], its function's name and then its parameters, for the boot check; routes are not calls. */
+fun collectCalls(node: Map<String, Any?>): List<List<Any?>> {
+    val out = mutableListOf<List<Any?>>()
     for ((key, value) in node) {
         when {
-            key == UIB.action && value is List<*> -> {
-                val name = value.firstOrNull() as? String
-                if (name != null) out.add(name to value.size - 1)
-            }
-            value is Map<*, *> -> out.addAll(collectActions(asObject(value)))
-            value is List<*> -> value.forEach { if (it is Map<*, *>) out.addAll(collectActions(asObject(it))) }
+            key == UIB.action && value is List<*> -> if (value.firstOrNull() is String) out.add(value)
+            value is Map<*, *> -> out.addAll(collectCalls(asObject(value)))
+            value is List<*> -> value.forEach { if (it is Map<*, *>) out.addAll(collectCalls(asObject(it))) }
         }
     }
     return out
+}
+
+/**
+ * What is wrong with an `openPage` call naming [page] (issue #1796), or null: the page must be named by a name, since
+ * the frontend opens nothing else, and be one of [pages], the page documents its client is served, when they are known.
+ * A menu item opening a page that is not there shows that there is no such page.
+ */
+private fun openPageProblem(page: Any?, pages: Set<String>?): String? {
+    val id = page as? String
+    return when {
+        id == null || !id.isVariableName() ->
+            "opens the page '$page', which is not a name: letters, digits, and underscores, as a key of " +
+                "the `${HFRAG.home}` file's page documents is. The frontend opens nothing for it."
+        pages != null && id !in pages ->
+            "opens the page '$id', which the `${HFRAG.home}` file's page documents (`${HFRAG.pageNs}`) do not have for " +
+                "this client, so the item would open a page that is not there."
+        else -> null
+    }
 }
 
 /** Every cfact expression anywhere in [node], for the boot check. */

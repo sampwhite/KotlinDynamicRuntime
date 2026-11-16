@@ -12,6 +12,8 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.home.HACT
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.user.AFRAG
@@ -44,6 +46,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.gedra.ClientJoinRole
 import com.dynamicruntime.common.user.PERSONA
 
@@ -76,10 +79,16 @@ object SF {
     const val formHelp = "sampleFormHelp"
 
     /**
-     * An image the sample component ships (issue #1339): a site visit's three steps, which acme's home page shows as
-     * `![...](img:sample:siteVisitFlow)`. Read from `component-images/` on the classpath.
+     * An image the sample component ships (issue #1339): a site visit's three steps, which acme's site-visits page
+     * ([siteVisitsPage]) shows as `![...](img:sample:siteVisitFlow)`. Read from `component-images/` on the classpath.
      */
     const val siteVisitFlow = "sample:siteVisitFlow"
+
+    /**
+     * Acme's own page (issue #1796): a key of the home file's page documents, at `/wa/page/siteVisits`, which its menu
+     * opens and its home page links.
+     */
+    const val siteVisitsPage = "siteVisits"
 
     /** The file [siteVisitFlow] is read from. */
     const val siteVisitFlowFile = "site-visit-flow.svg"
@@ -410,10 +419,25 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                         "Open **Forms** from the menu, and choose **Create a form** to file an expense report. **My client**, " +
                         "on the **Your client** card on this page, holds Acme's configuration: a change you make there is a " +
                         "draft, which you try in Acme's sandbox before you publish it.\n\n" +
-                        // An image the sample component ships (issue #1339), the same for every client that names it, served
-                        // from the component's resources. Once a note beneath the intro, a slot the home page's document
-                        // replaced (issue #1795).
-                        "![How a site visit flows: request, visit, report](img:${SF.siteVisitFlow})\n\nEvery site visit goes the same way.",
+                        // Its own page (issue #1796), which its menu opens too.
+                        "Every site visit goes the same way: [How a site visit goes](/wa/page/${SF.siteVisitsPage}).",
+                )
+            }
+            // A page of its own (issue #1796): a key of the home file's page documents, which a client adds, drawn at
+            // `/wa/page/siteVisits` by the renderer that draws Home. Its title is literal, since a client's page adds no
+            // key but its document; its image is one the sample component ships (issue #1339), the same for every
+            // client that names it. Its cards block draws the Your client card, which only an administrator is sent.
+            namespace(HFRAG.pageNs) {
+                key(
+                    SF.siteVisitsPage,
+                    "```kdr-ui\n{\"id\": \"title\", \"widget\": \"pageTitle\", \"text\": \"How a site visit goes\"}\n```\n" +
+                        "Every site visit at Acme goes the same way: someone asks for one, an auditor makes it, and a " +
+                        "report records what was found.\n\n" +
+                        "![How a site visit flows: request, visit, report](img:${SF.siteVisitFlow})\n\n" +
+                        "The **Audit review** and **Site follow-up** workflows carry each visit through; open **Workflows** " +
+                        "from the menu to see where each one stands.\n" +
+                        "```kdr-ui\n{\"id\": \"yourClient\", \"widget\": \"cardsBlock\", \"block\": \"${HCARD.block}\", " +
+                        "\"ids\": [\"${HCARD.administer}\"]}\n```",
                 )
             }
             // What a form with no workflows shows in the forms list's workflow column (issue #791).
@@ -456,6 +480,11 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // ...and turns one on (issue #792): the workflow pages are off in the base menu, and acme, whose users
                 // work in its audit review and site follow-up, offers them to anyone signed in to the app.
                 menuItem(HMENU.workflows, cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}")
+                // ...and adds its own page (issue #1796), opened in the app by its id, just after Workflows (2700).
+                menuItem(
+                    SF.siteVisitsPage, "How a site visit goes", UiCall(HACT.openPage, listOf(SF.siteVisitsPage)),
+                    cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}", displayOrder = 2750,
+                )
             }
         }
 

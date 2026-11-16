@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.overlayMayAddKeys
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -184,11 +185,14 @@ object ClientCopyEdit {
         return goLive(cxt, target, written, fileId, changes, undo = { patchKeys(svc, bound, written, fileId, before) })
     }
 
-    /** Refuses a key no shipped file declares: an overlay of it would be stored and never read (an orphan). */
+    /**
+     * Refuses a key no shipped file declares: an overlay of it would be stored and never read (an orphan). But for a
+     * namespace whose keys a client adds ([overlayMayAddKeys]), a page of its own (issue #1796), which the trial judges.
+     */
     private fun requireShippedKey(cxt: KdrCxt, fileId: String, namespace: String, key: String) {
         val shipped = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, null)
             ?: throw KdrException("No fragment file '$fileId' is declared on this node.", code = EXC.notFound)
-        if (shipped.content[namespace]?.containsKey(key) != true) {
+        if (shipped.content[namespace]?.containsKey(key) != true && !overlayMayAddKeys(fileId, namespace)) {
             throw KdrException(
                 "The fragment file '$fileId' declares no key '$namespace.$key'; a value for it would never be read.",
                 code = EXC.notFound,

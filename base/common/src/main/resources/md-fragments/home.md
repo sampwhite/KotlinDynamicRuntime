@@ -39,37 +39,46 @@ section, and says what to read for what you want to do.
 # @page
 # +home
 ```kdr-ui
-{"id": "testAccess", "widget": "testAccess"}
+{"id": "testAccess", "widget": "testAccess",
+ "$comment": "Drawn only for a session with test access: env-authed, on a test instance."}
 ```
 ```kdr-ui
-{"id": "hero", "widget": "hero"}
+{"id": "hero", "widget": "hero",
+ "$comment": "Drawn while home.brand is not blank."}
 ```
 ```kdr-ui
 {"id": "title", "widget": "pageTitle", "copy": "home.title"}
 ```
 ```kdr-ui
-{"id": "jumpLinks", "widget": "jumpLinks", "copy": "home.jumpLinks"}
+{"id": "jumpLinks", "widget": "jumpLinks", "copy": "home.jumpLinks",
+ "$comment": "Links to what is drawn below with a jump label, and a call-to-action card's button; drawn only when it has one."}
 ```
 ```kdr-ui
-{"id": "firstCards", "widget": "cardsBlock", "block": "homeCards", "ids": ["checklist"]}
+{"id": "firstCards", "widget": "cardsBlock", "block": "homeCards", "ids": ["checklist"],
+ "$comment": "The new client's checklist, above the introduction: for an administrator of a self-serve client while a step is left."}
 ```
 ```kdr-ui
 {"id": "intro", "copy": "home.intro"}
 ```
 ```kdr-ui
-{"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"]}
+{"id": "cards", "widget": "cardsBlock", "block": "homeCards", "except": ["checklist"],
+ "$comment": "Every other card the caller is sent, each by its own condition; a live card only while its read finds something."}
 ```
 ```kdr-ui
-{"id": "walkThrough", "copy": "publicHome.walkThrough", "cfactExpression": "kdr:publicMember"}
+{"id": "walkThrough", "copy": "publicHome.walkThrough", "cfactExpression": "kdr:publicMember",
+ "$comment": "The walk-through's note, for a visitor signed in to the public client."}
 ```
 ```kdr-ui
-{"id": "demos", "widget": "joinableDemos", "copy": "publicHome.demos", "jumpLabel": "Try a demo"}
+{"id": "demos", "widget": "joinableDemos", "copy": "publicHome.demos", "jumpLabel": "Try a demo",
+ "$comment": "Drawn only for a visitor signed in to the public client, on a deployment that offers joining a demo."}
 ```
 ```kdr-ui
-{"id": "ownClient", "widget": "createOwnClient", "jumpLabel": "Your own client"}
+{"id": "ownClient", "widget": "createOwnClient", "jumpLabel": "Your own client",
+ "$comment": "Drawn only for a visitor signed in to the public client."}
 ```
 ```kdr-ui
-{"id": "docs", "widget": "docLinks"}
+{"id": "docs", "widget": "docLinks",
+ "$comment": "Drawn only where the deployment lists its documents inline on Home (homeInlineLinks, off by default)."}
 ```
 
 

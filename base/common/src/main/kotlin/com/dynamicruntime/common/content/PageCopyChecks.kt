@@ -31,7 +31,7 @@ fun sharedCopyPageProblems(cxt: KdrCxt, sources: List<FragmentSource>): List<Str
             mergeFragmentLayers(layer.fileId, shared.filter { it.fileId == layer.fileId }, null).content
         }
         val scope = PageCheckScope(
-            PageWidgets.core, shipped = true,
+            PageWidgets.core,
             copyKeyExists = { namespace, key -> file[namespace]?.containsKey(key) == true },
             knownCfacts = registry.names, pageCfacts = pageCfacts,
         )
@@ -46,8 +46,7 @@ fun sharedCopyPageProblems(cxt: KdrCxt, sources: List<FragmentSource>): List<Str
 
 /**
  * The check of widget fences in a client's own copy (issue #1792), for one load, reload, or write trial of [client]'s
- * [configs]: judged as a client's copy -- a kind only shipped copy may place is refused. Built once per check of the
- * client and asked of every copy value, it does nothing until a value holds a fence, then works out what it needs once
+ * [configs]. Built once per check of the client and asked of every copy value, it does nothing until a value holds a fence, then works out what it needs once
  * per fragment file:
  *
  *  - a fence's `copy` key is looked for in the file as the client has it -- every layer registered for every client or
@@ -81,7 +80,7 @@ class ClientCopyPageCheck(private val cxt: KdrCxt, private val client: String, c
         val file = mergeFragmentLayers(fileId, registered, client).content
         val judged = own.flatMap { it.fragments }.filter { it.fileId == fileId }.mapNotNull { it.load() }
         return PageCheckScope(
-            PageWidgets.core, shipped = false,
+            PageWidgets.core,
             copyKeyExists = { namespace, key ->
                 file[namespace]?.containsKey(key) == true || judged.any { it[namespace]?.containsKey(key) == true }
             },

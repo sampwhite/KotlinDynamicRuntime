@@ -30,6 +30,8 @@ class RouteTableTest {
         assertRoute("/")
         assertRoute("/catalog", HP.page to HMENU.pageCatalog)
         assertRoute("/docs/code-guide", HP.page to HMENU.pageDocs, HP.doc to "code-guide")
+        // A page document by its id (issue #1796).
+        assertRoute("/page/siteVisits", HP.page to HMENU.pagePage, HP.pageId to "siteVisits")
         assertRoute("/login", HP.page to HMENU.pageLogin)
         assertRoute("/register", HP.page to HMENU.pageRegister)
         assertRoute("/claim", HP.page to HMENU.pageClaim)

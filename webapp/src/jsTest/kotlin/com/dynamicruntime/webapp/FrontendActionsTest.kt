@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HMENU
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -99,5 +100,25 @@ class FrontendActionsTest {
         navigated = null
         assertTrue(actions.run("openPath", listOf("//evil.example.com")))
         assertNull(navigated)
+    }
+
+    @Test
+    fun openPageOpensAPageByANameOnly() {
+        // Issue #1796: a client's menu opens a page of its own by its key, which becomes a path segment -- so only a name.
+        var opened: String? = null
+        val actions = FrontendActions(
+            logout = {}, envLogout = {}, openPath = {}, setEnvDebug = {}, becomeDeploymentAdmin = {}, openPage = { opened = it },
+        )
+        assertTrue(actions.run("openPage", listOf("siteVisits")))
+        assertEquals("siteVisits", opened)
+        opened = null
+        assertTrue(actions.run("openPage", listOf("../clients")))
+        assertNull(opened)
+        assertEquals(listOf(HP.page to HMENU.pagePage, HP.pageId to "siteVisits"), pageDocumentRoute("siteVisits"))
+        // Home's page opens Home's own address, so Home has one; and no id is no page document either.
+        assertEquals(emptyList(), pageDocumentRoute("home"))
+        assertFalse(isPageDocumentId(""))
+        assertFalse(isPageDocumentId(null))
+        assertTrue(isPageDocumentId("siteVisits"))
     }
 }

@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.page
 
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.util.jsonResult
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -30,8 +31,15 @@ object PGW {
     /** Puts a link to the fence in the page's jump links, with these words. */
     const val jumpLabel = "jumpLabel"
 
+    /**
+     * A note for whoever reads or rearranges the page (issue #1796): why the fence is there, or when its widget draws
+     * anything -- which a widget decides from its own data, so the document cannot otherwise say. Text, and never drawn.
+     * It travels with the copy, into a client's copy editor and any overlay restating the page.
+     */
+    const val comment = SCH.dComment
+
     /** The fence keys every kind shares, which are never a kind's parameters. */
-    val fenceKeys: Set<String> = setOf(id, widget, copy, cfactExpression, jumpLabel)
+    val fenceKeys: Set<String> = setOf(id, widget, copy, cfactExpression, jumpLabel, comment)
 
     /** What a drawn fence's element id starts with: `page.<id>`. The dot keeps it apart from any heading's slug. */
     const val elementIdPrefix = "page."
@@ -40,6 +48,9 @@ object PGW {
     const val block = "block"
     const val ids = "ids"
     const val except = "except"
+
+    /** A `pageTitle` fence's literal words (issue #1796), for a page whose copy holds no key for them. */
+    const val text = "text"
 
     /** The schema namespace the widget kinds' parameter types are declared in. */
     const val namespace = "kdr.page"

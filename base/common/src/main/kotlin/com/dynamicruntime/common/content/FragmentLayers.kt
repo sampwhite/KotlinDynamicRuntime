@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.util.crc32Hex
 import com.dynamicruntime.common.util.roleProblems
 
@@ -123,7 +124,7 @@ fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: S
     val audience = if (backendBases > 0) FragmentAudience.backend else FragmentAudience.frontend
     return EffectiveFragments(
         fileId, client, effective, fragmentContentBuildId(effective), found,
-        orphans = orphanedOverlayKeys(baseKeys, overlaid),
+        orphans = orphanedOverlayKeys(fileId, baseKeys, overlaid),
         audience = audience,
         audienceConflict = backendBases > 0 && backendBases < bases.size,
         // The base's fact, like the audience: the first base that says where the file is shown.
@@ -156,10 +157,28 @@ private fun foldInto(
  *
  * A key an overlay *adds* is indistinguishable from one whose base was renamed, so this reports both. Adding
  * a key by overlay is unusual -- the base is where a file's keys are declared -- and being told about it is
- * the right outcome either way.
+ * the right outcome either way, except in a namespace whose keys an overlay adds by design ([overlayMayAddKeys]).
  */
-fun orphanedOverlayKeys(baseKeys: Set<String>, overlaidKeys: Set<String>): List<String> =
-    overlaidKeys.filterNot { it in baseKeys }.sorted()
+fun orphanedOverlayKeys(fileId: String, baseKeys: Set<String>, overlaidKeys: Set<String>): List<String> =
+    overlaidKeys.filterNot { it in baseKeys || overlayMayAddKeys(fileId, it.substringBefore('.')) }.sorted()
+
+/**
+ * Whether an overlay may add keys of its own to [namespace] of [fileId], keys no base declares (issue #1796): the
+ * `home` file's page documents ([HFRAG.pageNs]), where a key is a page that a client or a flavor adds, opened at
+ * `/wa/page/<key>`. So an added key there is what it means rather than a sign of a renamed base. The one rule for
+ * every check that asks: the orphan report ([orphanedOverlayKeys]) and the copy editor's refusal of a key no shipped
+ * file declares.
+ */
+fun overlayMayAddKeys(fileId: String, namespace: String): Boolean = fileId == HFRAG.home && namespace == HFRAG.pageNs
+
+/**
+ * The page documents [client] is served (issue #1796): the keys of the `home` file's [HFRAG.pageNs], merged from
+ * [sources] as the file is served -- what a menu item's `openPage` may name. Null when no source declares the file,
+ * so a node without it checks nothing. Each call merges afresh: it is for a check, never a request.
+ */
+fun pageDocumentIds(sources: List<FragmentSource>, client: String?): Set<String>? =
+    if (sources.none { it.fileId == HFRAG.home }) null
+    else mergeFragmentLayers(HFRAG.home, sources, client).content[HFRAG.pageNs]?.keys.orEmpty()
 
 /**
  * The cache-busting id for merged fragment content: a content hash, exactly as a single file's was

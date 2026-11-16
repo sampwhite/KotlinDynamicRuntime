@@ -63,16 +63,16 @@ class PageDocumentTest {
         )
     }
 
-    private fun scope(shipped: Boolean = true) = PageCheckScope(
-        PageWidgets.core, shipped,
+    private val scope = PageCheckScope(
+        PageWidgets.core,
         copyKeyExists = { namespace, key -> namespace == "home" && key in setOf("intro", "note") },
         knownCfacts = setOf("kdr:hasAdminLevel", "kdr:loggedIn"),
         pageCfacts = setOf("kdr:hasAdminLevel"),
     )
 
-    private fun problems(doc: String, shipped: Boolean = true) = pageDocumentProblems(doc, scope(shipped))
+    private fun problems(doc: String) = pageDocumentProblems(doc, scope)
 
-    private fun problem(json: String, shipped: Boolean = true): String = problems(fence(json), shipped).single()
+    private fun problem(json: String): String = problems(fence(json)).single()
 
     @Test
     fun aSoundFenceHasNoProblems() {
@@ -100,19 +100,28 @@ class PageDocumentTest {
         assertTrue(problem("""{"id": "x", "copy": "home.intro", "cfactExpression": "kdr:loggedIn"}""").contains("which a page never sees"))
         assertTrue(problem("""{"id": "x", "copy": "home.intro", "cfactExpression": "kdr:nope"}""").contains("does not parse"))
         assertTrue(problem("""{"id": "x", "widget": "hero", "jumpLabel": 3}""").contains("has a jumpLabel that is not text"))
+        assertTrue(problem($$"""{"id": "x", "widget": "hero", "$comment": ["a"]}""").contains($$"has a $comment that is not text"))
     }
 
     @Test
-    fun aKindForShippedCopyIsRefusedInAClientsCopy() {
-        val json = """{"id": "demos", "widget": "joinableDemos"}"""
-        assertEquals(emptyList(), problems(fence(json), shipped = true))
-        assertTrue(problem(json, shipped = false).contains("only copy a component ships may place"))
-        assertEquals(emptyList(), problems(fence("""{"id": "hero", "widget": "hero"}"""), shipped = false))
+    fun aCommentIsAFenceKeyNeverAParameter() {
+        // Issue #1796: a note on when a widget draws anything, which every kind takes and none reads.
+        assertEquals(emptyList(), problems(fence($$"""{"id": "x", "widget": "hero", "$comment": "Drawn while the brand is set."}""")))
+        assertEquals(emptyList(), problems(fence($$"""{"id": "x", "copy": "home.intro", "$comment": "Words alone."}""")))
+        val source = splitPageDocument(fence($$"""{"id": "x", "widget": "hero", "$comment": "A note."}""")).single() as PageFenceSource
+        assertEquals(emptyMap(), readPageFence(source).getOrThrow().params)
+    }
+
+    @Test
+    fun anyCopyPlacesAnyKind() {
+        // Issue #1796: a widget decides from its own data whether it draws, so a client's copy of Home may keep the demos.
+        assertEquals(emptyList(), problems(fence("""{"id": "demos", "widget": "joinableDemos"}""")))
+        assertEquals(emptyList(), problems(fence("""{"id": "access", "widget": "testAccess"}""")))
     }
 
     @Test
     fun aCatalogRefusesTwoKindsOfOneName() {
-        val twin = PageWidgetKind(PageWidgets.hero.name, "Another hero.", PageWidgetPlacement.anyCopy, setOf(PageSurface.app))
+        val twin = PageWidgetKind(PageWidgets.hero.name, "Another hero.", setOf(PageSurface.app))
         val refused = assertFailsWith<KdrException> { PageWidgetCatalog(PageWidgets.coreKinds + twin) }
         assertTrue("'${PageWidgets.hero.name}'" in refused.message.orEmpty())
     }
