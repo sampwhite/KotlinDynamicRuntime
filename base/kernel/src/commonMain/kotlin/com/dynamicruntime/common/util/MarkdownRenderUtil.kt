@@ -212,8 +212,9 @@ object TextSink : MarkdownSink {
 /**
  * Matches a KDoc symbol reference -- a bare name in square brackets, dotted members allowed -- and not a `[text](url)`
  * link. The closing bracket is escaped: the JVM takes a bare one, but the browser's engine, in the Unicode mode Kotlin/JS
- * compiles a `Regex` to, refuses it.
+ * compiles a `Regex` to, refuses it. So it stays, though IntelliJ calls it redundant and offers to remove it.
  */
+@Suppress("RegExpRedundantEscape")
 private val kdocReference = Regex("""\[([A-Za-z][\w.]*)\](?!\()""")
 
 /**
