@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.schema.qualifyTypeName
@@ -56,6 +57,7 @@ object CodeOverrides {
             usages = marked(CCT.usageDef).isNotEmpty(),
             reports = keysOf(CCT.reportDef, CCT.reportId).filter { it in config.reports }.toSet(),
             fileRefs = keysOf(CCT.fileRefDef, CCT.refId).toSet(),
+            counters = keysOf(CCT.counterDef, CTR.counterId).toSet(),
         )
     }
 
@@ -142,6 +144,7 @@ object CodeOverrides {
             CCT.cfactDef -> entry[CCT.name] in code.cfacts
             CCT.reportDef -> entry[CCT.reportId] in code.reports
             CCT.fileRefDef -> entry[CCT.refId] in code.fileRefs
+            CCT.counterDef -> entry[CTR.counterId] in code.counters
             CCT.workflowDef -> entry[CCT.workflowId] in code.workflows ||
                 ConfigCodeLayer.workflowKind(collector, entry)?.let { it in WfEntry.singletons && it in code.singletonKinds } == true
             else -> false

@@ -332,3 +332,18 @@ judge, and in production reads the owners' identities for all of a listing's row
 Within the caller's read scope, like every listing, and `review=mine` too: a reviewer who is neither an administrator
 nor an editor cannot list other people's forms, so their reviews do not show here (`deferred-work.md`).
 
+
+## A counter's id is shown before the form is saved (issue #1849)
+
+A field a client's counter fills (`g-counter`) is drawn read-only on both create pages, with no required mark, since
+nobody types it (`SchemaForm`). Each page asks `/gedra/counter/issue` for the field's id itself (`CounterIds.kt`), and
+the save sends the ids' tokens in `counterTokens`, which neither page draws (`formCreateOmittedFields`):
+
+- **The creation workflow** (`WorkflowForm`) asks once, as the create opens, for every counter field of its tasks'
+  traits (`counterSlotsToFill`), and a create for another client asks that client's copy of the endpoint.
+- **The trait picker** (`NewFormPage`) asks as a section of such a trait is added (`counterSlotsInEntries`), keyed by
+  the sections that still lack one so typing asks nothing, and puts each id in the first section of its trait without
+  one (`withCounterId`).
+
+Every ask uses up an id: a page left without saving, a refresh, or a section removed is a gap in the count, which is the
+intended trade (the issue). A failed ask says "Couldn't get this form's id." under the form, and the field stays empty.

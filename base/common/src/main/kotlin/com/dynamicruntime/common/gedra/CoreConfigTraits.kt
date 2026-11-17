@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -41,6 +42,8 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  *   like are reconstructed on load from the config that owns the entry, not stored.
  * - **[CCT.reportDef]** -- a named report, by report id, by **reference** to the definition schema under
  *   [RDEF.namespace] (issue #979). Its columns travel inside it, as a workflow's tasks do.
+ * - **[CCT.counterDef]** -- a counter (issue #1849), by counter id: what numbers a field whose schema names it with
+ *   `g-counter`. Its fields are declared inline from [CTR].
  * - **[CCT.cfactDef]** -- a cfact **name declaration**, by name. **Declaration only**: a component is what
  *   makes a cfact *true* (that needs Kotlin), so a config authored from data may only declare that a name
  *   *exists*, under the additive-only rule. There is no way to author a production here, and the loader (#614)
@@ -224,8 +227,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
         overridesCodeProperty()
     }
-    // Declared last, so the slot list a write is held to ends with the newest (issues #1153, #1599). One entry, as the
-    // client definition is: no key, and no `overrides` mark, since a stored one stands over the code's by itself.
+    // One entry, as the client definition is: no key, and no `overrides` mark, since a stored one stands over the code's
+    // by itself (issue #1599).
     configTrait(
         "ListingDefEntry", CCT.listingDef, setOf(GedraConfigType.configDoc),
         "The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the " +
@@ -235,6 +238,49 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             option(WorkflowLayout.split.name, "A Your turn column beside the Workflows cell")
             option(WorkflowLayout.combined.name, "One Workflows cell holding every link")
         }
+    }
+    // Declared last, so the slot list a write is held to ends with the newest (issues #1153, #1599, #1849).
+    configTrait(
+        "CounterDefEntry", CCT.counterDef, setOf(GedraConfigType.configDoc),
+        "One counter of this client -- what numbers a field's ids, a prefix and then a zero-padded count -- keyed by its " +
+            "counter id. A field names it with `g-counter`.",
+    ) {
+        primaryKey(CTR.counterId)
+        property(CTR.counterId, "The counter's id within its client, which a field's `g-counter` names: ${CTR.idRule}.", required = true) {
+            pattern = CTR.idPattern
+        }
+        // A template, parse-checked at the write (`configSlotFailures`) and rendered for two days there, since a shape
+        // can say neither that it parses nor that a daily counter's ids would not repeat.
+        property(
+            CTR.prefix,
+            $$"A string-script template for the text before the count. It reads `${$${CTR.day}}`, the client's day the id " +
+                $$"is issued on (2026-11-17), and `${$${CTR.compactDay}}`, the same day without its dashes (20261117). " +
+                "Empty for ids that are the count alone.",
+            required = true,
+        )
+        property(
+            CTR.digits,
+            "How many digits the count is padded to with zeroes: ${CTR.minDigits} to ${CTR.maxDigits}, and " +
+                "${CTR.defaultDigits} when left out. A count that outgrows them widens.",
+        ) {
+            type = SCT.integer
+            minimum = CTR.minDigits
+            maximum = CTR.maxDigits
+            allowCoerce = false
+        }
+        property(CTR.reset, "When the count starts again at 1: `${CTR.resetNever}` (the default) or `${CTR.resetDaily}`, on each of the client's days.") {
+            option(CTR.resetNever, "Never")
+            option(CTR.resetDaily, "Each day")
+        }
+        property(
+            CTR.enabled,
+            "Whether new ids are issued; true when left out. Disable a counter rather than remove it, so its ids still mean something.",
+        ) {
+            type = SCT.boolean
+            allowCoerce = false
+        }
+        property(CTR.description, "What the counter numbers, in the administrator's words.")
+        overridesCodeProperty()
     }
 }
 

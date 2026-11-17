@@ -102,13 +102,13 @@ private val GedraConfig.originWord: String get() = if (inheritedFrom != null) CF
  *   under the client, whole here too.
  *
  * A **replacement** is told by the keys [ConfigKeys] states, read off entries rather than models, so a draft in the
- * editor is judged as it would run once published: traits, types, cfacts, workflows, reports, and file refs by their
+ * editor is judged as it would run once published: traits, types, cfacts, workflows, reports, file refs, and counters by their
  * keys; a creation or core details workflow by its kind as well; and the columns of the forms list as one set. Copy and
  * interface are layered key by key rather than replaced, so they are never one.
  */
 object ConfigCodeLayer {
     /** The slots whose entries replace a code entry by their key fields. */
-    private val keyedSlots = listOf(CCT.traitDef, CCT.schemaDef, CCT.cfactDef, CCT.workflowDef, CCT.reportDef, CCT.fileRefDef)
+    private val keyedSlots = listOf(CCT.traitDef, CCT.schemaDef, CCT.cfactDef, CCT.workflowDef, CCT.reportDef, CCT.fileRefDef, CCT.counterDef)
 
     /**
      * [client]'s code layer, read once ([CodeLayer]), as declared: [ownCode], its own code configurations as the loader

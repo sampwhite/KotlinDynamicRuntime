@@ -1,0 +1,152 @@
+package com.dynamicruntime.common.counter
+
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraWriteContext
+import com.dynamicruntime.common.gedra.GedraWriteHook
+import com.dynamicruntime.common.gedra.LogGedra
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.SchTypeBuilder
+import com.dynamicruntime.common.sql.KdrTable
+import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlCxt
+import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
+
+/**
+ * The tokens a write sends with the ids it stores (issue #1849): put on the request's context by the endpoint that
+ * takes them ([bind]) and read by [CounterClaimHook] inside the write's transaction. On the context's `locals`, which a
+ * sub context copies, so the transaction's context made from it has them.
+ */
+object CounterTokens {
+    /** What a write's [CTR.counterTokens] field is, on every endpoint that takes it. */
+    const val hint = "The tokens of the ids a counter issued that this write stores for the first time, each as it was " +
+        "issued. A field a counter fills holds only an id issued to you, sent with its token."
+
+    /** Puts the [CTR.counterTokens] [raw] holds -- a list of sealed tokens -- on [cxt], for the write it is about to make. */
+    fun bind(cxt: KdrCxt, raw: Any?) {
+        val tokens = raw.toJsonListOfStrings().filter { it.isNotBlank() }
+        if (tokens.isNotEmpty()) cxt.locals[CTR.counterTokens] = tokens
+    }
+
+    /** The sealed tokens bound to [cxt]; none when its write sent none. */
+    fun of(cxt: KdrCxt): List<String> = cxt.locals[CTR.counterTokens].toJsonListOfStrings()
+}
+
+/**
+ * Holds a counter's field to the ids it was issued (issue #1849), on every write of a gedra's data -- a create, a patch,
+ * an import -- inside the write's transaction, so a refusal rolls the whole write back.
+ *
+ * For each field a counter fills, in each entry the write leaves (or removes):
+ * - **Unchanged** from what was stored: nothing to judge. A recompute, which changes only computed values, never gets
+ *   further.
+ * - **Changed or removed**, once it held an id: refused. An id is fixed once it is stored.
+ * - **Newly given an id**: the write must send that id's token, issued to the acting user, for the form's client and the
+ *   field's counter. A claim row then records which form holds it, and an id already claimed -- the same token sent
+ *   twice -- is refused.
+ *
+ * An entry is matched across the write by its trait and, for a keyed trait, its key, as an edit addresses one.
+ */
+object CounterClaimHook : GedraWriteHook {
+    override fun afterWrite(cxt: KdrCxt, write: GedraWriteContext) {
+        val row = write.row
+        val union = SchemaService.get(cxt).storeFor(row.client).types["${GCFG.globalNamespace}.${GU.unionName(row.kind)}"] ?: return
+        val dataTypes = HashMap<String, SchType?>()
+        fun dataTypeOf(traitId: String): SchType? =
+            dataTypes.getOrPut(traitId) { union.variants?.select(traitId)?.properties?.get(GE.data)?.valueType }
+        // Only the entries of traits a counter fills, by their address.
+        fun counted(entries: List<Map<String, Any?>>): Map<String, Pair<String, Map<String, Any?>>> = buildMap {
+            for (entry in entries) {
+                val traitId = entry[GE.traitId].toOptStr() ?: continue
+                val type = dataTypeOf(traitId) ?: continue
+                if (counterFieldsOf(type).isEmpty()) continue
+                val data = entry[GE.data].toJsonMapOrEmpty()
+                val address = (listOf(traitId) + type.primaryKey.map { data[it].toString() }).joinToString("\u0000")
+                put(address, traitId to data)
+            }
+        }
+        val before = counted(write.priorEntries)
+        val after = counted(row.entries)
+        if (before.isEmpty() && after.isEmpty()) return
+        val tokens by lazy { CounterTokens.of(cxt).map { CounterToken.open(cxt, it) } }
+        for (address in before.keys + after.keys) {
+            val traitId = (after[address] ?: before.getValue(address)).first
+            val fields = counterFieldsOf(dataTypeOf(traitId) ?: continue)
+            for ((field, counterId) in fields) {
+                val old = before[address]?.second?.get(field).toOptStr()
+                val new = after[address]?.second?.get(field).toOptStr()
+                if (old == new) continue
+                if (old != null) {
+                    throw KdrException.mkInput(
+                        "The id '$old' in '$field' of '$traitId' was given to this form when it was stored, and does not change.",
+                    )
+                }
+                claim(cxt, write.sqlCxt, row.client, row.gedraId.fullId, traitId, field, counterId, new!!, tokens)
+            }
+        }
+    }
+
+    /** Records that [gedraId] holds [value], issued by [counterId], after holding the write to the token it was issued with. */
+    private fun claim(
+        cxt: KdrCxt,
+        sqlCxt: SqlCxt,
+        client: String,
+        gedraId: String,
+        traitId: String,
+        field: String,
+        counterId: String,
+        value: String,
+        tokens: List<CounterToken>,
+    ) {
+        val token = tokens.firstOrNull { it.value == value && it.counterId == counterId }
+            ?: throw KdrException.mkInput(
+                "The id '$value' in '$field' of '$traitId' was not sent with the token it was issued with. Ask the counter " +
+                    "'$counterId' for an id, and send its token in '${CTR.counterTokens}' with the write that stores it.",
+            )
+        if (token.client != client) {
+            throw KdrException.mkInput("The id '$value' in '$field' of '$traitId' was issued for another client's forms.")
+        }
+        if (token.userId != cxt.userProfile.userId) {
+            throw KdrException.mkInput("The id '$value' in '$field' of '$traitId' was issued to someone else.")
+        }
+        val table = claimTable(cxt)
+        val key = mapOf(
+            PF.client to client, CNT.counterId to counterId, CNT.scopeKey to token.scopeKey,
+            CNT.periodKey to token.periodKey, CNT.issuedCount to token.count,
+        )
+        // Asked first, for a refusal that says what happened; the key is what holds the line when two writes race.
+        val held = sqlCxt.sqlDb.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), key)
+        if (held != null) {
+            val holder = held[CNT.gedraId].toOptStr()
+            throw KdrException.mkInput(
+                "The id '$value' in '$field' of '$traitId' is already stored" + (if (holder == gedraId) " on this form." else " on another form.") +
+                    " Ask the counter '$counterId' for another.",
+            )
+        }
+        val claim = LinkedHashMap<String, Any?>(key)
+        claim[CNT.counterValue] = value
+        claim[CNT.gedraId] = gedraId
+        claim[CNT.traitId] = traitId
+        claim[CNT.fieldName] = field
+        SqlTopicUtil.prepForStdExecute(cxt, table, claim)
+        sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), claim)
+        LogGedra.info(cxt) { "Form '$gedraId' stores '$value' from counter '$counterId' in '$field' of '$traitId'." }
+    }
+
+    private fun claimTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[CNT.formCounterClaims]
+        ?: throw KdrException("The ${CNT.formCounterClaims} table is not registered in the schema store.")
+}
+
+/** The shape of a write's [CTR.counterTokens] field: a list of sealed tokens, each a secret the request log redacts. */
+fun SchTypeBuilder.counterTokensShape() {
+    type = SCT.array
+    items { type = SCT.string }
+    sensitive = true
+}

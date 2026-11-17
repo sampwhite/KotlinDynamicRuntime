@@ -134,6 +134,15 @@ object GEP {
     /** Saves a workflow task's collected entries (issue #535). */
     const val workflowSave = "/gedra/workflow/save"
 
+    /**
+     * Issues the next id of one of the client's counters (issue #1849): what a page shows in a counter's field before
+     * the form is saved, with the token the save sends back. See `CTR`.
+     */
+    const val counterIssue = "/gedra/counter/issue"
+
+    /** Response type of [counterIssue]: the id and its token. */
+    const val counterIdType = "IssuedCounterId"
+
     /** The type naming a workflow-save result -- either a refusal with reasons, or the created gedra. */
     const val workflowSaveType = "WorkflowSaveResult"
 

@@ -1319,3 +1319,34 @@ The Clients page's New client form (issue #1820) files a client under an existin
 create already takes `newCustomer` (a name and a note), which makes a customer whose id is the client's and whose root
 the client is (issue #1107), so the form could offer "a new customer, with this client as its root" beside the existing
 ones. Built when an operator asks to set up a customer from the page rather than through configuration.
+
+## When a client wants an id on each item of a list
+
+A client's counters (issue #1849) number a field of a trait's own data, one id a form entry. A field naming a counter
+inside a nested object or a list's items is reported when the configuration loads, and is given no id.
+
+- **An id for each row of an array** *(#1849, deferred here 2026-11-17).* A row asks the counter for an id as it is
+  added, as a create page asks for a field's, and on save the hook checks and claims each new row's id with its token,
+  the row matched by its key. The id is then a natural `g-primaryKey` of the row's type, which `g-counter` is already
+  allowed to be, since a counter's field is not `g-derived`.
+
+## When a client wants its counters kept per store or register
+
+A counter (issue #1849) counts per client, and per day when it resets daily. A chain of stores would want one count
+each, so that ids say where they were issued and two stores never wait on each other's lock.
+
+- **A counter's scope filled from the caller** *(#1849, deferred here 2026-11-17).* The tables already key a count and
+  a claim by a `scopeKey`, always `-` today. A counter would name where its scope comes from -- the caller's
+  organization attribute is the likely first -- and the issue endpoint fill it, the token carrying it to the claim.
+  Which attribute, and what a caller with none is given, are the questions to settle then.
+
+## When a new client wants its forms numbered from the start
+
+A client's creation workflow asks for a form's name (`kdr:name`), as the starter templates make it (issue #1346). A
+client that numbers its forms with a counter (issue #1849) defines the counter, a trait with a field naming it, and
+a creation workflow that collects that trait in place of the name, and lists the field in its forms listing.
+
+- **A numbered starter** *(#1849, deferred here 2026-11-17).* A choice on the New client form -- forms are named, or
+  numbered with a prefix, digits, and a reset -- that makes the counter, a numbering trait, a creation workflow
+  collecting it rather than the name, and the forms list's first column from it. Built when a client is set up that
+  wants its forms numbered.

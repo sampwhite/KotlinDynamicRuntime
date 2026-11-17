@@ -34,6 +34,7 @@ object SchGKeywords {
         SCH.fileKinds to textList,
         SCH.fileMaxSize to SchKeywordShape("a whole number of bytes", SchShapeForm.NumberLike),
         SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
+        SCH.counter to text,
         SCH.onWrite to SchKeywordShape("a list of function objects", SchShapeForm.ListOf(SchShapeForm.Obj)),
         SCH.schemaDocument to boolean,
         SCH.options to list,
@@ -73,6 +74,8 @@ object SchGKeywords {
             "value that has any, or 'keep' it. Unset, a plain string is trimmed when it arrives in a request, and left " +
             "as it is when stored or sent back.",
         SCH.derived to "Marks a property the caller does not supply, because something else produces it.",
+        SCH.counter to "The client's counter that numbers this plain string: a form shows the next id before it is " +
+            "saved, and it does not change once stored.",
         SCH.onWrite to "The functions run on the object's data each time it is written, such as one computing a " +
             "derived property from the others. Each names its kind in 'fn'. Always a list, even of one.",
         SCH.schemaDocument to "Marks a property whose value is itself a schema, checked by parsing it.",
@@ -110,6 +113,7 @@ object SchGKeywords {
         SCH.fileKinds to SchKeywordPlace.schema,
         SCH.fileMaxSize to SchKeywordPlace.schema,
         SCH.derived to SchKeywordPlace.schema,
+        SCH.counter to SchKeywordPlace.schema,
         SCH.onWrite to SchKeywordPlace.namedType,
         SCH.schemaDocument to SchKeywordPlace.schema,
         SCH.options to SchKeywordPlace.schema,

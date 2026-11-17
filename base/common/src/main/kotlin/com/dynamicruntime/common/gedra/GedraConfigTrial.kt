@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.report.ReportService
@@ -267,6 +268,8 @@ object GedraConfigTrial {
         ReportService.get(tcxt).trialClient(tcxt, scratch, client, def, schema.types, schema.droppedTypes, workflows)
         // And its file refs (issue #1153): a ref naming bytes that are not in the store is refused as a write.
         FileRefService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client)
+        // And its counters (issue #1849): one that is no good, or a field naming one the client lacks, is refused here.
+        CounterService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client)
         return TrialCandidate(capture.toList(), present != null, schema, workflows, def, PlanLimits.configUsageOf(scratch, client))
     }
 }

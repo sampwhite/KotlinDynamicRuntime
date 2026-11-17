@@ -249,6 +249,17 @@ object SCH {
     const val derived = "g-derived"
 
     /**
+     * The counter that fills a plain string field (issue #1849): the id of one of its client's counters, each a
+     * prefix and a zero-padded count (`R20261117-0042`) issued one at a time. A form asks for an id before the form
+     * exists and shows it, read-only; the write that brings it back must also bring the token it was issued with, so
+     * a value never issued to the caller, or one already used, is refused. Once stored, it does not change.
+     *
+     * Not [derived]: the caller does supply the value, if only one it was issued, and a derived field could not be
+     * part of a [primaryKey]. Refused on anything but a plain string, with [derived], and with choices.
+     */
+    const val counter = "g-counter"
+
+    /**
      * The functions run on an object's data each time it is written (issue #1501): a list of function usages, each
      * a `{fn, ...}` object naming a registered kind and carrying that kind's settings (see [SchFunctionUsage]). The
      * first of the data's life-cycle events a schema may attach functions to ([SchEventType]); on a trait's data

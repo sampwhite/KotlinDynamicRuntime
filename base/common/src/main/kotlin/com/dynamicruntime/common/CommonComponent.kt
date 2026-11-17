@@ -6,6 +6,10 @@ import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.datafile.dataFileSchema
 import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.DebugTagDef
+import com.dynamicruntime.common.counter.CounterClaimHook
+import com.dynamicruntime.common.counter.CounterService
+import com.dynamicruntime.common.counter.counterClaimTables
+import com.dynamicruntime.common.counter.counterTables
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
 import com.dynamicruntime.common.gedra.workflow.OwnerOnlyGuard
@@ -211,6 +215,8 @@ class CommonComponent : ComponentDefinition {
         // write's context to the form's owner, and a file newly linked must be one the caller may use.
         collector.addWriteHook(DataFileLinkHook)
         collector.addWriteHook(DerivedStateWriteHook)
+        // A counter's field holds only an id issued to the writer, stored once and never changed (issue #1849).
+        collector.addWriteHook(CounterClaimHook)
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
         // path, under the form's lock -- or record the override a permitted writer asked for.
         // The guards run in this order, so the broadest refusal is the one said: a form an editor may not delete, then
@@ -328,6 +334,9 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(reportHistoryTables(cxt), appOnly)
         // A workflow's parameters, its time windows first (issue #1356): set per client, in force at once.
         collector.addTables(workflowParamsTables(cxt), appOnly)
+        // Counters (issue #1849): the counts, in a topic of their own, and the claims, written with a form's data.
+        collector.addTables(counterTables(cxt), appOnly)
+        collector.addTables(counterClaimTables(cxt), appOnly)
         // Per-gedra job failures (issue #871), in the same topic.
         collector.addTables(jobExceptionTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)
@@ -482,6 +491,8 @@ class CommonComponent : ComponentDefinition {
             // A client's file refs (issue #1153), read from its configuration and served under the static root.
             // Application-only, as the file store is.
             service(::FileRefService, roles = setOf(BOOT.app)),
+            // A client's counters (issue #1849), read from its configuration: what numbers a field's ids.
+            service(::CounterService, roles = setOf(BOOT.app)),
             // Resolves UiBlocks for a caller (issue #457). A regular service, so the startup tier's
             // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
             // compiled by the time this initializes.

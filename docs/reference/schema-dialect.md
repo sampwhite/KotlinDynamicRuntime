@@ -76,6 +76,7 @@ Wherever a schema is written: a type declared by name, a field's own schema, or 
 | `g-fileKinds` | A list of text | On a field of format 'gedra-file', the kinds of file it may hold, such as 'png' or 'mp4'. A file's kind is told by its bytes. |
 | `g-fileMaxSize` | A whole number of bytes | On a field of format 'gedra-file', the largest file it may hold, in bytes. A file is held to the smaller of this and its kind's own largest. |
 | `g-derived` | True, false or an object | Marks a property the caller does not supply, because something else produces it. |
+| `g-counter` | Text | The client's counter that numbers this plain string: a form shows the next id before it is saved, and it does not change once stored. |
 | `g-schemaDocument` | True or false | Marks a property whose value is itself a schema, checked by parsing it. |
 | `g-options` | A list | The choices a property offers, each a label and a value. |
 | `g-openOptions` | True or false | Whether the options are suggestions rather than a bound, so another value is allowed. |

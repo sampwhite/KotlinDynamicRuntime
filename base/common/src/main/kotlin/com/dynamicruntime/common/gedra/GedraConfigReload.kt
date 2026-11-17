@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.report.ReportService
@@ -190,6 +191,8 @@ object GedraConfigReload {
         // The client's file refs (issue #1153), from the configurations it now holds. Absent on a node that keeps
         // no files.
         FileRefService.getOrNull(cxt)?.reloadClient(cxt, client)
+        // And its counters (issue #1849).
+        CounterService.getOrNull(cxt)?.reloadClient(cxt, client)
         val evicted = (typeKeys + reportKeys).size
 
         val inherited = taken.count { it.inheritedFrom != null }

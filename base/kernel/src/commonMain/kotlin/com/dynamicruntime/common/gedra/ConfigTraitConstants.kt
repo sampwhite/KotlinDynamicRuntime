@@ -47,6 +47,9 @@ object CCT {
     /** The client's listing-wide settings (issue #1599); single-instance, as [clientDef] is. See `ListingDef`. */
     const val listingDef = "kdr:listingDef"
 
+    /** One counter -- what numbers a field's ids -- keyed by its counter id (issue #1849). See `CounterDef`. */
+    const val counterDef = "kdr:counterDef"
+
     // --- what a stored entry says of the code it stands over (issue #1634) ---
 
     /**
