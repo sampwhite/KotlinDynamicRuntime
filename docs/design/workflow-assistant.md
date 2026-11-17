@@ -247,6 +247,19 @@ and never instructions, and then gives the API guide. A conversation is bound to
 read-only, and the administrator starts a new one. A new build that changes the API guide or a tool does that to every
 conversation. The prompt names the client by its id alone, so renaming a client does not.
 
+**The whole client** (#1768). The prompt frames the job as configuring the client -- its workflows, traits, how its
+forms read, its wording, its menu and Home, its forms list, and its reports -- not only building workflows. Before
+choosing how to make a change, the model reads [Making changes](../reference/making-changes.md) with `read_doc`, and
+[What a client is](../reference/what-a-client-is.md) for how the parts fit together. It prefers a targeted tool to
+`patch_config` wherever one makes the change, and within `patch_config` the `addOrMerge` action. It dry-runs wherever a
+tool offers it, and reads the answer before writing. A section per area carries the rule a tool cannot say for itself:
+a client's own trait is designed and a platform's narrowed, never redefined; a field's words change on one workflow's
+form or on every form; a key's wording applies wherever the key is shown; a menu change changes what is offered, not who
+may reach a page; Home's page is one copy key, changed whole; and a report is changed after it is made with
+`patch_config`. A last list says what it cannot do -- publish, the sandbox, users and keys, form data, creating a
+client, uploads, and the client's own workflow parameters -- and how the administrator does each. Each tool the prompt
+names is held to the tools by a test (`AssistantNewFormTest`).
+
 **The New form** (#1569). The prompt says what the creation workflow is -- the workflow whose entry is `creation`,
 whose one task's traits are exactly what the New form page asks for -- that a client has at most one, that a trait a
 new workflow wants may go on it or on the new workflow's own task, and that a starter made from a template (an
