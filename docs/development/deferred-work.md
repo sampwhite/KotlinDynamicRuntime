@@ -409,6 +409,18 @@ conference demo dropped a column (#1612) because the table had grown wide, which
   display columns, To review, Workflows, and Status would then all be in view. The same model resizable columns
   (#1666) needs: a dragged width is the preferred, the minimum the floor. Worth it once the reordered list has been
   tried in a demo and Status still out of view is felt.
+- **Columns a person resizes** *(#1666, deferred here 2026-11-17).* A person drags a column's edge to widen or narrow
+  it, and double-clicks it for the default, and the list remembers it. Built with columns a user chooses: widths are
+  the same person's preference for the listing, so they belong where those are stored, not in the browser now and per
+  user later. It takes:
+  - a header cell given through antd's `components.header.cell` (antd 6.5 has no resizing of its own), which passes on
+    antd's own props, sorting and pinning among them, and adds a grip like Design View's inspector's
+    (`InspectorResize.kt`);
+  - a width per column applied as the columns are assembled, which `minTableWidth` already sums.
+
+  Two things to settle then. A drag redraws a table of up to 500 rows, so measure it and redraw each frame or only when
+  the drag ends. And Contains, which takes the room the others leave, needs a width once dragged, after which antd
+  spreads spare room over every column.
 
 ## When a customer wants choices or a picker on a computed column
 
