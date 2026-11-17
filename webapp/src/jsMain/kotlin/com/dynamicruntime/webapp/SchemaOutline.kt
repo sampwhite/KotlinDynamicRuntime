@@ -87,7 +87,7 @@ private fun ChildrenBuilder.outlineVariant(variants: SchVariants, seen: Set<Stri
     variants.defaultBranch?.let {
         p {
             className = ClassName("type-hint")
-            +"Any other ${variants.discriminator} is carried through unchanged."
+            +"Any other ${variants.discriminator} is kept unchanged."
         }
     }
 }

@@ -368,7 +368,7 @@ val OperatorIndex = FC<Props> {
             }
             li {
                 a { href = childHref(HMENU.pageFragmentsCheck, HMENU.pageOperator); +"Fragments check" }
-                +" \u2014 the Markdown fragment files this node carries, and any problems found."
+                +" \u2014 the Markdown fragment files this node has, and any problems found."
             }
             li {
                 a { href = childHref(HMENU.pageCacheState, HMENU.pageOperator); +"Cache state" }
@@ -382,7 +382,7 @@ val OperatorIndex = FC<Props> {
                 a { href = childHref(ASST.operatorPage, HMENU.pageOperator); +"Workflow assistant" }
                 +(
                     " \u2014 the clients the assistant is on for, what each may spend in a month, and what each has spent, " +
-                        "where the deployment carries the assistant."
+                        "where the deployment includes the assistant."
                 )
             }
         }

@@ -287,7 +287,7 @@ val App = FC<Props> {
                                     method = "GET"
                                     path = OPS.fragmentsCheckPath
                                     title = "Fragments check"
-                                    description = "The Markdown fragment files this node carries, and any problems found."
+                                    description = "The Markdown fragment files this node has, and any problems found."
                                 }
                                 pageCacheState -> OperatorCacheStatePage {}
                                 pageFileStore -> OperatorFileStorePage {}

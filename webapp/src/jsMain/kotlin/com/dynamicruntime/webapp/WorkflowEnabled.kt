@@ -70,7 +70,7 @@ fun enabledSaveRequest(clientId: String, workflowId: String, on: Boolean?, ackno
 /** How a switch save takes effect, said beside Save: at once, in the client or sandbox [clientId] names. */
 fun enabledEffectText(clientId: String): String =
     if (isSandboxClient(clientId)) {
-        "Saving takes effect at once in this sandbox, and never reaches its client: a publish carries no parameters."
+        "Saving takes effect at once in this sandbox, and never reaches its client: publishing does not include parameters."
     } else {
         "Saving takes effect at once for this client's people, with no draft and no publish."
     }

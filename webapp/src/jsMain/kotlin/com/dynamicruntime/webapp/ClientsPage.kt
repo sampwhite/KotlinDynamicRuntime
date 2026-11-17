@@ -983,7 +983,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
         p {
             className = ClassName("subtitle")
             +("Labels are comma-separated; each is matched exactly as written. Label notes are one per line, " +
-                "the label, a colon, then who should carry it; a note on a label no longer suggested is dropped. " +
+                "the label, a colon, then who should have it; a note on a label no longer suggested is dropped. " +
                 "$timeZoneEditNote $numberFieldsEditNote " +
                 saveEffectText(props.savesDraft))
         }

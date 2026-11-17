@@ -1884,8 +1884,8 @@ private fun accessLevelOptions(operatorSelectable: Boolean): Array<dynamic> =
 
 /** Says why the choice is offered here and nowhere else. */
 private const val clientHint =
-    "Which client the new user belongs to. It cannot be changed afterward: their content carries the " +
-        "client, so moving them would leave it behind."
+    "Which client the new user belongs to. It cannot be changed afterward: their content is stored " +
+        "under the client, so moving them would leave it behind."
 
 /**
  * Says what the capability does, and that it is a different axis from the level -- the distinction the whole
@@ -1920,11 +1920,11 @@ private const val labelsHint =
  * suggested label. With no suggested labels the box is all there is ([hasSuggested] false), and says so.
  */
 private fun otherLabelsHint(hasSuggested: Boolean): String = if (hasSuggested) {
-    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one this client's " +
-        "users already carry. Workflows do not use these; they use only the suggested labels above."
+    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one already given " +
+        "to some of this client's users. Workflows do not use these; they use only the suggested labels above."
 } else {
-    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one this client's " +
-        "users already carry. This client suggests no labels, so its workflows use none."
+    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one already given " +
+        "to some of this client's users. This client suggests no labels, so its workflows use none."
 }
 
 /**

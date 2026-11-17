@@ -1055,7 +1055,7 @@ fun workflowNote(wf: WorkflowView, words: WorkflowCellWords = WorkflowCellWords(
  */
 fun coreDetailsNote(wf: WorkflowView): String? =
     if (wf.entry == WfEntry.coreDetails.name && wf.help.isBlank()) {
-        "Core details: what every form carries. Each workflow keeps its own."
+        "Core details: what every form has. Each workflow keeps its own."
     } else {
         null
     }

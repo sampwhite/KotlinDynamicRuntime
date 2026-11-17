@@ -50,9 +50,9 @@ fun labelRows(details: List<UserLabelDetail>, draft: List<String>): List<LabelRo
 
 /** How many users carry a label, as a row says it. */
 fun labelCarriersText(carriers: Int): String = when (carriers) {
-    0 -> "Nobody carries it yet."
-    1 -> "1 user carries it."
-    else -> "$carriers users carry it."
+    0 -> "No user has it yet."
+    1 -> "1 user has it."
+    else -> "$carriers users have it."
 }
 
 /** The labels in [draft] the client does not suggest: what the free-entry box under the rows holds. */

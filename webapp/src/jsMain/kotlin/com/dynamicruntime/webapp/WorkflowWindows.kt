@@ -172,7 +172,7 @@ fun parseParamsSaveResult(raw: Map<String, Any?>): ParamsSaveResult = ParamsSave
  */
 fun windowsEffectText(clientId: String): String =
     if (isSandboxClient(clientId)) {
-        "Saving takes effect at once in this sandbox, and never reaches its client: a publish carries no time windows."
+        "Saving takes effect at once in this sandbox, and never reaches its client: publishing does not include time windows."
     } else {
         "Saving takes effect at once for this client's people, with no draft and no publish."
     }

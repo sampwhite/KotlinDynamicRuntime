@@ -134,7 +134,7 @@ fun parseClientCreateOutcome(results: Map<String, Any?>): ClientCreateOutcome = 
  */
 fun clientCreatedText(outcome: ClientCreateOutcome): String = buildString {
     append("Created ${outcome.client}.")
-    if (!outcome.present) append(" This node does not carry it" + (outcome.loadFailure?.let { ": ${it.trim().trimEnd('.')}." } ?: "."))
+    if (!outcome.present) append(" This node is not running it" + (outcome.loadFailure?.let { ": ${it.trim().trimEnd('.')}." } ?: "."))
     outcome.userFailure?.let { append(" Your administrator user there could not be made: ${it.trim().trimEnd('.')}.") }
 }
 

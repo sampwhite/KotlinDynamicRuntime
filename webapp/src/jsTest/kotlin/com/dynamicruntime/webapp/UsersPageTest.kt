@@ -917,10 +917,10 @@ class UserLabelChoicesTest {
             ),
             rows[0].uses,
         )
-        assertEquals("2 users carry it.", rows[0].carriers)
+        assertEquals("2 users have it.", rows[0].carriers)
         assertNull(rows[1].note)
-        assertEquals("Nobody carries it yet.", rows[1].carriers)
-        assertEquals("1 user carries it.", rows[2].carriers)
+        assertEquals("No user has it yet.", rows[1].carriers)
+        assertEquals("1 user has it.", rows[2].carriers)
     }
 
     @Test
