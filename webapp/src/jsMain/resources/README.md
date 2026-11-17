@@ -15,7 +15,8 @@ place of the bundle, so they need no webapp build.
 | `brand-mark.svg` | The master mark, at display size: the app bar lockup and the home hero. |
 | `favicon.ico` | Legacy tab icon (16+32+48 embedded). See the caveat below. |
 | `favicon-32.png` | Tab-icon fallback for browsers that don't take the SVG. |
-| `apple-touch-icon.png` | 180×180, opaque background — iOS home screen. |
+| `apple-touch-icon.png` | 180×180, opaque background — iOS home screen. Rendered from `apple-touch-icon.svg` (issue #1783). |
+| `apple-touch-icon.svg` | The touch icon's source, **not embedded**: edit it and render the PNG again (`rsvg-convert -w 180 -h 180 apple-touch-icon.svg -o apple-touch-icon.png`, as its comment says). |
 | `share-image.png` | 1200×630 — the image a link preview (LinkedIn, Slack, a messenger) shows, named by the production shell's `og:image` (issue #1688). Rendered from `share-image.svg`. |
 | `share-image.svg` | The share image's source, **not embedded**: edit it and render the PNG again (`rsvg-convert -w 1200 -h 630 share-image.svg -o share-image.png`, as its comment says). |
 
@@ -34,8 +35,13 @@ Every icon is copied **verbatim** from the branding set (`~/Downloads/branding`,
 That set is the source of truth and holds more than this: the master mark, a `currentColor` mono variant, and
 `favicon-16/48` plus `icon-192/512`. Regenerate there, then re-copy — do not hand-edit these files.
 
-The share image is the exception: it is not in the branding set, but drawn here around the master mark, whose paths
-it copies verbatim, with the app's colors and the product's name. The SVGs carry their own header comments explaining
+Two are exceptions, each rendered here from an SVG beside it that copies the master mark's paths verbatim:
+
+- **The share image** is not in the branding set. It is drawn around the mark, with the app's colors and the product's
+  name.
+- **The Apple touch icon** is the branding set's design (the mark on a solid `#FAF9F5` ground), rendered here because
+  the set's PNG is wrong (issue #1783). Quick Look rasterized it into the top-left 108 pixels of the 180-pixel canvas and
+  left the rest white. Render it from `apple-touch-icon.svg`, not from the set. The SVGs carry their own header comments explaining
 their roles. The rasters cannot, which is why this file exists.
 
 ## What is deliberately not here, and why
