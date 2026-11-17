@@ -82,6 +82,8 @@ class ClientsPageTest {
         val free = PlanUsage(PLAN.free, listOf(QuotaMeasure(QUOTA.forms, 12, 100), QuotaMeasure(QUOTA.workflows, 3, 4)))
         assertEquals("Free: 12 of 100 forms, 3 of 4 workflows", planUsageText(free))
         assertEquals("Unlimited", planUsageText(PlanUsage(PLAN.unlimited, emptyList())))
+        // Issue #1837: megabytes of files read as such, not by the measure's name.
+        assertEquals("Free: 40 of 500 MB of files", planUsageText(PlanUsage(PLAN.free, listOf(QuotaMeasure(QUOTA.fileMegabytes, 40, 500)))))
         val row = parseClientOverview(listOf(mapOf(CLD.clientId to "free_x", CLD.planUsage to free.toInfo()))).single()
         assertEquals(free, row.planUsage)
         assertEquals("Free: 12 of 100 forms, 3 of 4 workflows", clientSummaryRows("free_x", row, null, canSeeAllClients = true).toMap()["Plan"])

@@ -4,9 +4,10 @@ A client's **named images** are images its copy shows by name, with the bytes ke
 own disk. Each is a **configuration file ref**: an entry of the client's configuration naming a file. In this document
 "ref" means one of these.
 
-They are not the file references a form's data may one day hold, such as a trait whose field names an uploaded file.
-Those would be part of a form, as its other data is, where these are part of the client's configuration
-(`GedraDataType.fileRef` is reserved for the data kind).
+They are not the **data files** a form's data holds, a file uploaded for a trait's file field (issue #1837,
+[`data-files.md`](data-files.md)). Those are part of a form, as its other data is, where these are part of the client's
+configuration. In code the two keep their own words: "file ref" for these, "data file" (`GedraDataType.dataFile`) for
+those.
 
 The document has two parts. **[Using named images](#using-named-images)** is a guide: how to add an image, show it in
 the client's copy, and replace or remove it. **[The design](#the-design)** is the record of what a ref is, where its
@@ -85,8 +86,8 @@ configuration. That is what separates it from the two things it is easily confus
 - **A client's web assets** (issue #1130) are its favicon and brand mark: two fixed slots, uploaded from the Clients
   page and kept in the same bucket, but not configuration. They have no draft, and a sandbox shows its parent's. Refs
   and web assets share the image check (`WebAssetCheck`) and the serving code (`HashedFileServing`).
-- **`GedraDataType.fileRef`** is a kind of *data* gedra: a claim on a file held as data. It has no write path yet. The
-  two share the word and nothing else.
+- **A data file** (`GedraDataType.dataFile`, issue #1837) is a kind of *data* gedra: a file uploaded for a form's data,
+  held by a record of its own ([`data-files.md`](data-files.md)). The two share nothing but the file store.
 
 The limits are in `FREF` (`FileRefConstants.kt`):
 

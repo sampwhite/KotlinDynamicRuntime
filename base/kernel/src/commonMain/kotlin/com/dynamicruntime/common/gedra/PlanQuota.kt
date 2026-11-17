@@ -20,7 +20,9 @@ object PLAN {
     val names: List<String> = listOf(free, unlimited)
 
     /** What the free plan holds: what keeps an advertisement's infrastructure cost bounded. */
-    val freeQuotas = PlanQuotas(forms = 100, users = 20, workflows = 4, tasksPerWorkflow = 2, schemas = 10, attributesPerSchema = 10)
+    val freeQuotas = PlanQuotas(
+        forms = 100, users = 20, workflows = 4, tasksPerWorkflow = 2, schemas = 10, attributesPerSchema = 10, fileMegabytes = 500,
+    )
 
     /**
      * The plan a customer's [plan] field puts its clients on: [unlimited] when it names none, [free] -- the least --
@@ -52,6 +54,9 @@ object QUOTA {
     const val workflows = "workflows"
     const val schemas = "schemas"
 
+    /** The files uploaded for the client's forms, in megabytes (issue #1837): their sizes added up, rounded up. */
+    const val fileMegabytes = "fileMegabytes"
+
     // --- a client's usage, as the overview carries it ---
     const val plan = "plan"
     const val measures = "measures"
@@ -73,10 +78,15 @@ class PlanQuotas(
     val schemas: Int? = null,
     /** The attributes one of those types declares (see [schemaAttributeCount]). */
     val attributesPerSchema: Int? = null,
+    /**
+     * The megabytes of files uploaded for the client's forms (issue #1837): every live data file's size, added up and
+     * rounded up to a whole megabyte -- one being uploaded at the size it said it would be.
+     */
+    val fileMegabytes: Int? = null,
 ) {
     /** Whether any measure is limited. */
     val isLimited: Boolean
-        get() = listOf(forms, users, workflows, tasksPerWorkflow, schemas, attributesPerSchema).any { it != null }
+        get() = listOf(forms, users, workflows, tasksPerWorkflow, schemas, attributesPerSchema, fileMegabytes).any { it != null }
 
     companion object {
         val none = PlanQuotas()

@@ -352,6 +352,11 @@ It opens with [a guide](docs/design/config-file-refs.md#using-named-images) to a
 and replacing it, then sets out where the bytes may be and who may name them, how a configuration holding refs is
 judged when a file can go missing, and how a ref is served.
 
+[`docs/design/data-files.md`](docs/design/data-files.md) covers **data files**: files uploaded for a form's data, each
+held by a record of its own that a trait's field names. It records why a file is a record and not part of the form,
+how an upload comes in resumable chunks, what finishing checks -- the bytes are the kind sent, an MP4's video is H.264
+-- and who may read a file.
+
 [`docs/design/ui-block.md`](docs/design/ui-block.md) names the **UiBlock** — a registered piece of declared presentation
 structure, merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
 It opens with [a guide](docs/design/ui-block.md#using-ui-blocks) to changing a block for a client and declaring or

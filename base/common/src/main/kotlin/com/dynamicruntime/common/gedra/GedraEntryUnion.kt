@@ -33,8 +33,8 @@ object GU {
      * mechanism; a shared list is.
      *
      * A kind **not** here is silently unvalidated: `checkStoredEntries` looks its union up with a `?: return`.
-     * So a kind whose entries any real path writes has to be in this list. `userData` and `fileRef` have no
-     * entry-writing path yet.
+     * So a kind whose entries any real path writes has to be in this list. `userData` has no entry-writing path yet,
+     * and `dataFile` holds none: its record is its own (`GedraDataType.carriesEntries`).
      */
     val entryKinds: List<GedraDataType> = listOf(GedraDataType.formDoc, GedraDataType.wfData)
 

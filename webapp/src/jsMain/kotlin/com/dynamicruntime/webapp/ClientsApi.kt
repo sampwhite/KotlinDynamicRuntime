@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.PlanUsage
+import com.dynamicruntime.common.gedra.QUOTA
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -148,8 +149,11 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
 fun planUsageText(usage: PlanUsage): String {
     val name = usage.plan.replaceFirstChar { it.uppercase() }
     if (usage.measures.isEmpty()) return name
-    return "$name: " + usage.measures.joinToString(", ") { "${it.used} of ${it.limit} ${it.measure}" }
+    return "$name: " + usage.measures.joinToString(", ") { "${it.used} of ${it.limit} ${measureWords(it.measure)}" }
 }
+
+/** What a plan measure is called after its numbers: its own name, but megabytes of files said as such (issue #1837). */
+private fun measureWords(measure: String): String = if (measure == QUOTA.fileMegabytes) "MB of files" else measure
 
 /**
  * The listing's rows with each sandbox right after its parent (issue #932), so the two read as a pair; a sandbox

@@ -1,5 +1,7 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.datafile.DataFileService
+import com.dynamicruntime.common.datafile.dataFileSchema
 import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.gedra.GDBG
@@ -269,6 +271,9 @@ class CommonComponent : ComponentDefinition {
         collector.addFileBucket(ClientWebAssetService.bucketDef(), appOnly)
         // A client's file refs (issue #1153): the administrator's endpoints. Their files are kept in the same bucket.
         collector.addModule(clientFileRefSchema(cxt), appOnly)
+        // Files uploaded for forms' data (issue #1837): their endpoints, and the bucket their bytes are kept in.
+        collector.addModule(dataFileSchema(cxt), appOnly)
+        collector.addFileBucket(DataFileService.bucketDef(), appOnly)
         // The operator's browser over the file store (issue #1297): app-only, as the store is.
         collector.addModule(fileStoreOperatorSchema(cxt), appOnly)
         // Joining a demo client from `public` (issue #1248): app-only, as joining makes a user.

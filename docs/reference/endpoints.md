@@ -223,6 +223,21 @@ Anyone may call these, signed in or not.
 | POST | `/demo/file/upload` |  | Upload a file; answers with the stored file's metadata. |
 | POST | `/demo/schema/sample` |  | A sample list endpoint exercising nested request/response schema, choices, dates, booleans, and integers. |
 
+## `files`
+
+A signed-in caller may call these.
+
+| Method | Path | Notes | What it does |
+|---|---|---|---|
+| GET | `/files/content` |  | A file's content, a range at a time: an image or a video shown in place, anything else a download. Honors `Range`, `If-Range`, and `If-None-Match`. |
+| DELETE | `/files/delete` |  | Removes a file, aborting its upload if one is under way. Its owner may, and an administrator of its client. |
+| GET | `/files/info` |  | What a file is: its name, kind, size, hash, and status. |
+| POST | `/files/upload/abort` |  | Ends an upload without a file, dropping what was sent. |
+| POST | `/files/upload/begin` |  | Begins an upload of a file for a form's data (issue #1837), answering how to send it: chunks of `chunkSize` bytes in order, each to `/files/upload/chunk`, then `/files/upload/finish`. Refused for a type no file may be, a size past its kind's largest, or a plan with no room for it. |
+| POST | `/files/upload/chunk` |  | Takes one chunk of an upload as the request's raw body, sent as application/octet-stream: the next one, at the offset the upload has reached, with its SHA-256. A chunk taken already is answered again; any other is a 409 saying where the upload is (`nextOffset`). |
+| POST | `/files/upload/finish` |  | Finishes an upload whose chunks are all taken: checks the file is the kind it was sent as -- an MP4's video must be H.264 -- and makes it ready. A file that fails is removed, and the refusal says why. |
+| GET | `/files/upload/status` |  | Where an upload has reached, to resume it after a lost connection. |
+
 ## `fixture`
 
 Anyone may call these, signed in or not.

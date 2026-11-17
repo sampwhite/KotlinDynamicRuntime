@@ -56,6 +56,7 @@ apply to it: `/cp/portal` is in `portal`. A page whose section is not listed her
 | `user` | Signed in | The signed-in user's own account: their API keys, their other users and clients and switching between them, joining or creating a client, and opening a sandbox. |
 | `profile` | Signed in | The signed-in user's profile: their name and password. |
 | `gedra` | Signed in | Forms and the data in them. How far a caller reaches here is their read scope, not the section's rule. |
+| `files` | Signed in | Files uploaded for forms' data: uploading one in chunks, reading its record and its content a range at a time, and removing it. How far a caller reaches is their read scope, and an upload is its owner's. |
 | `operator` | `operator` or above, with `allClients`; or a direct read | Running the deployment: system information, boot checks, caches, jobs, environment variables, the file store, signing keys, and the assistant's switch for each client. |
 | `clientOperator` | `operator` or above | A client's own operations, confined to the caller's client: today, the facts the client knows. |
 | `node` | `admin` or above, with `allClients` | Node identity and statistics, beside `admin`; no endpoint is served under it today. |

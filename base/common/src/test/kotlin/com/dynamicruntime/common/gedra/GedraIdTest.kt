@@ -197,7 +197,7 @@ class GedraIdTest : StringSpec({
     }
 
     "children of one import share their parent's base id" {
-        val parent = cxt.mkGedraId(GedraDataType.fileRef, "acme", GedraIdContext.excel)
+        val parent = cxt.mkGedraId(GedraDataType.dataFile, "acme", GedraIdContext.excel)
         val rows = (1..3).map { mkChildGedraId(GedraDataType.formDoc, parent, it) }
         rows.map { it.baseId }.toSet() shouldBe setOf(parent.baseId)
         rows.map { it.suffix } shouldBe listOf("1", "2", "3")

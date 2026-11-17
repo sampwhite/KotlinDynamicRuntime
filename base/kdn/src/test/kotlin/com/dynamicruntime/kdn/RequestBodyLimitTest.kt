@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
@@ -14,8 +15,8 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.BODY
-import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.operator.OPS
@@ -110,14 +111,14 @@ class RequestBodyLimitTest : StringSpec({
         readout["defaultMaxBytes"] shouldBe BODY.defaultMaxBytes.toLong()
         readout["largeMaxBytes"] shouldBe largeMax.toLong()
         val root = RequestService.get(cxt).apiContextRoot
-        // Each with the most it takes: the large-body maximum, for these.
-        readout["endpoints"].toJsonListOfMaps().map { it["maxBytes"] }.toSet() shouldBe setOf(largeMax.toLong())
-        readout["endpoints"].toJsonListOfMaps().map { it["method"] to it["path"] } shouldContainExactlyInAnyOrder listOf(
-            "POST" to "/$root${CFEP.bundleWrite}",
-            "POST" to "/$root${CFEP.bundlePatch}",
-            "POST" to "/$root${ACEP.bundleWrite}",
-            "POST" to "/$root${ACEP.bundlePatch}",
-            "POST" to "/$root${ACEP.import}",
+        // Each with the most it takes: the large-body maximum for a whole configuration, and a data file's chunk its own.
+        readout["endpoints"].toJsonListOfMaps().map { Triple(it["method"], it["path"], it["maxBytes"]) } shouldContainExactlyInAnyOrder listOf(
+            Triple("POST", "/$root${CFEP.bundleWrite}", largeMax.toLong()),
+            Triple("POST", "/$root${CFEP.bundlePatch}", largeMax.toLong()),
+            Triple("POST", "/$root${ACEP.bundleWrite}", largeMax.toLong()),
+            Triple("POST", "/$root${ACEP.bundlePatch}", largeMax.toLong()),
+            Triple("POST", "/$root${ACEP.import}", largeMax.toLong()),
+            Triple("POST", "/$root${DFILE.chunkPath}", DFILE.chunkBytes.toLong()),
         )
     }
 

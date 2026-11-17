@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.datafile.DFILE
+
 /**
  * The section an application path belongs to: its first segment (`admin` for `/admin/users`). The application
  * path is already stripped of the context root, so the leading `/` is all there is to skip.
@@ -127,7 +129,8 @@ object SectionAccess {
     // `gedra` is login-gated and nothing more: how far a caller reaches into stored gedras is a *scope*
     // question, answered per request by `ReadScopeRules.forCaller`, so one surface serves an ordinary user
     // and an administrator rather than the two needing separate sections (issue #310).
-    val userSections: List<String> = listOf("user", "profile", "gedra")
+    // `files` (issue #1837) is the same: a data file's record is a gedra, so a caller reaches as far as their read scope.
+    val userSections: List<String> = listOf("user", "profile", "gedra", DFILE.section)
 
     /**
      * Sections requiring [ROLE.operator] **and** the [ROLE.allClients] capability -- endpoints for running the
@@ -259,6 +262,8 @@ object SectionAccess {
             "them, joining or creating a client, and opening a sandbox.",
         "profile" to "The signed-in user's profile: their name and password.",
         "gedra" to "Forms and the data in them. How far a caller reaches here is their read scope, not the section's rule.",
+        DFILE.section to "Files uploaded for forms' data: uploading one in chunks, reading its record and its content a " +
+            "range at a time, and removing it. How far a caller reaches is their read scope, and an upload is its owner's.",
         SECT.operator to "Running the deployment: system information, boot checks, caches, jobs, environment variables, " +
             "the file store, signing keys, and the assistant's switch for each client.",
         SECT.clientOperator to "A client's own operations, confined to the caller's client: today, the facts the client " +

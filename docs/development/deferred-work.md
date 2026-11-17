@@ -740,8 +740,8 @@ nothing says so.
 ## When a trait's data can reference an uploaded file
 
 Today's file refs (issue #1153) are **configuration**: an entry of a client's `kdr:fileRefDef` slot naming an image its
-copy shows. A trait whose field names an uploaded file would be a file reference in a form's **data**, for which
-`GedraDataType.fileRef` is reserved. Two ideas would then share one word.
+copy shows. A file uploaded for a form's **data** is a data file (`GedraDataType.dataFile`, issue #1837), named so that
+the two never share the word; whether the configuration kind's code names still want scoping is #1841's to settle.
 
 - **Scope the configuration kind's names in code** *(#1809, deferred here 2026-11-16).* The documents already call
   them "named images" and "configuration file refs", in
