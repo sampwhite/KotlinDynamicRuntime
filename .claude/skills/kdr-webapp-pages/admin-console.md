@@ -190,7 +190,9 @@ confined to one (a confined administrator may assign only their own). The **Oper
 only to a caller who holds `allClients` — via `offeredAccessLevels(operatorSelectable)`, covered under
 `jsNodeTest` — except when the edited user already is an operator, so the value still shows and can be kept
 (anti-escalation checks *adding*, not the result set). This is the advertise-versus-serve drift issue #211
-exists to remove, relocated into a form: a control that can only produce a 400 is worse than no control.
+exists to remove, relocated into a form: a control that can only produce a 400 is worse than no control. Nor does the
+hint under the field explain the missing rung to a caller not offered it: they have no use for it, and the rule is in
+the `roles` field's description and the roles reference.
 
 **A sandbox user is shown with what it acts with** (issue #1198). In a sandbox the console's user info adds
 `actingRoles` -- what the sandbox's rules let the user act with, which its row's `roles` need not say -- and the

@@ -2032,17 +2032,17 @@ private const val nameHint =
 
 /**
  * Says what the levels are for. Two readings, because since #464 the operator rung is only offered to a caller
- * who can grant it ([operatorShown]): explaining a level that is not on screen would puzzle a scoped
- * administrator, and the operator rung no longer "includes the ones below it" in the way the old copy implied
- * -- reaching the operator endpoints takes the deployment-wide `allClients`, not merely ranking above `user`.
+ * who can grant it ([operatorShown]): the operator rung no longer "includes the ones below it" in the way the old copy
+ * implied -- reaching the operator endpoints takes the deployment-wide `allClients`, not merely ranking above `user`.
+ * A caller not shown it is not told of it either: only an `allClients` administrator can grant it, and the rest have no
+ * use for knowing why it is absent. That rule is in the roles field's description and the roles reference instead.
  */
 private fun accessLevelHint(operatorShown: Boolean): String =
     if (operatorShown) {
         "An administrator manages users. The Operator level reaches the deployment diagnostics -- a " +
             "deployment-wide surface, so it takes All clients as well as the level."
     } else {
-        "An administrator manages users in this client. The deployment-operator level is offered only to a " +
-            "full-scope administrator, since its surface spans every client."
+        "An administrator manages users in this client."
     }
 
 /**

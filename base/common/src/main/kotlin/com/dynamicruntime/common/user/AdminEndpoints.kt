@@ -130,7 +130,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
                 "Distinguishes a further user of the same address, client and persona (a UAT batch: '1', '2', 'A', " +
                     "'B'); up to ${PERSONASUFFIX.maxLength} letters, digits or underscores. Empty for the ordinary user.",
             ) { maxLength = PERSONASUFFIX.maxLength }
-            field(ADF.roles, "Roles to grant; defaults to the persona's own (just '${ROLE.user}' for a member).") {
+            field(
+                ADF.roles,
+                "Roles to grant; defaults to the persona's own (just '${ROLE.user}' for a member). Only a caller holding " +
+                    "'${ROLE.allClients}' may grant '${ROLE.operator}', whose surface is deployment-wide.",
+            ) {
                 type = SCT.array
                 items { type = SCT.string }
             }
@@ -337,7 +341,12 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, published: Boolean, 
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.userId, "Id of the user to edit.", required = true) { type = SCT.integer }
-            field(ADF.roles, "The complete new set of roles (replaces, not merges).", required = true) {
+            field(
+                ADF.roles,
+                "The complete new set of roles (replaces, not merges). Only a caller holding '${ROLE.allClients}' may " +
+                    "grant '${ROLE.operator}', whose surface is deployment-wide; one already held may be kept.",
+                required = true,
+            ) {
                 type = SCT.array
                 items { type = SCT.string }
             }
