@@ -144,7 +144,9 @@ One more is neither authority nor identity:
   workflows do with it -- "Approves “Approve the plan” in “Plan the logistics”", the kernel's `UserLabelUse.sentence`,
   from the label-suggestions read's `details` (issue #1658: a task's `userHasLabel` whose fact its approval rule or
   its rule for who may save names, or that only changes what it shows; a restricted workflow's visibility) -- and how
-  many users carry it. Under the rows, **Other labels**: free entry for any label the client does not suggest. While
+  many users carry it. Under the rows, **Other labels**: free entry for any label the client does not suggest. Its hint
+  (`otherLabelsHint`) says what such a label is for -- grouping users and finding them in a search, which matches
+  labels -- and that no workflow uses it, since a workflow may name only a suggested label. While
   the draft holds **no** label and some workflow withholds something for want of one, a note says what this user
   cannot do (`missingLabelsPrompt`: "Without “reviewer”, this user can't approve …"); it never blocks a save. The Users
   list says above Create user when **nobody** carries a label some work needs (`nobodyCarriesWarnings`, issue #1661),

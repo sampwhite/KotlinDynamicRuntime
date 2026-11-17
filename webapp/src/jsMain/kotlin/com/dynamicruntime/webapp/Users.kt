@@ -1914,10 +1914,18 @@ private const val labelsHint =
     "Labels grant no access by themselves; the client's workflows give them meaning, as each suggested label says. " +
         "Labels are matched exactly as written."
 
-/** Beside the free-entry box under the suggested labels. */
-private const val otherLabelsHint =
-    "Any other label, typed; the labels the client's users already carry are offered. A workflow tests only for the " +
-        "client's suggested labels."
+/**
+ * Beside the free-entry box under the suggested labels: what such a label is for -- grouping users and finding them in
+ * a search of the Users page, which matches labels -- and that no workflow uses it, since a workflow may name only a
+ * suggested label. With no suggested labels the box is all there is ([hasSuggested] false), and says so.
+ */
+private fun otherLabelsHint(hasSuggested: Boolean): String = if (hasSuggested) {
+    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one this client's " +
+        "users already carry. Workflows do not use these; they use only the suggested labels above."
+} else {
+    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one this client's " +
+        "users already carry. This client suggests no labels, so its workflows use none."
+}
 
 /**
  * The Users editor's Labels group (issue #1659), in plain view in the User panel: a checkbox per label the client
@@ -1985,7 +1993,7 @@ private fun react.ChildrenBuilder.userLabelsGroup(
         }
         p {
             className = ClassName("type-hint")
-            +otherLabelsHint
+            +otherLabelsHint(suggested.isNotEmpty())
         }
         val prompt = missingLabelsPrompt(suggestions.details, draft)
         if (prompt.isNotEmpty()) {
