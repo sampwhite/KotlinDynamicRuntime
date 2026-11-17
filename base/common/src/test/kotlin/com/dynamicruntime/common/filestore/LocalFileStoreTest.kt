@@ -184,4 +184,56 @@ class LocalFileStoreTest : StringSpec({
         shouldThrow<KdrException> { store.get(cxt, "../$bucket", "doc") }
         filesUnder(root.parentFile).filter { it.endsWith("escape") }.shouldBeEmpty()
     }
+
+    // Issue #1835: an upload's parts are kept apart from the bucket, under a name no bucket or key can take.
+    "an upload's parts are kept outside the bucket, and a token that is not the store's names no directory" {
+        val root = tempDir()
+        val store = LocalFileStore(root).also { it.ensureBucket(cxt, bucket).shouldBeEmpty() }
+        val token = store.beginStaged(cxt, bucket, "clients/acme/staging/s1", "video/mp4")
+        store.putPart(cxt, bucket, "clients/acme/staging/s1", token, 1, "part".toByteArray())
+
+        File(root, "${LocalFileStore.stagingDirName}/$bucket/$token/1").readText() shouldBe "part"
+        store.objects(cxt, bucket).shouldBeEmpty()
+        FileStoreCheck.find(cxt, store, listOf(bucket)).map { it.kind } shouldBe listOf(FLEFT.staged)
+
+        for (bad in listOf("../../$bucket", "../x", token.uppercase(), "")) {
+            shouldThrow<KdrException> { store.putPart(cxt, bucket, "clients/acme/staging/s1", bad, 1, "x".toByteArray()) }
+            shouldThrow<KdrException> { store.abortStaged(cxt, bucket, "clients/acme/staging/s1", bad) }
+        }
+        // A token of the store's shape that names no upload is an answer.
+        store.abortStaged(cxt, bucket, "clients/acme/staging/s1", "0".repeat(32)) shouldBe false
+    }
+
+    "a move that fails leaves the key moved from whole" {
+        val root = tempDir()
+        val store = LocalFileStore(root).also { it.ensureBucket(cxt, bucket).shouldBeEmpty() }
+        store.put(cxt, bucket, "staging/s1", "abc".toByteArray(), meta("abc".toByteArray()))
+        val target = File(root, "$bucket/files").also { it.mkdirs() }
+        target.setWritable(false)
+        try {
+            shouldThrow<KdrException> { store.move(cxt, bucket, "staging/s1", "files/h") }
+        } finally {
+            target.setWritable(true)
+        }
+        store.get(cxt, bucket, "staging/s1").shouldNotBeNull().bytes.decodeToString() shouldBe "abc"
+        store.meta(cxt, bucket, "files/h").shouldBeNull()
+        // Nothing of the move is left where it was going: no content, no metadata, no temporary file.
+        target.listFiles().orEmpty().map { it.name } shouldBe emptyList()
+    }
+
+    "a range is read no further than its end, by bytes, by blocks, or skipping" {
+        val bytes = ByteArray(100) { it.toByte() }
+        BoundedInputStream(bytes.inputStream(), 3).use { s ->
+            listOf(s.read(), s.read(), s.read(), s.read()) shouldBe listOf(0, 1, 2, -1)
+        }
+        BoundedInputStream(bytes.inputStream(), 10).use { s ->
+            s.available() shouldBe 10
+            s.skip(50) shouldBe 10
+            s.read() shouldBe -1
+        }
+        BoundedInputStream(bytes.inputStream(), 10).use { s ->
+            s.skip(4) shouldBe 4
+            s.readAllBytes().toList() shouldBe bytes.copyOfRange(4, 10).toList()
+        }
+    }
 })

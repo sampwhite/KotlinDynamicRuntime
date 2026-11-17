@@ -13,8 +13,8 @@ import kotlin.time.Instant
  *
  * **Every object goes, file by file**: each file's content and metadata ([FileStore.delete]), and then whatever a
  * write that stopped part-way left of a removed file ([FileStoreCheck]'s leftovers -- a local store's temporary files,
- * content with no metadata), since a reset is the moment nothing is writing. What `keep` answers true for is left
- * exactly as it is, leftovers included.
+ * content with no metadata, an upload begun and never finished), since a reset is the moment nothing is writing. What
+ * `keep` answers true for is left exactly as it is, leftovers included.
  */
 object FileStoreClear {
     /** What emptying [bucket] removes and keeps: each by the key of the file it is part of, in key order. */
@@ -26,7 +26,9 @@ object FileStoreClear {
      * removed or kept whole.
      */
     fun plan(cxt: KdrCxt, store: FileStore, bucket: String, keep: (String) -> Boolean): BucketPlan {
-        val keys = store.objects(cxt, bucket).map { keyOf(store, it.name) }.distinct().sorted()
+        // An upload under way holds no object yet, so its key is counted from the store's uploads (issue #1835).
+        val keys = (store.objects(cxt, bucket).map { keyOf(store, it.name) } + store.stagedUploads(cxt, bucket).map { it.key })
+            .distinct().sorted()
         val (kept, removed) = keys.partition(keep)
         return BucketPlan(bucket, removed, kept)
     }

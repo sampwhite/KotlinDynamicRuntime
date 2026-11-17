@@ -24,7 +24,9 @@ import com.dynamicruntime.common.startup.bootCheckMode
 import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.truncateToMs
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.InputStream
 
 /** Topic logger for the file store (placed beside the code that owns the `"fileStore"` topic). */
 object LogFileStore : KdrLogger("fileStore")
@@ -319,20 +321,141 @@ class FileStoreService : ServiceInitializer {
             declared(bucket)
             checkedKey(key)
             val bytes = content.contentBytes()
-            val meta = FileMeta(
-                mimeType = content.mimeType,
-                size = bytes.size.toLong(),
-                hash = bytes.sha256Hex(),
-                // To the precision the metadata file holds, so what is answered here is what a later read gives.
-                uploadedAt = cxt.now().truncateToMs(),
-                fileName = content.saveAsFilename?.let { ContentData.safeFilename(it) }?.takeIf { it.isNotEmpty() },
-                uploadedBy = cxt.userProfile.takeIf { it.isLoggedIn }?.userId,
-                client = cxt.client,
-                extra = extra,
-            ).let { FileMeta.fromFileText(it.toFileText()) }
-                ?: throw KdrException("The metadata of the file '$key' in the bucket '$bucket' could not be written out and read back.")
+            val meta = newMeta(cxt, bucket, key, content.mimeType, bytes.size.toLong(), bytes.sha256Hex(), content.saveAsFilename, extra)
             logged(cxt, "put", bucket, key, { "stored, ${meta.size} bytes" }) { store.put(cxt, bucket, key, bytes, meta) }
             return meta
+        }
+
+        /**
+         * The metadata a file written now is given: what is said of its content, the moment, the signed-in user acting
+         * and the client the context is bound to, and [extra] -- as its file holds it, so what a writer answers is what
+         * a later read gives.
+         */
+        private fun newMeta(
+            cxt: KdrCxt, bucket: String, key: String, mimeType: String, size: Long, hash: String, fileName: String?,
+            extra: Map<String, Any?>,
+        ): FileMeta = FileMeta(
+            mimeType = mimeType,
+            size = size,
+            hash = hash,
+            // To the precision the metadata file holds, so what is answered here is what a later read gives.
+            uploadedAt = cxt.now().truncateToMs(),
+            fileName = fileName?.let { ContentData.safeFilename(it) }?.takeIf { it.isNotEmpty() },
+            uploadedBy = cxt.userProfile.takeIf { it.isLoggedIn }?.userId,
+            client = cxt.client,
+            extra = extra,
+        ).let { FileMeta.fromFileText(it.toFileText()) }
+            ?: throw KdrException("The metadata of the file '$key' in the bucket '$bucket' could not be written out and read back.")
+
+        /**
+         * [length] bytes of the file at [key] in [bucket] from [offset], as a stream the caller closes, with the file's
+         * metadata; null when there is no such file (issue #1835). The range must lie within the file as its metadata
+         * records it.
+         *
+         * **Not checked against the recorded hash**, as [get] checks a whole read: a range cannot be, and a file read in
+         * ranges -- a video -- is too large to hash on every request. So this is for a file **whose key names its
+         * content** (its hash), which is never rewritten and was checked once, as it was finished
+         * ([completeStaged]'s caller holds the hash to the bytes it was given). A file that may be replaced in place is
+         * read whole, by [get].
+         */
+        fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): RangedRead? {
+            declared(bucket)
+            checkedKey(key)
+            val meta = meta(cxt, bucket, key) ?: return null
+            // Compared without adding them, which a huge offset would carry past the largest number and back below the size.
+            if (offset < 0 || length < 0 || length > meta.size || offset > meta.size - length) {
+                throw KdrException(
+                    "The range of $length byte(s) from $offset is not within the file '$key' in the bucket '$bucket', " +
+                        "which is ${meta.size} byte(s).",
+                    null, EXC.badInput,
+                )
+            }
+            // An empty range is no request to make of a store: S3 cannot be asked for one.
+            if (length == 0L) return RangedRead(meta, ByteArrayInputStream(ByteArray(0)))
+            val stream = logged(cxt, "openRange", bucket, key, { if (it == null) "absent" else "opened $offset+$length" }) {
+                store.openRange(cxt, bucket, key, offset, length)
+            } ?: return null
+            return RangedRead(meta, stream)
+        }
+
+        /**
+         * Begins an upload of the file at [key] in [bucket], to be put together from parts ([putPart]) and finished by
+         * [completeStaged] (issue #1835); answers the store's token for it, which every later call names. Nothing is at
+         * [key] until it completes. An upload neither completed nor aborted holds its parts until [FileStoreCheck]'s
+         * repair aborts it.
+         */
+        fun beginStaged(cxt: KdrCxt, bucket: String, key: String, mimeType: String): String {
+            declared(bucket)
+            checkedKey(key)
+            return logged(cxt, "beginStaged", bucket, key, { "begun" }) { store.beginStaged(cxt, bucket, key, mimeType) }
+        }
+
+        /**
+         * Stores [bytes] as part [number] of the upload [token] of [key], replacing a part of that number stored before;
+         * answers the part as the store took it, which [completeStaged] is handed back. A part is 1 to
+         * [FPART.maxPartSize] bytes and numbered 1 to [FPART.maxParts].
+         */
+        fun putPart(cxt: KdrCxt, bucket: String, key: String, token: String, number: Int, bytes: ByteArray): StagedPart {
+            declared(bucket)
+            checkedKey(key)
+            checkToken(token)
+            if (number !in 1..FPART.maxParts) {
+                throw KdrException("A part's number is 1 to ${FPART.maxParts}, not $number.", null, EXC.badInput)
+            }
+            if (bytes.isEmpty() || bytes.size > FPART.maxPartSize) {
+                throw KdrException("A part is 1 to ${FPART.maxPartSize} bytes, not ${bytes.size}.", null, EXC.badInput)
+            }
+            return logged(cxt, "putPart", bucket, key, { "part $number, ${bytes.size} bytes" }) {
+                store.putPart(cxt, bucket, key, token, number, bytes)
+            }
+        }
+
+        /**
+         * Puts [parts] together, in order, as the file at [key] in [bucket], replacing a file already there, and ends the
+         * upload [token]; answers the metadata written beside it, as [put] does. [hash] is the SHA-256 of the whole
+         * content, which **the caller has worked out from the bytes it was given** -- chunk by chunk, as they arrived --
+         * since the store is never made to read a large file back to hash it. Its size is the parts'.
+         *
+         * The plan is held to every store's rules ([FPART]) whichever store this is, so a plan that passes on memory
+         * passes on S3: part numbers rising, each part but the last at least [FPART.minPartSize].
+         */
+        fun completeStaged(
+            cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, mimeType: String, hash: String,
+            fileName: String? = null, extra: Map<String, Any?> = emptyMap(),
+        ): FileMeta {
+            declared(bucket)
+            checkedKey(key)
+            checkToken(token)
+            partPlanProblem(parts)?.let { throw KdrException("The upload of '$key' cannot be completed: $it.", null, EXC.badInput) }
+            if (!hashPattern.matches(hash)) {
+                throw KdrException("A file's hash is 64 lower-case hex digits, a SHA-256, not '$hash'.", null, EXC.badInput)
+            }
+            val meta = newMeta(cxt, bucket, key, mimeType, parts.sumOf { it.size }, hash, fileName, extra)
+            logged(cxt, "completeStaged", bucket, key, { "completed, ${meta.size} bytes in ${parts.size} part(s)" }) {
+                store.completeStaged(cxt, bucket, key, token, parts, meta)
+            }
+            return meta
+        }
+
+        /** Ends the upload [token] of [key] without a file, dropping its parts; whether there was one under way. */
+        fun abortStaged(cxt: KdrCxt, bucket: String, key: String, token: String): Boolean {
+            declared(bucket)
+            checkedKey(key)
+            checkToken(token)
+            return logged(cxt, "abortStaged", bucket, key, { if (it) "aborted" else "absent" }) {
+                store.abortStaged(cxt, bucket, key, token)
+            }
+        }
+
+        /**
+         * Moves the file at [from] to [to] in [bucket], content and metadata, replacing a file at [to]; whether there was
+         * one at [from] (issue #1835). Both keys are this view's to take.
+         */
+        fun move(cxt: KdrCxt, bucket: String, from: String, to: String): Boolean {
+            declared(bucket)
+            checkedKey(from)
+            checkedKey(to)
+            return logged(cxt, "move", bucket, "$from -> $to", { if (it) "moved" else "absent" }) { store.move(cxt, bucket, from, to) }
         }
 
         /**
@@ -420,6 +543,12 @@ class FileStoreService : ServiceInitializer {
             return found
         }
 
+        private fun checkToken(token: String) {
+            if (token.isBlank() || token.length > FPART.maxTokenLength) {
+                throw KdrException("Not an upload token: '${token.take(40)}'.", null, EXC.badInput)
+            }
+        }
+
         /** One read of the file at [key], with its content, as [get] makes it -- once, or again while a replace lands. */
         private fun storeGet(cxt: KdrCxt, bucket: String, key: String): StoredFile? =
             logged(cxt, "get", bucket, key, { it?.let { f -> "found, ${f.bytes.size} bytes" } ?: "absent" }) {
@@ -454,9 +583,34 @@ class FileStoreService : ServiceInitializer {
         }
     }
 
+    /** A range of a file being read ([FileStoreView.openRange]): the file's metadata, and the range's bytes to close. */
+    class RangedRead(val meta: FileMeta, val stream: InputStream)
+
     @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "FileStoreService"
+
+        /** What a file's hash is: a SHA-256, in lower-case hex. */
+        private val hashPattern = Regex("[0-9a-f]{64}")
+
+        /**
+         * What is wrong with [parts] as the plan of a file put together from them, or null when nothing is (issue #1835):
+         * at least one part, numbers rising from 1 to [FPART.maxParts], and each part but the last at least
+         * [FPART.minPartSize] -- S3's rules, held on every store.
+         */
+        fun partPlanProblem(parts: List<StagedPart>): String? {
+            if (parts.isEmpty()) return "it names no part"
+            if (parts.size > FPART.maxParts) return "it names ${parts.size} parts, more than ${FPART.maxParts}"
+            for ((i, part) in parts.withIndex()) {
+                if (part.number !in 1..FPART.maxParts) return "part number ${part.number} is not 1 to ${FPART.maxParts}"
+                if (i > 0 && part.number <= parts[i - 1].number) return "its parts are not in rising order (${parts[i - 1].number}, then ${part.number})"
+                if (part.size < 1) return "part ${part.number} is empty"
+                if (i < parts.size - 1 && part.size < FPART.minPartSize) {
+                    return "part ${part.number} is ${part.size} bytes, and every part but the last must be at least ${FPART.minPartSize}"
+                }
+            }
+            return null
+        }
 
         /** The `local` store's directory when [FSENV.dir] names none, under the workspace directory. */
         const val defaultDirName = "fileStore"

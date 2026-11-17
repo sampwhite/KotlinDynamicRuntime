@@ -1,8 +1,10 @@
 package com.dynamicruntime.common.filestore
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.sha256Hex
+import java.io.InputStream
 import kotlin.time.Instant
 
 /**
@@ -56,6 +58,11 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         // S3 swaps an object whole, so until this returns the file that was there is untouched -- and still is
         // if it fails.
         api.put(physical, key, bytes, meta.mimeType)
+        putMeta(physical, key, meta)
+    }
+
+    /** Writes [meta] beside the content just written at [key]; on a failure, removes what metadata was there. */
+    private fun putMeta(physical: String, key: String, meta: FileMeta) {
         try {
             api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
         } catch (e: KdrException) {
@@ -128,6 +135,11 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
     override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
         // An S3 store writes no temporary objects ([tmpKeyOf]), so nothing is ever found as one.
         if (leftover.kind == FLEFT.tmp) return false
+        if (leftover.kind == FLEFT.staged) {
+            // Asked again: still under way, and begun no later than the cutoff.
+            val upload = stagedUploads(cxt, bucket).firstOrNull { it.token == leftover.name && it.key == leftover.key } ?: return false
+            return upload.lastActiveAt <= cutoff && api.abortMultipart(physicalBucket(bucket), upload.key, upload.token)
+        }
         val key = FNAME.checkKey(leftover.key)
         val physical = physicalBucket(bucket)
         val there = objectsOf(physical, key)
@@ -147,6 +159,71 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
         return true
     }
+
+    /** One request: the service has read the metadata, so the range is all that is asked for. */
+    override fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): InputStream? =
+        api.getRange(physicalBucket(bucket), key, offset, length)
+
+    override fun beginStaged(cxt: KdrCxt, bucket: String, key: String, mimeType: String): String =
+        api.createMultipart(physicalBucket(bucket), key, mimeType)
+
+    override fun putPart(cxt: KdrCxt, bucket: String, key: String, token: String, number: Int, bytes: ByteArray): StagedPart {
+        val tag = api.uploadPart(physicalBucket(bucket), key, token, number, bytes) ?: throw noUpload(bucket, key, token)
+        return StagedPart(number, bytes.size.toLong(), tag)
+    }
+
+    /**
+     * Each part named is held to what S3 holds of it -- its size as well as its ETag, which S3 itself completes by
+     * alone -- so the size recorded is the object's, and a plan the other stores refuse is refused here too.
+     */
+    override fun completeStaged(cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, meta: FileMeta) {
+        val physical = physicalBucket(bucket)
+        val held = api.listParts(physical, key, token)?.associateBy { it.number } ?: throw noUpload(bucket, key, token)
+        for (part in parts) {
+            val there = held[part.number]
+            if (there == null || there.size != part.size || there.tag != part.tag) {
+                throw KdrException("Part ${part.number} of the upload of '$key' is not the part that was stored.", null, EXC.conflict)
+            }
+        }
+        // S3 makes the object whole when the upload completes, so a file already there is untouched until then.
+        if (!api.completeMultipart(physical, key, token, parts.map { it.number to it.tag })) throw noUpload(bucket, key, token)
+        putMeta(physical, key, meta)
+    }
+
+    override fun abortStaged(cxt: KdrCxt, bucket: String, key: String, token: String): Boolean =
+        api.abortMultipart(physicalBucket(bucket), key, token)
+
+    /** S3 lists when an upload began; when it last took a part is asked of its parts, a request an upload. */
+    override fun stagedUploads(cxt: KdrCxt, bucket: String): List<StagedUpload> {
+        val physical = physicalBucket(bucket)
+        return api.listMultipart(physical).map { upload ->
+            val newest = api.listParts(physical, upload.key, upload.token)?.maxOfOrNull { it.lastModified }
+            StagedUpload(upload.key, upload.token, upload.startedAt, maxOf(upload.startedAt, newest ?: upload.startedAt))
+        }
+    }
+
+    /**
+     * A copy and two deletes, since S3 renames nothing: the content to [to], then its metadata, then [from]'s
+     * metadata and content -- so [to] is never metadata without its content, and a stop part-way leaves [from] whole
+     * or as a write that did not finish. A single copy moves at most 5 GB, above the largest file kind (`FileKinds`).
+     */
+    override fun move(cxt: KdrCxt, bucket: String, from: String, to: String): Boolean {
+        val physical = physicalBucket(bucket)
+        if (!api.head(physical, FileMeta.metaKey(from))) return false
+        if (from == to) return true
+        if (!api.copy(physical, from, to)) return false
+        if (!api.copy(physical, FileMeta.metaKey(from), FileMeta.metaKey(to))) {
+            // The metadata went while the content was copied: what was copied is no file's, as at [from].
+            api.delete(physical, to)
+            return false
+        }
+        api.delete(physical, FileMeta.metaKey(from))
+        api.delete(physical, from)
+        return true
+    }
+
+    private fun noUpload(bucket: String, key: String, token: String): KdrException =
+        KdrException("There is no upload '$token' of '$key' in the bucket '$bucket' under way.", null, EXC.notFound)
 
     /** [key]'s own objects in [physical] -- its content and its metadata, those there -- with when each was written. */
     private fun objectsOf(physical: String, key: String): Map<String, Instant> =

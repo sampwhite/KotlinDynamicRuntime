@@ -37,7 +37,8 @@ class FileStoreContractTest : StringSpec({
     val providers: List<Pair<String, () -> FileStore>> = listOf(
         FST.memory to { MemoryFileStore() },
         FST.local to { LocalFileStore(tempDir()) },
-        FST.s3 to { S3FileStore(FakeS3Api("kdr-$bucket"), "kdr-") },
+        // Parts as small as a test likes: the service holds every plan to S3's smallest part, whichever the store.
+        FST.s3 to { S3FileStore(FakeS3Api("kdr-$bucket", minPartSize = 1), "kdr-") },
     )
 
     for ((name, create) in providers) {
@@ -114,6 +115,126 @@ class FileStoreContractTest : StringSpec({
             // No more than it is asked for, and those the first in key order.
             store.list(cxt, bucket, "", 2).map { it.key } shouldContainExactly listOf("clients/acme/web/brandMark", "clients/acme/web/favicon")
             store.list(cxt, bucket, "clients/acme", 1).map { it.key } shouldContainExactly listOf("clients/acme/web/brandMark")
+        }
+
+        // Issue #1835: a range is read without the rest of the file.
+        "$name: a range of a file is those bytes alone, at either end or the whole of it" {
+            val store = store()
+            val bytes = ByteArray(1000) { (it % 251).toByte() }
+            store.put(cxt, bucket, "video/clip", bytes, meta(bytes, "video/mp4"))
+
+            fun range(offset: Long, length: Long): List<Byte> =
+                store.openRange(cxt, bucket, "video/clip", offset, length).shouldNotBeNull().use { it.readAllBytes() }.toList()
+
+            range(0, 1) shouldBe listOf(bytes[0])
+            range(999, 1) shouldBe listOf(bytes[999])
+            range(100, 250) shouldBe bytes.copyOfRange(100, 350).toList()
+            range(0, 1000) shouldBe bytes.toList()
+            store.openRange(cxt, bucket, "video/none", 0, 1).shouldBeNull()
+        }
+
+        "$name: a file put together from parts sent in any order is them in the order named, with its metadata beside it" {
+            val store = store()
+            val token = store.beginStaged(cxt, bucket, "staged/video", "video/mp4")
+            store.stagedUploads(cxt, bucket).map { it.key to it.token } shouldContainExactly listOf("staged/video" to token)
+            // Nothing is at the key until the upload completes.
+            store.meta(cxt, bucket, "staged/video").shouldBeNull()
+
+            val third = store.putPart(cxt, bucket, "staged/video", token, 3, "!".toByteArray())
+            val first = store.putPart(cxt, bucket, "staged/video", token, 1, "hello ".toByteArray())
+            val second = store.putPart(cxt, bucket, "staged/video", token, 2, "world".toByteArray())
+            second.size shouldBe 5
+            val whole = "hello world!".toByteArray()
+            store.completeStaged(cxt, bucket, "staged/video", token, listOf(first, second, third), meta(whole, "video/mp4"))
+
+            val file = store.get(cxt, bucket, "staged/video").shouldNotBeNull()
+            file.bytes.decodeToString() shouldBe "hello world!"
+            file.meta.mimeType shouldBe "video/mp4"
+            store.stagedUploads(cxt, bucket).shouldBeEmpty()
+            store.list(cxt, bucket, "").map { it.key } shouldContainExactly listOf("staged/video")
+        }
+
+        "$name: a part sent again replaces the one before, and completing with the part it replaced is refused" {
+            val store = store()
+            val token = store.beginStaged(cxt, bucket, "staged/again", "video/mp4")
+            val stale = store.putPart(cxt, bucket, "staged/again", token, 1, "first try".toByteArray())
+            val fresh = store.putPart(cxt, bucket, "staged/again", token, 1, "second try".toByteArray())
+
+            shouldThrow<KdrException> {
+                store.completeStaged(cxt, bucket, "staged/again", token, listOf(stale), meta("first try".toByteArray()))
+            }
+            store.meta(cxt, bucket, "staged/again").shouldBeNull()
+            store.completeStaged(cxt, bucket, "staged/again", token, listOf(fresh), meta("second try".toByteArray()))
+            store.get(cxt, bucket, "staged/again").shouldNotBeNull().bytes.decodeToString() shouldBe "second try"
+        }
+
+        "$name: a file already at the key is untouched until an upload completes, and then replaced" {
+            val store = store()
+            store.put(cxt, bucket, "replaced", "old".toByteArray(), meta("old".toByteArray(), "text/plain"))
+            val token = store.beginStaged(cxt, bucket, "replaced", "text/markdown")
+            val part = store.putPart(cxt, bucket, "replaced", token, 1, "new content".toByteArray())
+
+            store.get(cxt, bucket, "replaced").shouldNotBeNull().bytes.decodeToString() shouldBe "old"
+            store.completeStaged(cxt, bucket, "replaced", token, listOf(part), meta("new content".toByteArray(), "text/markdown"))
+            val file = store.get(cxt, bucket, "replaced").shouldNotBeNull()
+            file.bytes.decodeToString() shouldBe "new content"
+            file.meta.mimeType shouldBe "text/markdown"
+        }
+
+        "$name: an aborted upload leaves nothing, and is no upload to abort, add to or complete again" {
+            val store = store()
+            val token = store.beginStaged(cxt, bucket, "staged/dropped", "video/mp4")
+            val part = store.putPart(cxt, bucket, "staged/dropped", token, 1, "x".toByteArray())
+
+            store.abortStaged(cxt, bucket, "staged/dropped", token) shouldBe true
+            store.stagedUploads(cxt, bucket).shouldBeEmpty()
+            store.meta(cxt, bucket, "staged/dropped").shouldBeNull()
+            store.abortStaged(cxt, bucket, "staged/dropped", token) shouldBe false
+            shouldThrow<KdrException> { store.putPart(cxt, bucket, "staged/dropped", token, 2, "y".toByteArray()) }
+            shouldThrow<KdrException> {
+                store.completeStaged(cxt, bucket, "staged/dropped", token, listOf(part), meta("x".toByteArray()))
+            }
+            // An upload is its key's: another key does not reach it.
+            val other = store.beginStaged(cxt, bucket, "staged/mine", "video/mp4")
+            store.abortStaged(cxt, bucket, "staged/theirs", other) shouldBe false
+            store.stagedUploads(cxt, bucket).map { it.key } shouldContainExactly listOf("staged/mine")
+        }
+
+        "$name: a file moves to another key whole, replacing one there, and a move of nothing says so" {
+            val store = store()
+            store.put(cxt, bucket, "staging/abc", "content".toByteArray(), meta("content".toByteArray(), "video/webm"))
+            store.put(cxt, bucket, "files/h1", "older".toByteArray(), meta("older".toByteArray()))
+
+            store.move(cxt, bucket, "staging/abc", "files/h1") shouldBe true
+            store.get(cxt, bucket, "staging/abc").shouldBeNull()
+            store.meta(cxt, bucket, "staging/abc").shouldBeNull()
+            val moved = store.get(cxt, bucket, "files/h1").shouldNotBeNull()
+            moved.bytes.decodeToString() shouldBe "content"
+            moved.meta.mimeType shouldBe "video/webm"
+            store.list(cxt, bucket, "").map { it.key } shouldContainExactly listOf("files/h1")
+            store.openRange(cxt, bucket, "files/h1", 3, 4).shouldNotBeNull().use { it.readAllBytes() }.decodeToString() shouldBe "tent"
+
+            store.move(cxt, bucket, "staging/none", "files/h2") shouldBe false
+            store.meta(cxt, bucket, "files/h2").shouldBeNull()
+        }
+
+        "$name: an upload never finished is found by the check, and its repair aborts it once it is old enough" {
+            val store = store()
+            val token = store.beginStaged(cxt, bucket, "staged/abandoned", "video/mp4")
+            store.putPart(cxt, bucket, "staged/abandoned", token, 1, "x".toByteArray())
+
+            val found = FileStoreCheck.find(cxt, store, listOf(bucket)).single()
+            found.kind shouldBe FLEFT.staged
+            found.key shouldBe "staged/abandoned"
+            found.name shouldBe token
+            // Too recent to tell from an upload under way: left alone.
+            FileStoreCheck.repair(cxt, store, listOf(found), found.modifiedAt, kotlin.time.Duration.parse("1h")).single().done shouldBe false
+            store.stagedUploads(cxt, bucket).size shouldBe 1
+
+            FileStoreCheck.repair(cxt, store, listOf(found), found.modifiedAt + kotlin.time.Duration.parse("2h"), kotlin.time.Duration.parse("1h"))
+                .single().done shouldBe true
+            store.stagedUploads(cxt, bucket).shouldBeEmpty()
+            FileStoreCheck.find(cxt, store, listOf(bucket)).shouldBeEmpty()
         }
 
         "$name: one bucket's files are not another's" {

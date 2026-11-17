@@ -20,9 +20,10 @@ import kotlin.time.Duration.Companion.minutes
  * ```
  *
  * Every bucket a component declares, or only those named. **It reports by default and changes nothing**; with
- * `--repair` it removes what is no file and rewrites the metadata of content its metadata does not match
- * ([FileStoreCheck]), leaving alone anything that changed in the last `--min-age-minutes` (an hour unless said),
- * since a write under way looks exactly like a write that stopped. Checking reads every file in every bucket it
+ * `--repair` it removes what is no file, aborts an upload begun and never finished (issue #1835), and rewrites the
+ * metadata of content its metadata does not match ([FileStoreCheck]), leaving alone anything that changed in the last
+ * `--min-age-minutes` (an hour unless said), since a write under way looks exactly like a write that stopped. An
+ * upload's age is counted from its newest part, so one still taking parts is left alone however long it has run. Checking reads every file in every bucket it
  * is asked about, so it is run when wanted rather than at every boot.
  *
  * It boots the runtime ([Startup.mkBootCxt]) only to the `collected` stage, with the file store's service alone (issue

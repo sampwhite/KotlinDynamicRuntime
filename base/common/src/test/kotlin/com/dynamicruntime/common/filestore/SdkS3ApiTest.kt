@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldBeNull
@@ -39,6 +40,13 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
      */
     val otherwiseChecksummed = HashSet<String>()
 
+    /** Multipart uploads under way, by upload id: their `bucket/key` and parts by number. */
+    val uploads = LinkedHashMap<String, Pair<String, TreeMap<Int, ByteArray>>>()
+    private var nextUpload = 0
+
+    /** The `Range` header of each ranged read, in order. */
+    val rangesAsked = mutableListOf<String>()
+
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
         createContext("/") { exchange -> exchange.use { handle(it) } }
         start()
@@ -53,8 +61,33 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
         val bucket = parts[0]
         val key = parts.getOrNull(1)?.let { URLDecoder.decode(it, Charsets.UTF_8) }.orEmpty()
         val body = readBody(exchange)
+        val query = exchange.requestURI.rawQuery.orEmpty().split('&').filter { it.isNotEmpty() }
+            .associate { it.substringBefore('=') to URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8) }
+        val method = exchange.requestMethod
         when {
             bucket !in buckets -> error(exchange, 404, "NoSuchBucket")
+            key.isEmpty() && method == "GET" && "uploads" in query -> listUploads(exchange, bucket)
+            method == "POST" && "uploads" in query -> {
+                val id = "stub-upload-${++nextUpload}"
+                uploads[id] = "$bucket/$key" to TreeMap()
+                contentTypes["$bucket/$key"] = exchange.requestHeaders.getFirst("Content-Type").orEmpty()
+                xml(
+                    exchange,
+                    "<InitiateMultipartUploadResult><Bucket>$bucket</Bucket><Key>$key</Key><UploadId>$id</UploadId>" +
+                        "</InitiateMultipartUploadResult>",
+                )
+            }
+            "uploadId" in query -> multipart(exchange, method, "$bucket/$key", query.getValue("uploadId"), query["partNumber"], body)
+            method == "PUT" && exchange.requestHeaders.getFirst("x-amz-copy-source") != null -> {
+                val source = URLDecoder.decode(exchange.requestHeaders.getFirst("x-amz-copy-source"), Charsets.UTF_8).removePrefix("/")
+                val bytes = objects[source]
+                if (bytes == null) {
+                    error(exchange, 404, "NoSuchKey")
+                } else {
+                    objects["$bucket/$key"] = bytes.copyOf()
+                    xml(exchange, "<CopyObjectResult><ETag>\"stub\"</ETag></CopyObjectResult>")
+                }
+            }
             key.isEmpty() && exchange.requestMethod == "HEAD" -> respond(exchange, 200)
             key.isEmpty() && exchange.requestMethod == "GET" -> list(exchange, bucket)
             exchange.requestMethod == "PUT" -> {
@@ -70,6 +103,15 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
             }
             "$bucket/$key" !in objects -> error(exchange, 404, "NoSuchKey")
             exchange.requestMethod == "HEAD" -> respond(exchange, 200)
+            exchange.requestHeaders.getFirst("Range") != null -> {
+                val range = exchange.requestHeaders.getFirst("Range")
+                rangesAsked.add(range)
+                val bytes = objects.getValue("$bucket/$key")
+                val (first, last) = range.removePrefix("bytes=").split('-').map { it.toInt() }
+                val end = minOf(last, bytes.size - 1)
+                exchange.responseHeaders.add("Content-Range", "bytes $first-$end/${bytes.size}")
+                respond(exchange, 206, bytes.copyOfRange(first, end + 1))
+            }
             else -> {
                 if ("$bucket/$key" in otherwiseChecksummed) {
                     exchange.responseHeaders.add("x-amz-checksum-crc32", "AAAAAA==")
@@ -77,6 +119,59 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
                 respond(exchange, 200, objects.getValue("$bucket/$key"))
             }
         }
+    }
+
+    /** A call on the multipart upload [id] of [target] (`bucket/key`): a part, the completion, or the abort. */
+    private fun multipart(exchange: HttpExchange, method: String, target: String, id: String, partNumber: String?, body: ByteArray) {
+        val upload = uploads[id]?.takeIf { it.first == target } ?: return error(exchange, 404, "NoSuchUpload")
+        when (method) {
+            "PUT" -> {
+                upload.second[partNumber!!.toInt()] = body
+                exchange.responseHeaders.add("ETag", "\"part-${partNumber}-${body.size}\"")
+                respond(exchange, 200)
+            }
+            "POST" -> {
+                val named = Regex("<PartNumber>(\\d+)</PartNumber>").findAll(body.toString(Charsets.UTF_8)).map { it.groupValues[1].toInt() }
+                val out = ByteArrayOutputStream()
+                named.forEach { out.write(upload.second.getValue(it)) }
+                objects[target] = out.toByteArray()
+                uploads.remove(id)
+                xml(exchange, "<CompleteMultipartUploadResult><ETag>\"stub\"</ETag></CompleteMultipartUploadResult>")
+            }
+            "DELETE" -> {
+                uploads.remove(id)
+                respond(exchange, 204)
+            }
+            "GET" -> xml(
+                exchange,
+                buildString {
+                    append("<ListPartsResult><Key>${target.substringAfter('/')}</Key><UploadId>$id</UploadId><IsTruncated>false</IsTruncated>")
+                    upload.second.forEach { (n, bytes) ->
+                        append("<Part><PartNumber>$n</PartNumber><LastModified>2026-11-17T10:05:00.000Z</LastModified>")
+                        append("<ETag>&quot;part-$n-${bytes.size}&quot;</ETag><Size>${bytes.size}</Size></Part>")
+                    }
+                    append("</ListPartsResult>")
+                },
+            )
+            else -> error(exchange, 400, "InvalidRequest")
+        }
+    }
+
+    private fun listUploads(exchange: HttpExchange, bucket: String) {
+        val xml = buildString {
+            append("<ListMultipartUploadsResult><Bucket>$bucket</Bucket><IsTruncated>false</IsTruncated>")
+            uploads.filterValues { it.first.startsWith("$bucket/") }.forEach { (id, upload) ->
+                append("<Upload><Key>${upload.first.removePrefix("$bucket/")}</Key><UploadId>$id</UploadId>")
+                append("<Initiated>2026-11-17T10:00:00.000Z</Initiated></Upload>")
+            }
+            append("</ListMultipartUploadsResult>")
+        }
+        xml(exchange, xml)
+    }
+
+    private fun xml(exchange: HttpExchange, body: String) {
+        exchange.responseHeaders.add("Content-Type", "application/xml")
+        respond(exchange, 200, ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + body).toByteArray())
     }
 
     /** A listing two keys to a page, so a caller that reads only the first page is found out. */
@@ -250,5 +345,54 @@ class SdkS3ApiTest : StringSpec({
         } finally {
             nowhere.close()
         }
+    }
+
+    // Issue #1835: a range names its last byte, as HTTP's does, and comes back as only those bytes.
+    "a range of an object is asked for by its first and last byte, and is those bytes alone" {
+        val bytes = ByteArray(1000) { (it % 251).toByte() }
+        api.put("stub-files", "ranged", bytes, "video/mp4")
+        stub.rangesAsked.clear()
+
+        api.getRange("stub-files", "ranged", 100, 50).shouldNotBeNull().use { it.readAllBytes() }.toList() shouldBe
+            bytes.copyOfRange(100, 150).toList()
+        api.getRange("stub-files", "ranged", 999, 1).shouldNotBeNull().use { it.readAllBytes() }.toList() shouldBe listOf(bytes[999])
+
+        stub.rangesAsked shouldContainExactly listOf("bytes=100-149", "bytes=999-999")
+        api.getRange("stub-files", "nothing/here", 0, 1).shouldBeNull()
+    }
+
+    "an object is copied to another key, and a copy of nothing is an answer" {
+        api.put("stub-files", "copy/from", "moving".toByteArray(), "text/plain")
+        api.copy("stub-files", "copy/from", "copy/to") shouldBe true
+        api.get("stub-files", "copy/to").shouldNotBeNull().toString(Charsets.UTF_8) shouldBe "moving"
+        api.copy("stub-files", "copy/none", "copy/to2") shouldBe false
+    }
+
+    "a multipart upload is begun, takes its parts in any order, and completes as one object in the order named" {
+        val id = api.createMultipart("stub-files", "staged/video", "video/mp4")
+        api.listMultipart("stub-files").map { it.key to it.token } shouldContainExactly listOf("staged/video" to id)
+
+        val second = api.uploadPart("stub-files", "staged/video", id, 2, "world".toByteArray()).shouldNotBeNull()
+        val first = api.uploadPart("stub-files", "staged/video", id, 1, "hello ".toByteArray()).shouldNotBeNull()
+        // What S3 holds of each part: its size and ETag, and when it was stored.
+        api.listParts("stub-files", "staged/video", id).shouldNotBeNull().map { Triple(it.number, it.size, it.tag) } shouldContainExactly
+            listOf(Triple(1, 6L, first), Triple(2, 5L, second))
+        api.completeMultipart("stub-files", "staged/video", id, listOf(1 to first, 2 to second)) shouldBe true
+
+        api.get("stub-files", "staged/video").shouldNotBeNull().toString(Charsets.UTF_8) shouldBe "hello world"
+        api.listParts("stub-files", "staged/video", id).shouldBeNull()
+        stub.contentTypes["stub-files/staged/video"] shouldBe "video/mp4"
+        api.listMultipart("stub-files").shouldBeEmpty()
+    }
+
+    "an upload that is not under way is an answer, for a part, a completion and an abort" {
+        val id = api.createMultipart("stub-files", "staged/dropped", "video/mp4")
+        api.uploadPart("stub-files", "staged/dropped", id, 1, "x".toByteArray()).shouldNotBeNull()
+        api.abortMultipart("stub-files", "staged/dropped", id) shouldBe true
+
+        api.abortMultipart("stub-files", "staged/dropped", id) shouldBe false
+        api.uploadPart("stub-files", "staged/dropped", id, 2, "y".toByteArray()).shouldBeNull()
+        api.completeMultipart("stub-files", "staged/dropped", id, listOf(1 to "\"x\"")) shouldBe false
+        api.get("stub-files", "staged/dropped").shouldBeNull()
     }
 })

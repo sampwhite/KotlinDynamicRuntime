@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.filestore
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.parseDate
 import io.kotest.assertions.throwables.shouldThrow
@@ -12,6 +13,8 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 /** The S3 store's own business (issue #1129), over a stand-in for S3: which objects it writes, in what order, and what it asks for. */
 class S3FileStoreTest : StringSpec({
@@ -192,5 +195,103 @@ class S3FileStoreTest : StringSpec({
         FNAME.bucketPrefixProblem("-acme").shouldNotBeNull()
         FNAME.bucketPrefixProblem("acme_prod").shouldNotBeNull()
         shouldThrow<KdrException> { S3FileStore(FakeS3Api(), "Acme-") }.message shouldContain "Not a bucket-name prefix"
+    }
+
+    // Issue #1835: S3 refuses a part smaller than its smallest unless it is the last -- when the upload completes, after
+    // every part was taken. The service holds every plan to that rule before a store is asked (FPART).
+    "S3 refuses a small part but the last only at the completion, which is why the plan is checked before it" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        val token = store.beginStaged(cxt, bucket, "staging/s1", "video/mp4")
+        val small = store.putPart(cxt, bucket, "staging/s1", token, 1, "small".toByteArray())
+        val last = store.putPart(cxt, bucket, "staging/s1", token, 2, "last".toByteArray())
+
+        shouldThrow<KdrException> { store.completeStaged(cxt, bucket, "staging/s1", token, listOf(small, last), meta(ByteArray(9))) }
+            .message shouldContain "EntityTooSmall"
+        FileStoreService.partPlanProblem(listOf(small, last)).shouldNotBeNull() shouldContain "at least ${FPART.minPartSize}"
+        // Its metadata was never written, so there is no file -- and the upload is still there to abort.
+        store.meta(cxt, bucket, "staging/s1").shouldBeNull()
+        store.abortStaged(cxt, bucket, "staging/s1", token) shouldBe true
+    }
+
+    "a range is fetched as that range alone" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        store.put(cxt, bucket, "files/v", ByteArray(1000), meta(ByteArray(1000)))
+        api.calls.clear()
+
+        store.openRange(cxt, bucket, "files/v", 10, 20).shouldNotBeNull().use { it.readAllBytes() }.size shouldBe 20
+        // One request: the service has read the metadata already.
+        api.calls shouldContainExactly listOf("getRange $bucket/files/v 10+20")
+    }
+
+    "a move copies the content, then the metadata, and only then removes the key moved from" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        store.put(cxt, bucket, "staging/s1", "abc".toByteArray(), meta("abc".toByteArray()))
+        api.calls.clear()
+
+        store.move(cxt, bucket, "staging/s1", "files/h") shouldBe true
+        api.calls shouldContainExactly listOf(
+            "head $bucket/staging/s1.meta.json",
+            "copy $bucket/staging/s1 files/h",
+            "copy $bucket/staging/s1.meta.json files/h.meta.json",
+            "delete $bucket/staging/s1.meta.json",
+            "delete $bucket/staging/s1",
+        )
+    }
+
+    "a part is held to the size S3 holds of it, which S3 itself does not check when it completes" {
+        val api = FakeS3Api(bucket, minPartSize = 1)
+        val store = S3FileStore(api)
+        val token = store.beginStaged(cxt, bucket, "staging/s1", "video/mp4")
+        val part = store.putPart(cxt, bucket, "staging/s1", token, 1, "abc".toByteArray())
+
+        val misstated = StagedPart(part.number, 300, part.tag)
+        shouldThrow<KdrException> { store.completeStaged(cxt, bucket, "staging/s1", token, listOf(misstated), meta(ByteArray(300))) }
+            .code shouldBe EXC.conflict
+        store.meta(cxt, bucket, "staging/s1").shouldBeNull()
+        store.completeStaged(cxt, bucket, "staging/s1", token, listOf(part), meta("abc".toByteArray()))
+        store.meta(cxt, bucket, "staging/s1").shouldNotBeNull().size shouldBe 3
+    }
+
+    "metadata that cannot be written after an upload completes leaves no file, and says why" {
+        val api = FakeS3Api(bucket, minPartSize = 1)
+        val store = S3FileStore(api)
+        val token = store.beginStaged(cxt, bucket, "staging/s1", "video/mp4")
+        val part = store.putPart(cxt, bucket, "staging/s1", token, 1, "abc".toByteArray())
+        api.failing = { it == "put $bucket/staging/s1.meta.json" }
+
+        shouldThrow<KdrException> { store.completeStaged(cxt, bucket, "staging/s1", token, listOf(part), meta("abc".toByteArray())) }
+        store.meta(cxt, bucket, "staging/s1").shouldBeNull()
+        store.get(cxt, bucket, "staging/s1").shouldBeNull()
+    }
+
+    "a move whose metadata copy fails leaves the key moved from whole" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        store.put(cxt, bucket, "staging/s1", "abc".toByteArray(), meta("abc".toByteArray()))
+        api.failing = { it == "copy $bucket/staging/s1.meta.json files/h.meta.json" }
+
+        shouldThrow<KdrException> { store.move(cxt, bucket, "staging/s1", "files/h") }
+        store.get(cxt, bucket, "staging/s1").shouldNotBeNull().bytes.decodeToString() shouldBe "abc"
+        store.meta(cxt, bucket, "files/h").shouldBeNull()
+    }
+
+    "an upload is aged by its newest part, so one still taking parts is not aborted however long it has run" {
+        val api = FakeS3Api(bucket, minPartSize = 1)
+        val store = S3FileStore(api)
+        val began = "2026-11-17T08:00:00Z".parseDate()
+        api.clock = { began }
+        val token = store.beginStaged(cxt, bucket, "staging/slow", "video/mp4")
+        api.clock = { began + 2.hours }
+        store.putPart(cxt, bucket, "staging/slow", token, 1, "x".toByteArray())
+
+        val found = FileStoreCheck.find(cxt, store, listOf(bucket)).single()
+        found.modifiedAt shouldBe began + 2.hours
+        // Three hours after it began, but only an hour after its last part: left alone.
+        FileStoreCheck.repair(cxt, store, listOf(found), began + 3.hours, 90.minutes).single().done shouldBe false
+        FileStoreCheck.repair(cxt, store, listOf(found), began + 4.hours, 90.minutes).single().done shouldBe true
+        store.stagedUploads(cxt, bucket).shouldBeEmpty()
     }
 })
