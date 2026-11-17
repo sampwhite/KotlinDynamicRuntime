@@ -91,6 +91,17 @@ object SchemaCatalogApi {
             traceId = applyRequestHeaders(headers)
             init.headers = headers
             fetchCompleted(endpoint.method, url + queryString(body), init).orThrow()
+        } else if (endpoint.rawBody) {
+            // A part of an upload (issue #1836): the picked file is the whole body, as bytes, and every other field
+            // rides in the query string. The endpoint refuses multipart, which is what a file field otherwise sends.
+            val init: dynamic = js("({})")
+            init.method = endpoint.method
+            val headers: dynamic = js("({})")
+            traceId = applyRequestHeaders(headers)
+            headers["Content-Type"] = rawBodyType
+            init.headers = headers
+            init.body = body[EP.rawBody]
+            fetchCompleted(endpoint.method, url + queryString(body - EP.rawBody), init).orThrow()
         } else {
             val init: dynamic = js("({})")
             init.method = endpoint.method
@@ -134,6 +145,9 @@ object SchemaCatalogApi {
      * the server already sent. Letting the browser navigate to the URL is what makes that header do its job.
      */
     fun downloadUrl(endpoint: EndpointInfo, body: Map<String, Any?>): String = Http.apiUrl(endpoint.path, body)
+
+    /** The type a raw body is sent under, the one such an endpoint reads. */
+    private const val rawBodyType = "application/octet-stream"
 
     private suspend fun getJson(url: String): Map<String, Any?> {
         val init: dynamic = js("({})")
@@ -189,6 +203,7 @@ private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
     publicApi = m[EI.publicApi] as? Boolean ?: false,
     tags = m[EI.tags].toJsonListOfStrings(),
     bareResponse = m[EI.bareResponse] as? Boolean ?: false,
+    rawBody = m[EI.rawBody] as? Boolean ?: false,
 )
 
 /**

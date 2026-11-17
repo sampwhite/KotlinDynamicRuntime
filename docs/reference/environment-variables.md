@@ -153,6 +153,12 @@ Makes this test instance a **public test deployment** (issue #1150): one the gen
 
 The URL a browser reaches this deployment at, e.g. 'https://app.example.com', used to build the links that mailed invitations carry (issue #751). Unset (the default), a link is built from the request's own scheme and host -- right for a node reached directly, wrong behind a proxy that rewrites them, which is when this must be set. No trailing slash. Its host is also the one every mail names in its closing "Sent from" line (issue #1276); unset, only a test instance names the request's host there, and a real deployment names none. It also makes the web app's link-preview tags absolute (issue #1688): unset, the preview image is addressed by its path and the page names no og:url.
 
+### `KDR_RAW_BODY_PERMITS`
+
+**Default when unset:** 8
+
+How many request bodies sent as raw bytes -- the parts of a large upload -- a node reads into memory at once. Each is held whole until its handler is done, so this times the largest part an endpoint takes (8 MiB for a file's parts) bounds what uploads may take of the heap. A request finding none free waits up to 10 seconds and is then answered 429, to be sent again.
+
 ### `KDR_SESSION_HOURS`
 
 **Default when unset:** 48 (two days)

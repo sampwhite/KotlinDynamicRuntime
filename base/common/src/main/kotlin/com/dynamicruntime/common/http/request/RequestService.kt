@@ -51,6 +51,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * The request dispatcher: given a decoded request, it applies (currently stubbed) security,
@@ -76,6 +77,20 @@ class RequestService : ServiceInitializer {
     /** The most bytes a large-body endpoint's body may be ([BODY.largeMaxBytes]). Bound in [checkInit]. */
     var largeBodyMaxBytes: Int = BODY.defaultLargeMaxBytes
         private set
+
+    /**
+     * The endpoints that take their body raw (issue #1836), keyed as [largeBodyEndpoints] are, each with the most bytes
+     * it takes ([KdrEndpoint.rawBodyMaxBytes]): the static ones, collected in [checkInit]. Listed beside the large-body
+     * endpoints for a firewall, since each takes a body larger than the default; it reads its own, by its own limit.
+     */
+    var rawBodyEndpoints: Map<String, Int> = emptyMap()
+        private set
+
+    /**
+     * The raw bodies this node may hold at once ([BODY.rawBodyPermits], issue #1836): one is taken before a raw body is
+     * read and given back once its handler is done, which bounds what uploads take of the heap. Bound in [checkInit].
+     */
+    private var rawBodyGate = Semaphore(BODY.defaultRawBodyPermits)
 
     /** Whether [method] [appPath] is an endpoint that accepts a large body (issue #1446). */
     fun takesLargeBody(appPath: String, method: String): Boolean = "$appPath:$method" in largeBodyEndpoints
@@ -333,6 +348,14 @@ class RequestService : ServiceInitializer {
         // The endpoints that accept a large body (issue #1446): the static ones marked so, never a client's own copy.
         largeBodyEndpoints = cxt.getGlobalSchema().endpoints.values
             .filter { it.largeBody && it.client == null }.mapTo(LinkedHashSet()) { it.collationKey }
+        rawBodyEndpoints = cxt.getGlobalSchema().endpoints.values
+            .filter { it.rawBodyMaxBytes > 0 && it.client == null }.associate { it.collationKey to it.rawBodyMaxBytes }
+        val permits = cxt.getEnvVar(BODY.rawBodyPermits)?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            it.toIntOrNull()?.takeIf { n -> n > 0 } ?: throw KdrException(
+                "Refusing to start: ${BODY.rawBodyPermits.name} is '$it', which is not a whole number above zero.",
+            )
+        } ?: BODY.defaultRawBodyPermits
+        rawBodyGate = Semaphore(permits)
         largeBodyMaxBytes = BODY.largeMaxBytes(cxt.instanceConfig)
         if (largeBodyMaxBytes < BODY.defaultMaxBytes) {
             throw KdrException(
@@ -691,8 +714,28 @@ class RequestService : ServiceInitializer {
         return SchemaService.get(cxt).storeFor(client)
     }
 
-    /** Validates the input, runs the handler, wraps the result, and sends the response. */
+    /**
+     * Validates the input, runs the handler, wraps the result, and sends the response. An endpoint taking a raw body
+     * (issue #1836) first takes one of this node's [rawBodyGate] permits, held until the response is sent, since its
+     * body is read whole before anything else is done; one finding none free within [BODY.rawBodyWaitSeconds] is
+     * answered 429, to be sent again.
+     */
     fun executeEndpoint(cxt: KdrCxt, handler: RequestHandler, endpoint: KdrEndpoint) {
+        if (endpoint.rawBodyMaxBytes <= 0) return executeEndpointHeld(cxt, handler, endpoint)
+        if (!rawBodyGate.tryAcquire(BODY.rawBodyWaitSeconds, TimeUnit.SECONDS)) {
+            throw KdrException(
+                "This node is reading as many uploads as it holds at once; send the part again shortly.",
+                code = EXC.tooManyRequests,
+            )
+        }
+        try {
+            executeEndpointHeld(cxt, handler, endpoint)
+        } finally {
+            rawBodyGate.release()
+        }
+    }
+
+    private fun executeEndpointHeld(cxt: KdrCxt, handler: RequestHandler, endpoint: KdrEndpoint) {
         val schema = typesFor(cxt, endpoint)
         val inputType = inputTypeCache.getOrPut(endpoint.collationKey) {
             resolveEndpointInputType(endpoint, schema.types)
@@ -705,6 +748,10 @@ class RequestService : ServiceInitializer {
         // A form-encoded body is input only where the endpoint says so (issue #1403); see [KdrEndpoint.formBody].
         if (endpoint.formBody) handler.decodeFormBody()
         handler.postData?.let { data.putAll(it) }
+        // A raw body is the one field an endpoint taking one reads from it (issue #1836), whatever the query says.
+        if (endpoint.rawBodyMaxBytes > 0) {
+            data[EP.rawBody] = ContentData(handler.readRawBody(endpoint.rawBodyMaxBytes), RequestHandler.octetStream)
+        }
         // Endpoint input is a flat set of top-level fields (issue #40), so the flat HTTP input -- query params
         // and/or POST body -- validates directly, with no re-grouping. The input type is closed to undeclared
         // properties, though off-contract `_`/`$` keys remain exempt (see the validator).
@@ -742,7 +789,11 @@ class RequestService : ServiceInitializer {
             // Write any auth cookies BEFORE sending: sending commits the (Jetty) response, and headers added
             // after commit are silently dropped. (The in-memory test client captures headers regardless of
             // order, so this ordering matters only for a real browser -- which is how the bug hid.)
-            if (inner is ContentData) {
+            if (inner is StreamedContent) {
+                // A file sent a range at a time (issue #1836), for a file too large to hold.
+                checkAddAuthCookies(cxt, handler)
+                handler.sendStreamedResponse(cxt, inner)
+            } else if (inner is ContentData) {
                 // A download: the response *is* the file, so there is no envelope to wrap it in and nothing
                 // for output-schema validation to check -- the endpoint's output schema declares binary
                 // content (OpenAPI's `type: string, format: binary`), not a JSON shape.

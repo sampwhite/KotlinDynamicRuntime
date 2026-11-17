@@ -123,6 +123,7 @@ private object OLB {
     const val endpoints = "endpoints"
     const val method = "method"
     const val path = "path"
+    const val maxBytes = "maxBytes"
 }
 
 /**
@@ -162,6 +163,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
         property(OLB.path, "The endpoint's full path, the deployment's API context root included.", required = true) {
             presentation = PRES.identifier
         }
+        property(OLB.maxBytes, "The most bytes this endpoint's request body may be.", required = true) { type = SCT.integer }
     }
     type(OLB.readoutType) {
         type = SCT.kObject
@@ -172,7 +174,7 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
         property(OLB.largeMaxBytes, "The most bytes one of these endpoints' request body may be.", required = true) {
             type = SCT.integer
         }
-        property(OLB.endpoints, "Each endpoint that accepts a large body, by method and full path.", required = true) {
+        property(OLB.endpoints, "Each endpoint that accepts a large body, by method and full path, with its own limit.", required = true) {
             type = SCT.array
             items { ref(OLB.endpointType) }
         }
@@ -180,19 +182,25 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
     itemEndpoint(
         OPS.largeBodiesPath,
         "The endpoints that accept a request body larger than the default (issue #1446), each by method and full path, " +
-            "the API context root included, with the two limits: what a firewall in front of the deployment has to let " +
-            "through. Fixed when the node starts, so a job keeping the firewall's rules in step may cache it.",
+            "the API context root included, and the most bytes it takes -- a whole configuration, or a part of a large " +
+            "upload sent as its raw body (issue #1836): what a firewall in front of the deployment has to let through. " +
+            "Fixed when the node starts, so a job keeping the firewall's rules in step may cache it.",
         HttpMethod.GET,
         outputRef = OLB.readoutType,
         tags = setOf(ETAG.internal),
     ) { c, _ ->
         val requests = RequestService.get(c)
+        val limits = requests.largeBodyEndpoints.associateWith { requests.largeBodyMaxBytes } + requests.rawBodyEndpoints
         mapOf(
             OLB.defaultMaxBytes to BODY.defaultMaxBytes,
             OLB.largeMaxBytes to requests.largeBodyMaxBytes,
-            OLB.endpoints to requests.largeBodyEndpoints.map { key ->
+            OLB.endpoints to limits.map { (key, max) ->
                 // A key is `path:METHOD`; a path has no colon, so the last one divides them.
-                mapOf(OLB.method to key.substringAfterLast(':'), OLB.path to "/${requests.apiContextRoot}${key.substringBeforeLast(':')}")
+                mapOf(
+                    OLB.method to key.substringAfterLast(':'),
+                    OLB.path to "/${requests.apiContextRoot}${key.substringBeforeLast(':')}",
+                    OLB.maxBytes to max,
+                )
             },
         )
     }

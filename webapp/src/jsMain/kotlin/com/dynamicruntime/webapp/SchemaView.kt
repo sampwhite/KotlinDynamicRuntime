@@ -40,6 +40,11 @@ class EndpointInfo(
      * then the result's type itself.
      */
     val bareResponse: Boolean = false,
+    /**
+     * Whether the endpoint takes its body as raw bytes (issue #1836): its file field ([EP.rawBody]) is sent as the
+     * whole body, as `application/octet-stream`, and its other fields in the query string -- never multipart.
+     */
+    val rawBody: Boolean = false,
 ) {
     /** Stable identity for a `method:path` endpoint (used as a table row key). */
     val key: String get() = "$method:$path"

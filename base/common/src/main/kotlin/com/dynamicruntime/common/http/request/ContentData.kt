@@ -57,14 +57,10 @@ class ContentData(
     val inLine: Boolean = true,
 
     /**
-     * A content hash identifying exactly these bytes, or null when none was computed. **Carried, not yet
-     * acted on** — nothing reads it today.
-     *
-     * It is here because the callers that will want it are the ones already computing it: `ContentResources`
-     * hashes content (CRC32) to build the cache-busting `buildId` in a content URL. The intended use is an
-     * `ETag`, letting a conditional request (`If-None-Match`) be answered with a 304 rather than the body.
-     * Deliberately not wired up: an ETag is a cache-correctness contract, and it should be added when
-     * something needs it, together with the conditional-request handling that makes it mean anything.
+     * A content hash identifying exactly these bytes, or null when none was computed. Sent as the response's
+     * strong `ETag` (issue #1836), so a conditional request (`If-None-Match`) naming it is answered with a 304
+     * rather than the body -- which is why it must be a hash of exactly these bytes, never of something they were
+     * made from, or a caller would keep a copy that is not them.
      */
     val hash: String? = null,
 ) {
@@ -119,24 +115,7 @@ class ContentData(
      * `filename*` form, which is how a non-ASCII name survives at all; the plain `filename` keeps an ASCII
      * approximation for anything that ignores it.
      */
-    fun contentDispositionHeader(): String? {
-        val disposition = if (inLine) inlineDisposition else attachmentDisposition
-        val name = saveAsFilename?.let { safeFilename(it) }
-        if (name.isNullOrEmpty()) {
-            // With no name to offer, only "attachment" carries information; "inline" is already the default.
-            return if (inLine) null else disposition
-        }
-        // The quoted-string form takes ASCII only, and neither a quote nor a backslash can appear in it: a
-        // quote would close the string early and let what follows be read as parameters. Both are replaced
-        // rather than backslash-escaped -- escaping is legal but notoriously unevenly parsed, and a filename
-        // is a suggestion, so a degraded name beats an ambiguous header.
-        val ascii = name.map { if (it.code in 0x20..0x7E && it != '"' && it != '\\') it else '_' }.joinToString("")
-        val header = "$disposition; filename=\"$ascii\""
-        // Only a genuinely non-ASCII name needs the extended form. Adding it merely because the quoted form
-        // escaped a quote would hand back the very character that was just removed.
-        val needsExtended = name.any { it.code > 0x7E }
-        return if (needsExtended) "$header; filename*=UTF-8''${rfc5987Encode(name)}" else header
-    }
+    fun contentDispositionHeader(): String? = dispositionHeader(inLine, saveAsFilename)
 
     companion object {
         const val contentDispositionKey = "Content-Disposition"
@@ -145,6 +124,30 @@ class ContentData(
 
         /** Longest filename offered; long enough for any real name, short enough to bound the header. */
         const val maxFilenameLength = 200
+
+        /**
+         * The `Content-Disposition` value for content shown in place ([inLine]) or downloaded, offered as
+         * [saveAsFilename]; null when the header adds nothing. See [contentDispositionHeader], and
+         * [StreamedContent], which sends its own.
+         */
+        fun dispositionHeader(inLine: Boolean, saveAsFilename: String?): String? {
+            val disposition = if (inLine) inlineDisposition else attachmentDisposition
+            val name = saveAsFilename?.let { safeFilename(it) }
+            if (name.isNullOrEmpty()) {
+                // With no name to offer, only "attachment" carries information; "inline" is already the default.
+                return if (inLine) null else disposition
+            }
+            // The quoted-string form takes ASCII only, and neither a quote nor a backslash can appear in it: a
+            // quote would close the string early and let what follows be read as parameters. Both are replaced
+            // rather than backslash-escaped -- escaping is legal but notoriously unevenly parsed, and a filename
+            // is a suggestion, so a degraded name beats an ambiguous header.
+            val ascii = name.map { if (it.code in 0x20..0x7E && it != '"' && it != '\\') it else '_' }.joinToString("")
+            val header = "$disposition; filename=\"$ascii\""
+            // Only a genuinely non-ASCII name needs the extended form. Adding it merely because the quoted form
+            // escaped a quote would hand back the very character that was just removed.
+            val needsExtended = name.any { it.code > 0x7E }
+            return if (needsExtended) "$header; filename*=UTF-8''${rfc5987Encode(name)}" else header
+        }
 
         /**
          * Reduces [raw] to a bare filename safe to put in a header: the last path segment (so a value naming a

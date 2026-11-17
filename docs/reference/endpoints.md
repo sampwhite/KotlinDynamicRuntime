@@ -319,7 +319,7 @@ A signed-in caller at the `operator` level or above and holding `allClients` may
 | POST | `/operator/job/launch` |  | Launches a batch job from an endpoint, on every client this node carries or the ones named. |
 | GET | `/operator/job/status` |  | Reports how each registered batch job's launches and clients stand, or one job's when named. |
 | GET | `/operator/job/trace` |  | Reports a launch's trace (issue #879): the decisions it made, in the order they were recorded. |
-| GET | `/operator/request/largeBodies` |  | The endpoints that accept a request body larger than the default (issue #1446), each by method and full path, the API context root included, with the two limits: what a firewall in front of the deployment has to let through. Fixed when the node starts, so a job keeping the firewall's rules in step may cache it. |
+| GET | `/operator/request/largeBodies` |  | The endpoints that accept a request body larger than the default (issue #1446), each by method and full path, the API context root included, and the most bytes it takes -- a whole configuration, or a part of a large upload sent as its raw body (issue #1836): what a firewall in front of the deployment has to let through. Fixed when the node starts, so a job keeping the firewall's rules in step may cache it. |
 | GET | `/operator/system/info` |  | Reports this node's build, identity, uptime and JVM statistics, optionally requesting a garbage collection first. |
 
 ## `profile`

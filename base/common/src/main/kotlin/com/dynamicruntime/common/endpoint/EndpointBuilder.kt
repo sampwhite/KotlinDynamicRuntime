@@ -241,6 +241,15 @@ class KdrEndpoint(
      */
     val largeBody: Boolean = false,
     /**
+     * When above zero, the request's body is **raw bytes**, up to this many (issue #1836): a part of a large upload,
+     * read whole into the input field [EP.rawBody] as a [com.dynamicruntime.common.http.request.ContentData] and sent as
+     * `application/octet-stream`, which a page elsewhere cannot send without asking first
+     * ([com.dynamicruntime.common.http.request.RequestHandler.readRawBody]). Its other input travels in the query string.
+     * Zero for every other endpoint. Listed for a firewall beside the large-body endpoints
+     * (`/operator/request/largeBodies`), with this limit. See [SchModuleBuilder.fileChunkEndpoint].
+     */
+    val rawBodyMaxBytes: Int = 0,
+    /**
      * (List endpoints only.) Whether the output declares `hasMore` / `numAvailable`, so the executor knows to
      * populate them (issue #499). For a handler that returns a plain `List` the executor fills them from the
      * uncapped size; a [ListPage] supplies its own. `numAvailable` defaults **on** when the endpoint has a
@@ -349,6 +358,14 @@ class KdrEndpoint(
                     EI.bareResponse,
                     "Whether the result is the whole response body, with no envelope: the output schema is then the " +
                         "result's type itself.",
+                    required = true,
+                ) {
+                    type = SCT.boolean
+                }
+                property(
+                    EI.rawBody,
+                    "Whether the endpoint takes its body as raw bytes: its file field is sent as the whole body, as " +
+                        "application/octet-stream, and its other fields in the query string -- never as multipart.",
                     required = true,
                 ) {
                     type = SCT.boolean
@@ -676,6 +693,51 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
     }
 
     /**
+     * An endpoint that **receives a part of a large file as its raw body** (issue #1836): the request is
+     * `application/octet-stream`, its body -- at most [maxBodyBytes] -- arrives as a
+     * [com.dynamicruntime.common.http.request.ContentData] in the input field [EP.rawBody], declared here, and its
+     * other input travels in the query string. Not multipart: a part of a video is bytes and nothing else, read once,
+     * bounded, with no parser between it and the store. Its response is ordinary JSON under `results`.
+     *
+     * The body is read whole, so [maxBodyBytes] is what one request may hold in memory: a part, never a file. It is
+     * [EndpointKind.file], as an upload is, since it speaks files.
+     * ```
+     * fileChunkEndpoint("/upload/chunk", "Store one part of an upload.", outputRef = "ChunkAnswer",
+     *     maxBodyBytes = 8 * 1024 * 1024, inputFields = { field("upload", "The upload.", required = true) }) { ... }
+     * ```
+     */
+    fun fileChunkEndpoint(
+        path: String,
+        description: String,
+        outputRef: String,
+        maxBodyBytes: Int,
+        method: HttpMethod = HttpMethod.POST,
+        inputFields: (InputFieldsBuilder.() -> Unit)? = null,
+        forTestingOnly: Boolean = false,
+        /** Part of the published API (issue #433). Advertisement, never access -- see [KdrEndpoint.publicApi]. */
+        publicApi: Boolean = false,
+        /** Free-form tags for slicing the catalog (issue #433); no runtime effect. */
+        tags: Set<String> = emptySet(),
+        /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
+        needsClientConfig: Boolean = false,
+        handler: KdrEndpointHandler,
+    ) {
+        if (maxBodyBytes <= 0) throw KdrException("A chunk endpoint's largest body must be above zero, not $maxBodyBytes.")
+        val output = scalarOutput(EP.results, "Result data (a map object) describing the part stored.", outputRef)
+        val (declared, _) = captureInput(null, inputFields)
+        val body = InputFieldsBuilder(cxt, namespace).apply {
+            field(EP.rawBody, "The part's bytes: the request's raw body, sent as application/octet-stream.", required = true) {
+                binaryContent()
+            }
+        }.fields
+        endpoints.add(
+            KdrEndpoint(path, method, EndpointKind.file, namespace, description, declared.orEmpty() + body, null, false, output,
+                forTestingOnly, handler, publicApi = publicApi, tags = tags, needsClientConfig = needsClientConfig,
+                rawBodyMaxBytes = maxBodyBytes),
+        )
+    }
+
+    /**
      * Captures an endpoint's input declaration: at most one of a named-type [inputRef] (kept as a fully
      * qualified inputTypeRef or an inline [inputFields] block collected into [EndpointField]s). Fails
      * fast if both are given, so the mutually exclusive contract is enforced at construction.
@@ -953,6 +1015,7 @@ fun renderEndpoint(endpoint: KdrEndpoint, defs: Map<String, Any?>): Map<String, 
     // Sorted so a catalog rendering is stable between boots; a Set has no order of its own to promise.
     EI.tags to endpoint.tags.sorted(),
     EI.bareResponse to endpoint.bareResponse,
+    EI.rawBody to (endpoint.rawBodyMaxBytes > 0),
 )
 
 /**

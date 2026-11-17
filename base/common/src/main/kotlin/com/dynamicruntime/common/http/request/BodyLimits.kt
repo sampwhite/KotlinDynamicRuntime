@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrInstanceConfig
 
 /**
@@ -28,4 +30,23 @@ object BODY {
      * the start over one.
      */
     fun largeMaxBytes(config: KdrInstanceConfig): Int = (config.get(largeMaxBytesKey) as? Number)?.toInt() ?: defaultLargeMaxBytes
+
+    /**
+     * How many raw bodies (issue #1836) a node holds in memory at once: each is read whole before its handler runs --
+     * a part of an upload, up to its endpoint's limit -- so this, times the largest such limit, bounds what uploads
+     * may take of the heap.
+     */
+    val rawBodyPermits = EnvVarDef(
+        "KDR_RAW_BODY_PERMITS", group = ENVGRP.application, defaultDoc = "$defaultRawBodyPermits",
+        description = "How many request bodies sent as raw bytes -- the parts of a large upload -- a node reads into " +
+            "memory at once. Each is held whole until its handler is done, so this times the largest part an endpoint " +
+            "takes (8 MiB for a file's parts) bounds what uploads may take of the heap. A request finding none free " +
+            "waits up to $rawBodyWaitSeconds seconds and is then answered 429, to be sent again.",
+    )
+
+    /** [rawBodyPermits] when the deployment sets none. */
+    const val defaultRawBodyPermits = 8
+
+    /** How long a raw body waits for one of the [rawBodyPermits] before it is answered 429. */
+    const val rawBodyWaitSeconds = 10L
 }

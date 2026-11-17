@@ -12,6 +12,8 @@ import org.eclipse.jetty.server.Response
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.ServerConnector
 import org.eclipse.jetty.util.Callback
+import org.eclipse.jetty.util.thread.QueuedThreadPool
+import java.util.concurrent.Executors
 
 /**
  * The HTTP server. Ported from dn's `DnServer`, freshened to Jetty 12: we handle requests with a core
@@ -27,7 +29,7 @@ object HttpServer {
     fun launch(cxt: KdrCxt) {
         val nodeId = NodeUtil.extractNodeId(cxt)
         val instanceConfig = cxt.instanceConfig
-        val server = Server()
+        val server = Server(requestThreads())
         val bindAddress = NodeUtil.bindAddressOf(instanceConfig)
         server.addConnector(connector(server, nodeId.port, bindAddress))
         // The dispatcher, and always last: it answers every request that reaches it, including the terse 404
@@ -59,6 +61,17 @@ object HttpServer {
             runCatching { server.stop() }
             throw KdrException("Could not start the HTTP server.", e)
         }
+    }
+
+    /**
+     * The threads a server runs its requests on: Jetty's pool for accepting and selecting, and a **virtual thread** for
+     * each request's handler, which the code is written for -- synchronous, blocking where it waits (issue #1836). A
+     * pool of platform threads would be used up by requests that wait on their reader, as a video streamed to a slow
+     * player does for as long as it plays, and every other request would queue behind them.
+     */
+    fun requestThreads(): QueuedThreadPool = QueuedThreadPool().apply {
+        name = "kdr-http"
+        virtualThreadsExecutor = Executors.newVirtualThreadPerTaskExecutor()
     }
 
     /**

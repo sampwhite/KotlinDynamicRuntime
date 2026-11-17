@@ -13,6 +13,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import com.dynamicruntime.common.http.request.ContentData
+import com.dynamicruntime.common.http.request.StreamedContent
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
@@ -376,6 +377,26 @@ class FileStoreService : ServiceInitializer {
                 store.openRange(cxt, bucket, key, offset, length)
             } ?: return null
             return RangedRead(meta, stream)
+        }
+
+        /**
+         * The file at [key] in [bucket] as a response sent a range at a time (issue #1836), or null when there is no
+         * such file: its type, size and hash from **one** read of its metadata, and each range the response sends read
+         * straight from the store -- on S3 one request a range, where [openRange] would read the metadata again for
+         * each. Offered under [saveAsFilename], else the name it was stored under, shown in place when [inLine].
+         *
+         * Not checked against its hash, as [openRange] is not: for a file whose key names its content.
+         */
+        fun streamed(
+            cxt: KdrCxt, bucket: String, key: String, inLine: Boolean = true, saveAsFilename: String? = null,
+        ): StreamedContent? {
+            val meta = meta(cxt, bucket, key) ?: return null
+            // The response asks only for a range within the size it was told, and never an empty one.
+            return StreamedContent(meta.mimeType, meta.size, meta.hash, saveAsFilename ?: meta.fileName, inLine) { offset, length ->
+                logged(cxt, "openRange", bucket, key, { if (it == null) "absent" else "opened $offset+$length" }) {
+                    store.openRange(cxt, bucket, key, offset, length)
+                } ?: throw KdrException.mkFileIo("The file '$key' in the bucket '$bucket' is no longer there.", null, EXC.notFound)
+            }
         }
 
         /**
