@@ -138,7 +138,7 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         if (leftover.kind == FLEFT.staged) {
             // Asked again: still under way, and begun no later than the cutoff.
             val upload = stagedUploads(cxt, bucket).firstOrNull { it.token == leftover.name && it.key == leftover.key } ?: return false
-            return upload.startedAt <= cutoff && api.abortMultipart(physicalBucket(bucket), upload.key, upload.token)
+            return upload.lastActiveAt <= cutoff && api.abortMultipart(physicalBucket(bucket), upload.key, upload.token)
         }
         val key = FNAME.checkKey(leftover.key)
         val physical = physicalBucket(bucket)
@@ -160,12 +160,9 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         return true
     }
 
-    override fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): InputStream? {
-        val physical = physicalBucket(bucket)
-        // A file is there when its metadata is, as every read here takes it.
-        if (!api.head(physical, FileMeta.metaKey(key))) return null
-        return api.getRange(physical, key, offset, length)
-    }
+    /** One request: the service has read the metadata, so the range is all that is asked for. */
+    override fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): InputStream? =
+        api.getRange(physicalBucket(bucket), key, offset, length)
 
     override fun beginStaged(cxt: KdrCxt, bucket: String, key: String, mimeType: String): String =
         api.createMultipart(physicalBucket(bucket), key, mimeType)
@@ -175,8 +172,19 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         return StagedPart(number, bytes.size.toLong(), tag)
     }
 
+    /**
+     * Each part named is held to what S3 holds of it -- its size as well as its ETag, which S3 itself completes by
+     * alone -- so the size recorded is the object's, and a plan the other stores refuse is refused here too.
+     */
     override fun completeStaged(cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, meta: FileMeta) {
         val physical = physicalBucket(bucket)
+        val held = api.listParts(physical, key, token)?.associateBy { it.number } ?: throw noUpload(bucket, key, token)
+        for (part in parts) {
+            val there = held[part.number]
+            if (there == null || there.size != part.size || there.tag != part.tag) {
+                throw KdrException("Part ${part.number} of the upload of '$key' is not the part that was stored.", null, EXC.conflict)
+            }
+        }
         // S3 makes the object whole when the upload completes, so a file already there is untouched until then.
         if (!api.completeMultipart(physical, key, token, parts.map { it.number to it.tag })) throw noUpload(bucket, key, token)
         putMeta(physical, key, meta)
@@ -185,7 +193,14 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
     override fun abortStaged(cxt: KdrCxt, bucket: String, key: String, token: String): Boolean =
         api.abortMultipart(physicalBucket(bucket), key, token)
 
-    override fun stagedUploads(cxt: KdrCxt, bucket: String): List<StagedUpload> = api.listMultipart(physicalBucket(bucket))
+    /** S3 lists when an upload began; when it last took a part is asked of its parts, a request an upload. */
+    override fun stagedUploads(cxt: KdrCxt, bucket: String): List<StagedUpload> {
+        val physical = physicalBucket(bucket)
+        return api.listMultipart(physical).map { upload ->
+            val newest = api.listParts(physical, upload.key, upload.token)?.maxOfOrNull { it.lastModified }
+            StagedUpload(upload.key, upload.token, upload.startedAt, maxOf(upload.startedAt, newest ?: upload.startedAt))
+        }
+    }
 
     /**
      * A copy and two deletes, since S3 renames nothing: the content to [to], then its metadata, then [from]'s

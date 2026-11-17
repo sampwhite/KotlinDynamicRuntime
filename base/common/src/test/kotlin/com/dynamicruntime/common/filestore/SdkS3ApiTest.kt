@@ -142,6 +142,17 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
                 uploads.remove(id)
                 respond(exchange, 204)
             }
+            "GET" -> xml(
+                exchange,
+                buildString {
+                    append("<ListPartsResult><Key>${target.substringAfter('/')}</Key><UploadId>$id</UploadId><IsTruncated>false</IsTruncated>")
+                    upload.second.forEach { (n, bytes) ->
+                        append("<Part><PartNumber>$n</PartNumber><LastModified>2026-11-17T10:05:00.000Z</LastModified>")
+                        append("<ETag>&quot;part-$n-${bytes.size}&quot;</ETag><Size>${bytes.size}</Size></Part>")
+                    }
+                    append("</ListPartsResult>")
+                },
+            )
             else -> error(exchange, 400, "InvalidRequest")
         }
     }
@@ -363,9 +374,13 @@ class SdkS3ApiTest : StringSpec({
 
         val second = api.uploadPart("stub-files", "staged/video", id, 2, "world".toByteArray()).shouldNotBeNull()
         val first = api.uploadPart("stub-files", "staged/video", id, 1, "hello ".toByteArray()).shouldNotBeNull()
+        // What S3 holds of each part: its size and ETag, and when it was stored.
+        api.listParts("stub-files", "staged/video", id).shouldNotBeNull().map { Triple(it.number, it.size, it.tag) } shouldContainExactly
+            listOf(Triple(1, 6L, first), Triple(2, 5L, second))
         api.completeMultipart("stub-files", "staged/video", id, listOf(1 to first, 2 to second)) shouldBe true
 
         api.get("stub-files", "staged/video").shouldNotBeNull().toString(Charsets.UTF_8) shouldBe "hello world"
+        api.listParts("stub-files", "staged/video", id).shouldBeNull()
         stub.contentTypes["stub-files/staged/video"] shouldBe "video/mp4"
         api.listMultipart("stub-files").shouldBeEmpty()
     }

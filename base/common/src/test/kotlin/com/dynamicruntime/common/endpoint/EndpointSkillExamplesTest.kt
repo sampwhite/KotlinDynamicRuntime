@@ -6,7 +6,7 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FMETA
-import com.dynamicruntime.common.filestore.FSTAGE
+import com.dynamicruntime.common.filestore.FPART
 import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.fileMetaEndpoint
@@ -246,7 +246,7 @@ class EndpointSkillExamplesTest : StringSpec({
         config.put(FileStoreService.serviceName, FileStoreService().apply { onCreate(cxt); checkInit(cxt) })
         val files = FileStoreService.get(cxt).forOwner(cxt, "acme")
         val upload = object { val id = "u1" }
-        val firstChunk = ByteArray(FSTAGE.minPartSize.toInt()) { (it % 13).toByte() }
+        val firstChunk = ByteArray(FPART.minPartSize.toInt()) { (it % 13).toByte() }
         val lastChunk = ByteArray(100) { 7 }
         val runningHash = Sha256().update(firstChunk).update(lastChunk)
 

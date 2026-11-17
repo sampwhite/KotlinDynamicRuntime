@@ -242,7 +242,7 @@ ranges**, on every store alike:
   one part (any order, and a part sent again replaces the one before) and answers a `StagedPart` you hand back;
   `completeStaged(cxt, bucket, key, token, parts, mimeType, hash)` puts them together as the file at `key`, with its
   metadata. `abortStaged(...)` drops the parts.
-- **The plan is S3's on every store** (`FSTAGE`): every part but the last at least 5 MiB, numbers rising from 1, at most
+- **The plan is S3's on every store** (`FPART`): every part but the last at least 5 MiB, numbers rising from 1, at most
   64 MiB a part. A plan the memory store would take and S3 would not is refused before any store is asked.
 - **You hand in the hash**, the SHA-256 of the whole content, worked out from the bytes as they arrived (the kernel's
   resumable `Sha256`), since the store is never made to read a 2 GB file back to hash it. So name the file **by its

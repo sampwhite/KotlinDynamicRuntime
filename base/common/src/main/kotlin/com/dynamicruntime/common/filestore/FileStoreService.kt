@@ -362,7 +362,8 @@ class FileStoreService : ServiceInitializer {
             declared(bucket)
             checkedKey(key)
             val meta = meta(cxt, bucket, key) ?: return null
-            if (offset < 0 || length < 0 || offset + length > meta.size) {
+            // Compared without adding them, which a huge offset would carry past the largest number and back below the size.
+            if (offset < 0 || length < 0 || length > meta.size || offset > meta.size - length) {
                 throw KdrException(
                     "The range of $length byte(s) from $offset is not within the file '$key' in the bucket '$bucket', " +
                         "which is ${meta.size} byte(s).",
@@ -392,17 +393,17 @@ class FileStoreService : ServiceInitializer {
         /**
          * Stores [bytes] as part [number] of the upload [token] of [key], replacing a part of that number stored before;
          * answers the part as the store took it, which [completeStaged] is handed back. A part is 1 to
-         * [FSTAGE.maxPartSize] bytes and numbered 1 to [FSTAGE.maxParts].
+         * [FPART.maxPartSize] bytes and numbered 1 to [FPART.maxParts].
          */
         fun putPart(cxt: KdrCxt, bucket: String, key: String, token: String, number: Int, bytes: ByteArray): StagedPart {
             declared(bucket)
             checkedKey(key)
             checkToken(token)
-            if (number !in 1..FSTAGE.maxParts) {
-                throw KdrException("A part's number is 1 to ${FSTAGE.maxParts}, not $number.", null, EXC.badInput)
+            if (number !in 1..FPART.maxParts) {
+                throw KdrException("A part's number is 1 to ${FPART.maxParts}, not $number.", null, EXC.badInput)
             }
-            if (bytes.isEmpty() || bytes.size > FSTAGE.maxPartSize) {
-                throw KdrException("A part is 1 to ${FSTAGE.maxPartSize} bytes, not ${bytes.size}.", null, EXC.badInput)
+            if (bytes.isEmpty() || bytes.size > FPART.maxPartSize) {
+                throw KdrException("A part is 1 to ${FPART.maxPartSize} bytes, not ${bytes.size}.", null, EXC.badInput)
             }
             return logged(cxt, "putPart", bucket, key, { "part $number, ${bytes.size} bytes" }) {
                 store.putPart(cxt, bucket, key, token, number, bytes)
@@ -415,8 +416,8 @@ class FileStoreService : ServiceInitializer {
          * content, which **the caller has worked out from the bytes it was given** -- chunk by chunk, as they arrived --
          * since the store is never made to read a large file back to hash it. Its size is the parts'.
          *
-         * The plan is held to every store's rules ([FSTAGE]) whichever store this is, so a plan that passes on memory
-         * passes on S3: part numbers rising, each part but the last at least [FSTAGE.minPartSize].
+         * The plan is held to every store's rules ([FPART]) whichever store this is, so a plan that passes on memory
+         * passes on S3: part numbers rising, each part but the last at least [FPART.minPartSize].
          */
         fun completeStaged(
             cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, mimeType: String, hash: String,
@@ -543,7 +544,7 @@ class FileStoreService : ServiceInitializer {
         }
 
         private fun checkToken(token: String) {
-            if (token.isBlank() || token.length > FSTAGE.maxTokenLength) {
+            if (token.isBlank() || token.length > FPART.maxTokenLength) {
                 throw KdrException("Not an upload token: '${token.take(40)}'.", null, EXC.badInput)
             }
         }
@@ -594,18 +595,18 @@ class FileStoreService : ServiceInitializer {
 
         /**
          * What is wrong with [parts] as the plan of a file put together from them, or null when nothing is (issue #1835):
-         * at least one part, numbers rising from 1 to [FSTAGE.maxParts], and each part but the last at least
-         * [FSTAGE.minPartSize] -- S3's rules, held on every store.
+         * at least one part, numbers rising from 1 to [FPART.maxParts], and each part but the last at least
+         * [FPART.minPartSize] -- S3's rules, held on every store.
          */
         fun partPlanProblem(parts: List<StagedPart>): String? {
             if (parts.isEmpty()) return "it names no part"
-            if (parts.size > FSTAGE.maxParts) return "it names ${parts.size} parts, more than ${FSTAGE.maxParts}"
+            if (parts.size > FPART.maxParts) return "it names ${parts.size} parts, more than ${FPART.maxParts}"
             for ((i, part) in parts.withIndex()) {
-                if (part.number !in 1..FSTAGE.maxParts) return "part number ${part.number} is not 1 to ${FSTAGE.maxParts}"
+                if (part.number !in 1..FPART.maxParts) return "part number ${part.number} is not 1 to ${FPART.maxParts}"
                 if (i > 0 && part.number <= parts[i - 1].number) return "its parts are not in rising order (${parts[i - 1].number}, then ${part.number})"
                 if (part.size < 1) return "part ${part.number} is empty"
-                if (i < parts.size - 1 && part.size < FSTAGE.minPartSize) {
-                    return "part ${part.number} is ${part.size} bytes, and every part but the last must be at least ${FSTAGE.minPartSize}"
+                if (i < parts.size - 1 && part.size < FPART.minPartSize) {
+                    return "part ${part.number} is ${part.size} bytes, and every part but the last must be at least ${FPART.minPartSize}"
                 }
             }
             return null

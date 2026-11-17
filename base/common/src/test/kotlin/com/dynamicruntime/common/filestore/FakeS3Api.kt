@@ -16,9 +16,9 @@ import kotlin.time.Instant
  * record of every call made, so a test can say what was fetched as well as what came back.
  *
  * Multipart uploads are held to S3's rule that every part but the last is at least [minPartSize], which a test may
- * lower to work with small parts; S3's own is [FSTAGE.minPartSize].
+ * lower to work with small parts; S3's own is [FPART.minPartSize].
  */
-class FakeS3Api(vararg existingBuckets: String, val minPartSize: Long = FSTAGE.minPartSize) : S3Api {
+class FakeS3Api(vararg existingBuckets: String, val minPartSize: Long = FPART.minPartSize) : S3Api {
     override val location: String = "fake S3"
 
     /** The buckets that exist; an object call against any other fails, as S3's would. */
@@ -103,6 +103,9 @@ class FakeS3Api(vararg existingBuckets: String, val minPartSize: Long = FSTAGE.m
     /** An upload under way: its bucket and key, when it began, and its parts by number. */
     class Multipart(val bucket: String, val key: String, val startedAt: Instant) {
         val parts = TreeMap<Int, ByteArray>()
+
+        /** When each part was stored, by number. */
+        val partTimes = TreeMap<Int, Instant>()
     }
 
     /** The uploads under way, by upload id. */
@@ -140,6 +143,7 @@ class FakeS3Api(vararg existingBuckets: String, val minPartSize: Long = FSTAGE.m
         reached("uploadPart $bucket/$key $number", bucket)
         val upload = multiparts[uploadId]?.takeIf { it.bucket == bucket && it.key == key } ?: return null
         upload.parts[number] = bytes.copyOf()
+        upload.partTimes[number] = clock()
         return etagOf(bytes)
     }
 
@@ -171,6 +175,12 @@ class FakeS3Api(vararg existingBuckets: String, val minPartSize: Long = FSTAGE.m
     override fun listMultipart(bucket: String): List<StagedUpload> {
         reached("listMultipart $bucket", bucket)
         return multiparts.filterValues { it.bucket == bucket }.map { (id, u) -> StagedUpload(u.key, id, u.startedAt) }.sortedBy { it.key }
+    }
+
+    override fun listParts(bucket: String, key: String, uploadId: String): List<S3Part>? {
+        reached("listParts $bucket/$key", bucket)
+        val upload = multiparts[uploadId]?.takeIf { it.bucket == bucket && it.key == key } ?: return null
+        return upload.parts.map { (n, bytes) -> S3Part(n, bytes.size.toLong(), etagOf(bytes), upload.partTimes.getValue(n)) }
     }
 
     /** What S3 tags a part with: here, its length and a checksum, which differ for different bytes. */

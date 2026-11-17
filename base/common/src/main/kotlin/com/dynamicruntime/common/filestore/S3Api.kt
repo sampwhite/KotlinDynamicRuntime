@@ -77,7 +77,13 @@ interface S3Api {
 
     /** The multipart uploads under way in [bucket], in key order. */
     fun listMultipart(bucket: String): List<StagedUpload>
+
+    /** The parts S3 holds of [uploadId], in number order; null when there is no such upload. */
+    fun listParts(bucket: String, key: String, uploadId: String): List<S3Part>?
 }
+
+/** One part of a multipart upload as S3 holds it (issue #1835): its number, size, ETag, and when it was stored. */
+class S3Part(val number: Int, val size: Long, val tag: String, val lastModified: Instant)
 
 /**
  * [S3Api] over the AWS SDK for Java v2. Credentials come from the SDK's own default chain -- the environment,
@@ -199,6 +205,13 @@ class SdkS3Api(val region: String, val endpoint: String? = null) : S3Api, AutoCl
             client.listMultipartUploadsPaginator { it.bucket(bucket) }.uploads()
                 .map { StagedUpload(it.key(), it.uploadId(), Instant.fromEpochMilliseconds(it.initiated().toEpochMilli())) }
                 .sortedBy { it.key }
+        }
+
+    override fun listParts(bucket: String, key: String, uploadId: String): List<S3Part>? =
+        call<List<S3Part>?>("list the parts of the upload of '$key' in the bucket '$bucket'", absent = null) {
+            client.listPartsPaginator { it.bucket(bucket).key(key).uploadId(uploadId) }.parts().map {
+                S3Part(it.partNumber(), it.size(), it.eTag(), Instant.fromEpochMilliseconds(it.lastModified().toEpochMilli()))
+            }
         }
 
     override fun close() = client.close()

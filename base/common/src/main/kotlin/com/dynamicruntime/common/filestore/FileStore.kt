@@ -185,7 +185,7 @@ class StoredFile(val bytes: ByteArray, val meta: FileMeta) {
  * part plan one store takes is one they all take: S3's, which is the strictest.
  */
 @Suppress("ConstPropertyName")
-object FSTAGE {
+object FPART {
     /** The smallest a part may be, except the last: S3 refuses a smaller one when the upload completes. */
     const val minPartSize = 5L * 1024 * 1024
 
@@ -210,9 +210,11 @@ class StagedPart(val number: Int, val size: Long, val tag: String) {
 
 /**
  * An upload a store holds parts of and that was never completed or aborted (issue #1835): the [key] it is for, the
- * store's [token] for it, and when it began. What [FileStoreCheck] reports, and its repair aborts.
+ * store's [token] for it, when it began, and when it was [lastActiveAt] -- its newest part, or its beginning when it has
+ * none. What [FileStoreCheck] reports, and its repair aborts once it has been idle long enough: a slow upload still
+ * taking parts is never the one aborted.
  */
-class StagedUpload(val key: String, val token: String, val startedAt: Instant)
+class StagedUpload(val key: String, val token: String, val startedAt: Instant, val lastActiveAt: Instant = startedAt)
 
 /**
  * A place files are kept: one of the providers behind [FileStoreService] (issue #1129), which is what the rest
@@ -309,10 +311,11 @@ interface FileStore {
     fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean
 
     /**
-     * The bytes of the file at [key] from [offset], [length] of them, as a stream the caller closes; null when there is
-     * no such file (issue #1835). The range is within the file -- the service holds it to the metadata's size -- and
-     * the bytes are **not checked against the metadata's hash**: a file read in ranges is one whose key names its
-     * content ([FileStoreService.FileStoreView.openRange]), never rewritten, and checked once, when it was finished.
+     * The bytes of the file at [key] from [offset], [length] (at least 1) of them, as a stream the caller closes; null
+     * when there is no such content (issue #1835). **The service has read the file's metadata** and holds the range to
+     * its size, so a store need not ask again -- on S3 that would be a request per range. The bytes are **not checked
+     * against the metadata's hash**: a file read in ranges is one whose key names its content
+     * ([FileStoreService.FileStoreView.openRange]), never rewritten, and checked once, when it was finished.
      */
     fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): InputStream?
 
@@ -332,7 +335,7 @@ interface FileStore {
     /**
      * Puts [parts], in order, together as the file at [key], with [meta] beside it, and ends the upload [token]: the
      * content, then the metadata, as [put] writes a file, replacing one already there. Each part named must be one
-     * [putPart] answered, as it answered it; the service checks the plan ([FSTAGE]) and that [meta]'s size is theirs.
+     * [putPart] answered, as it answered it; the service checks the plan ([FPART]) and that [meta]'s size is theirs.
      */
     fun completeStaged(cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, meta: FileMeta)
 
@@ -345,8 +348,9 @@ interface FileStore {
     /**
      * Moves the file at [from] to [to], content and metadata, replacing a file at [to]; whether there was one at
      * [from] (issue #1835). What a file put together under a key of its own is moved by, once its name is known.
-     * Never a moment when [to] has [from]'s metadata without its content: a stop part-way leaves at most what a put
-     * that stopped leaves.
+     * Never a moment when [to] has [from]'s metadata without its content, and [from] stays whole until its content has
+     * reached [to]: a move that fails leaves [from] as it was, and one that stops part-way leaves at [to] what a put
+     * that stopped leaves and at [from] metadata whose content has gone, which [FileStoreCheck] finds.
      */
     fun move(cxt: KdrCxt, bucket: String, from: String, to: String): Boolean
 }

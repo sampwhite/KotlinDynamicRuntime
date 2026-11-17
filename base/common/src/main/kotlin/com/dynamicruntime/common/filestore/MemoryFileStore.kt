@@ -28,9 +28,12 @@ class MemoryFileStore : FileStore {
 
     private val buckets = ConcurrentHashMap<String, ConcurrentSkipListMap<String, StoredFile>>()
 
-    /** An upload under way: its key, when it began, and its parts by number. */
+    /** An upload under way: its key, when it began and last took a part, and its parts by number. */
     private class Staged(val key: String, val startedAt: Instant) {
         val parts = ConcurrentSkipListMap<Int, ByteArray>()
+
+        @Volatile
+        var lastActiveAt: Instant = startedAt
     }
 
     /** The uploads under way in each bucket, by token. */
@@ -90,7 +93,7 @@ class MemoryFileStore : FileStore {
     /** A file's two halves are one entry here, so a write leaves nothing part-way to clear but an upload never finished. */
     override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
         if (leftover.kind != FLEFT.staged) return false
-        val upload = stagedIn(bucket)[leftover.name]?.takeIf { it.key == leftover.key && it.startedAt <= cutoff } ?: return false
+        val upload = stagedIn(bucket)[leftover.name]?.takeIf { it.key == leftover.key && it.lastActiveAt <= cutoff } ?: return false
         return stagedIn(bucket).remove(leftover.name, upload)
     }
 
@@ -112,6 +115,7 @@ class MemoryFileStore : FileStore {
     override fun putPart(cxt: KdrCxt, bucket: String, key: String, token: String, number: Int, bytes: ByteArray): StagedPart {
         val upload = stagedIn(bucket)[token]?.takeIf { it.key == key } ?: throw noUpload(bucket, key, token)
         upload.parts[number] = bytes.copyOf()
+        upload.lastActiveAt = cxt.now()
         return StagedPart(number, bytes.size.toLong(), bytes.sha256Hex())
     }
 
@@ -136,7 +140,7 @@ class MemoryFileStore : FileStore {
     }
 
     override fun stagedUploads(cxt: KdrCxt, bucket: String): List<StagedUpload> =
-        stagedIn(bucket).map { (token, upload) -> StagedUpload(upload.key, token, upload.startedAt) }.sortedBy { it.key }
+        stagedIn(bucket).map { (token, upload) -> StagedUpload(upload.key, token, upload.startedAt, upload.lastActiveAt) }.sortedBy { it.key }
 
     override fun move(cxt: KdrCxt, bucket: String, from: String, to: String): Boolean {
         val files = files(bucket)

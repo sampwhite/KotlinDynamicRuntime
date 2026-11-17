@@ -96,8 +96,9 @@ class FileLeftover(
  * write holds throughout, so there what is found there belongs to nobody. A file whose content its metadata does not
  * match keeps its content: the old content is gone, and the caller did ask for this one to be stored.
  *
- * **An upload under way is a leftover too, once it is old enough** ([FLEFT.staged], issue #1835): a slow upload is
- * told from an abandoned one only by its age, so the cutoff a repair is given must be longer than an upload is let run.
+ * **An upload under way is a leftover too, once it has been idle long enough** ([FLEFT.staged], issue #1835): its age
+ * is counted from its newest part ([StagedUpload.lastActiveAt]), so a slow upload still taking parts is never aborted,
+ * and the cutoff need only be longer than a sender may pause between parts.
  */
 object FileStoreCheck {
     /**
@@ -121,7 +122,8 @@ object FileStoreCheck {
         }
         // An upload's parts are no object: a store holds them apart, and lists them apart.
         for (upload in store.stagedUploads(cxt, bucket)) {
-            out.add(FileLeftover(bucket, upload.key, upload.token, FLEFT.staged, upload.startedAt))
+            // Aged by its newest part, so an upload still taking parts is never too old, however long it has run.
+            out.add(FileLeftover(bucket, upload.key, upload.token, FLEFT.staged, upload.lastActiveAt))
         }
         for (key in keys) {
             val content = objects[key]

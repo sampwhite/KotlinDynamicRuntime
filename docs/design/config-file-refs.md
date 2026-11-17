@@ -375,6 +375,11 @@ kdr-run com.dynamicruntime.script.CheckFileStoreKt web-assets --min-age-minutes 
 It boots only the file store, never the database, and refuses the memory store. It exits 0 when the store is clean or
 repaired, 2 when something is still found, and 1 for a usage or store error.
 
+It also finds **an upload begun and never finished** (issue #1835): the parts of a large file a store still holds --
+on S3 an incomplete multipart upload, which S3 charges for and lists nowhere else; on a directory store a folder under
+`~staging` at its root. Its age is counted from its newest part, so `--repair` aborts only an upload that has been idle
+for longer than `--min-age-minutes`, never one still taking parts however long it has run.
+
 ## What is not built
 
 Each of these is in [`docs/development/deferred-work.md`](../development/deferred-work.md) under its trigger, and the

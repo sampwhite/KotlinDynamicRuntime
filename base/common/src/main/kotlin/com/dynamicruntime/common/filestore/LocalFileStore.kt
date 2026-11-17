@@ -277,7 +277,6 @@ class LocalFileStore(val root: File) : FileStore {
     }
 
     override fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): InputStream? {
-        if (!metaFile(bucket, key).isFile) return null
         val channel = try {
             FileChannel.open(contentFile(bucket, key).toPath(), StandardOpenOption.READ)
         } catch (_: java.nio.file.NoSuchFileException) {
@@ -309,8 +308,17 @@ class LocalFileStore(val root: File) : FileStore {
     /** The upload [token] of [key], when it is under way; null when there is none, or it is another key's. */
     private fun uploadOf(bucket: String, key: String, token: String): File? {
         val dir = uploadDir(bucket, token)
-        val keyFile = File(dir, uploadKeyName)
-        return dir.takeIf { keyFile.isFile && keyFile.readText() == key }
+        return dir.takeIf { uploadKeyOf(it) == key }
+    }
+
+    /**
+     * The key the upload in [dir] is for, or null when it is no upload -- including one removed while it is read, by
+     * an abort or a repair, which is no upload a moment later either.
+     */
+    private fun uploadKeyOf(dir: File): String? = try {
+        File(dir, uploadKeyName).takeIf { it.isFile }?.readText()
+    } catch (_: IOException) {
+        null
     }
 
     private fun noUpload(bucket: String, key: String, token: String): KdrException =
@@ -328,10 +336,14 @@ class LocalFileStore(val root: File) : FileStore {
         return token
     }
 
+    /**
+     * Under the key's lock, which the completion holds while it checks and copies the parts: so no part is replaced
+     * between being checked and being copied, which would store bytes under a hash they do not have.
+     */
     override fun putPart(cxt: KdrCxt, bucket: String, key: String, token: String, number: Int, bytes: ByteArray): StagedPart {
-        val dir = uploadOf(bucket, key, token) ?: throw noUpload(bucket, key, token)
         val part = StagedPart(number, bytes.size.toLong(), bytes.sha256Hex())
-        io("store part $number of the upload of '$key' in the bucket '$bucket'") {
+        exclusively(bucket, key, "store part $number of the upload of '$key' in the bucket '$bucket'") {
+            val dir = uploadOf(bucket, key, token) ?: throw noUpload(bucket, key, token)
             val partFile = File(dir, "$number")
             val tagFile = File(dir, "$number$tagSuffix")
             // The part and then its tag, each whole: a part written again is a new tag, and a part whose tag did not
@@ -352,45 +364,55 @@ class LocalFileStore(val root: File) : FileStore {
         }
     }
 
+    /** Checked and copied under the key's lock, which [putPart] takes too: the parts copied are the parts checked. */
     override fun completeStaged(cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, meta: FileMeta) {
-        val dir = uploadOf(bucket, key, token) ?: throw noUpload(bucket, key, token)
-        val partFiles = parts.map { part ->
-            val partFile = File(dir, "${part.number}")
-            val tagFile = File(dir, "${part.number}$tagSuffix")
-            val tag = if (tagFile.isFile) Files.readString(tagFile.toPath()) else null
-            if (!partFile.isFile || partFile.length() != part.size || tag != part.tag) {
-                throw KdrException("Part ${part.number} of the upload of '$key' is not the part that was stored.", null, EXC.conflict)
-            }
-            partFile
-        }
         exclusively(bucket, key, "complete the upload of '$key' in the bucket '$bucket'") {
+            val dir = uploadOf(bucket, key, token) ?: throw noUpload(bucket, key, token)
+            val partFiles = parts.map { part ->
+                val partFile = File(dir, "${part.number}")
+                val tagFile = File(dir, "${part.number}$tagSuffix")
+                val tag = if (tagFile.isFile) Files.readString(tagFile.toPath()) else null
+                if (!partFile.isFile || partFile.length() != part.size || tag != part.tag) {
+                    throw KdrException("Part ${part.number} of the upload of '$key' is not the part that was stored.", null, EXC.conflict)
+                }
+                partFile
+            }
             install(bucket, key, meta) { tmp ->
                 Files.newOutputStream(tmp.toPath()).use { out -> partFiles.forEach { Files.copy(it.toPath(), out) } }
             }
+            dir.deleteRecursively()
         }
-        dir.deleteRecursively()
     }
 
     override fun abortStaged(cxt: KdrCxt, bucket: String, key: String, token: String): Boolean {
-        val dir = uploadOf(bucket, key, token) ?: return false
-        return dir.deleteRecursively()
+        uploadDir(bucket, token) // A token that is not this store's is refused, as everywhere else.
+        return exclusively(bucket, key, "abort the upload of '$key' in the bucket '$bucket'") {
+            uploadOf(bucket, key, token)?.deleteRecursively() ?: false
+        }
     }
 
     override fun stagedUploads(cxt: KdrCxt, bucket: String): List<StagedUpload> {
         val dirs = stagingDir(bucket).listFiles { f -> f.isDirectory && tokenPattern.matches(f.name) } ?: return emptyList()
         return dirs.mapNotNull { dir ->
-            val keyFile = File(dir, uploadKeyName)
-            if (!keyFile.isFile) return@mapNotNull null
-            StagedUpload(keyFile.readText(), dir.name, modifiedAt(keyFile))
+            val key = uploadKeyOf(dir) ?: return@mapNotNull null
+            StagedUpload(key, dir.name, modifiedAt(File(dir, uploadKeyName)), lastActiveOf(dir))
         }.sortedBy { it.key }
     }
 
-    /** An upload that is still there, still [leftover]'s key's, and begun no later than [cutoff]: its parts go. */
+    /** When the upload in [dir] last changed: its newest file, a part or the key it began with. */
+    private fun lastActiveOf(dir: File): Instant =
+        Instant.fromEpochMilliseconds(dir.listFiles()?.maxOfOrNull { it.lastModified() } ?: dir.lastModified())
+
+    /**
+     * An upload that is still there, still [leftover]'s key's, and idle since no later than [cutoff]: its parts go.
+     * Under the key's lock, so a part arriving as it is asked about is not lost with it.
+     */
     private fun clearStaged(bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
         if (!tokenPattern.matches(leftover.name)) return false
-        val dir = uploadOf(bucket, leftover.key, leftover.name) ?: return false
-        if (modifiedAt(File(dir, uploadKeyName)) > cutoff) return false
-        return dir.deleteRecursively()
+        return exclusively(bucket, leftover.key, "abort the upload of '${leftover.key}' in the bucket '$bucket'") {
+            val dir = uploadOf(bucket, leftover.key, leftover.name) ?: return@exclusively false
+            lastActiveOf(dir) <= cutoff && dir.deleteRecursively()
+        }
     }
 
     override fun move(cxt: KdrCxt, bucket: String, from: String, to: String): Boolean {
@@ -413,11 +435,12 @@ class LocalFileStore(val root: File) : FileStore {
             val metaTmp = tmpOf(toMeta)
             try {
                 Files.copy(fromMeta.toPath(), metaTmp.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                // From here [from] is content with no metadata, a write that did not finish; [to] is untouched until
-                // its content lands, and then is as a put leaves it between its content and its metadata.
-                Files.delete(fromMeta.toPath())
+                // Until the content is renamed, [from] is whole and [to] untouched, so a move that fails here changes
+                // nothing. After it, [to] is as a put leaves it between its content and its metadata, and [from] is
+                // metadata whose content has gone until that is removed, last.
                 moveInto(fromFile, toFile)
                 moveInto(metaTmp, toMeta)
+                Files.delete(fromMeta.toPath())
             } finally {
                 metaTmp.delete()
             }

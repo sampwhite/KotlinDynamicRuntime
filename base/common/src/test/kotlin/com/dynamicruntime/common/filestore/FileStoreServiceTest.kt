@@ -430,7 +430,7 @@ class FileStoreServiceTest : StringSpec({
         cxt.userProfile = UserProfile(authId = "pat", userId = 77, client = "acme")
         cxt.client = "acme"
         val acme = service.forOwner(cxt, "acme")
-        val first = ByteArray(FSTAGE.minPartSize.toInt()) { (it % 7).toByte() }
+        val first = ByteArray(FPART.minPartSize.toInt()) { (it % 7).toByte() }
         val last = "the end".toByteArray()
         val whole = first + last
 
@@ -460,7 +460,7 @@ class FileStoreServiceTest : StringSpec({
         val key = "clients/acme/staging/plan"
         val token = acme.beginStaged(cxt, bucket, key, "video/mp4")
         val small = acme.putPart(cxt, bucket, key, token, 1, "small".toByteArray())
-        val big = acme.putPart(cxt, bucket, key, token, 2, ByteArray(FSTAGE.minPartSize.toInt()))
+        val big = acme.putPart(cxt, bucket, key, token, 2, ByteArray(FPART.minPartSize.toInt()))
         val hash = "0".repeat(64)
 
         fun refusal(parts: List<StagedPart>, withHash: String = hash): String =
@@ -468,7 +468,7 @@ class FileStoreServiceTest : StringSpec({
                 .also { it.code shouldBe EXC.badInput }.message.orEmpty()
 
         // Only the last part may be smaller than S3's smallest -- the memory store would take it, S3 would not.
-        refusal(listOf(small, big)) shouldContain "every part but the last must be at least ${FSTAGE.minPartSize}"
+        refusal(listOf(small, big)) shouldContain "every part but the last must be at least ${FPART.minPartSize}"
         refusal(listOf(big, big)) shouldContain "not in rising order"
         refusal(emptyList()) shouldContain "names no part"
         refusal(listOf(big), "ABC") shouldContain "64 lower-case hex digits"
@@ -476,7 +476,7 @@ class FileStoreServiceTest : StringSpec({
 
         // A part is 1 byte to the most one request carries, and numbered as S3 numbers them.
         shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, 0, "x".toByteArray()) }.code shouldBe EXC.badInput
-        shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, FSTAGE.maxParts + 1, "x".toByteArray()) }
+        shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, FPART.maxParts + 1, "x".toByteArray()) }
         shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, 3, ByteArray(0)) }.message shouldContain "1 to"
         shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, "", 3, "x".toByteArray()) }.message shouldContain "Not an upload token"
 
@@ -494,7 +494,8 @@ class FileStoreServiceTest : StringSpec({
         read.stream.use { it.readAllBytes() }.toList() shouldBe bytes.copyOfRange(90, 100).toList()
         acme.openRange(cxt, bucket, "clients/acme/files/v", 100, 0).shouldNotBeNull().stream.use { it.readAllBytes() }.size shouldBe 0
 
-        for ((offset, length) in listOf(95L to 10L, -1L to 5L, 0L to -1L)) {
+        // A huge offset is no way round the check: added to the length it would carry past the largest number.
+        for ((offset, length) in listOf(95L to 10L, -1L to 5L, 0L to -1L, Long.MAX_VALUE to 1L, 1L to Long.MAX_VALUE)) {
             shouldThrow<KdrException> { acme.openRange(cxt, bucket, "clients/acme/files/v", offset, length) }.code shouldBe EXC.badInput
         }
         acme.openRange(cxt, bucket, "clients/acme/files/none", 0, 1).shouldBeNull()
