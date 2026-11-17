@@ -33,6 +33,9 @@ import com.dynamicruntime.common.util.toOptStr
  *     [SCH.items] are judged by these same rules (issue #1119), so a list of several choices narrows as one does.
  *  3. **More required**: [SCH.required] as a superset of the base's.
  *
+ * A file field's kinds and largest size ([SCH.fileKinds], [SCH.fileMaxSize], issue #1834) narrow as a choice list does:
+ * fewer kinds, or a lower largest size -- one where there was none included -- and never the other way.
+ *
  * Anything else that affects validation is refused, naming the alternative.
  *
  * ### The one case that looks like narrowing and is not
@@ -118,6 +121,12 @@ enum class NarrowingError : ProblemCode {
 
     /** A closed choice list opened. */
     opensChoices,
+
+    /** A file field's kinds widened (issue #1834): a kind the type's field does not take, or the list removed. */
+    addsFileKind,
+
+    /** A file field's largest size raised, or removed (issue #1834). */
+    raisesFileMaxSize,
 }
 
 private fun narrowed(code: NarrowingError, at: String, message: String) =
@@ -163,7 +172,7 @@ private val presentationKeys = setOf(
  *
  * Theme: #NARRW.
  */
-private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions)
+private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions, SCH.fileKinds, SCH.fileMaxSize)
 
 /**
  * Keys whose merge rule already says what an alteration may do with them, and refuses the rest as a merge problem
@@ -195,6 +204,7 @@ private fun compare(
     }
     checkOpenOptions(path, at, base, variant, out)
     checkRequired(path, at, base, variant, out)
+    checkFileField(path, at, base, variant, out)
     // An array's elements are judged by the same rules (issue #1119): elements accepting less make an array that
     // accepts less, so a list of several choices may be narrowed as a single choice is.
     val baseItems = (base[SCH.items] as? Map<*, *>)?.toJsonMap()
@@ -294,6 +304,36 @@ private fun checkProperties(
         val baseBody = (baseProps[name] as? Map<*, *>)?.toJsonMap() ?: continue
         val declaredBody = (body as? Map<*, *>)?.toJsonMap() ?: continue
         compare("$path.$name", "$at.${SCH.properties}.$name", baseBody, declaredBody, out)
+    }
+}
+
+/**
+ * A file field narrows by taking fewer kinds or a lower largest size (issue #1834), and widens by the reverse: a kind
+ * the base does not take, the kinds removed, a largest size raised, or one removed where the base had one.
+ *
+ * Themes: #DFILE, #NARRW.
+ */
+private fun checkFileField(path: String, at: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<Problem>) {
+    val baseKinds = (base[SCH.fileKinds] as? List<*>)?.mapNotNull { it.toOptStr() }
+    if (baseKinds != null) {
+        val kinds = (variant[SCH.fileKinds] as? List<*>)?.mapNotNull { it.toOptStr() }
+        val added = kinds?.filterNot { it in baseKinds } ?: baseKinds
+        if (kinds == null || added.isNotEmpty()) {
+            out += narrowed(
+                NarrowingError.addsFileKind, "$at.${SCH.fileKinds}",
+                "'$path' " + (if (kinds == null) "removes its '${SCH.fileKinds}'" else "takes ${added.joinToString(", ") { "'$it'" }}") +
+                    ", which widens the kinds of file the type takes. A client may take fewer kinds, never more.",
+            )
+        }
+    }
+    val baseMax = (base[SCH.fileMaxSize] as? Number)?.toDouble()
+    val max = (variant[SCH.fileMaxSize] as? Number)?.toDouble()
+    if (baseMax != null && (max == null || max > baseMax)) {
+        out += narrowed(
+            NarrowingError.raisesFileMaxSize, "$at.${SCH.fileMaxSize}",
+            "'$path' " + (if (max == null) "removes its '${SCH.fileMaxSize}'" else "raises '${SCH.fileMaxSize}' to ${max.toLong()} bytes") +
+                ", above the type's ${baseMax.toLong()}. A client may lower a file field's largest size, never raise it.",
+        )
     }
 }
 

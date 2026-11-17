@@ -1,16 +1,13 @@
 package com.dynamicruntime.common.webasset
 
+import com.dynamicruntime.common.filekind.FileKind
+import com.dynamicruntime.common.filekind.FileKinds
+
 /**
- * One kind of image a web asset may be (issue #1130): what a person calls it, the content type it is stored and
- * served as, and the other types an upload may honestly declare it under -- browsers do not agree on an ICO's.
+ * One kind of image a web asset may be (issue #1130). Since #1834 it is a [FileKind], so a client's web assets, its
+ * named images, and a trait's file field describe a kind the same way and are told it by the same bytes.
  */
-class WebImageKind(
-    val label: String,
-    val mimeType: String,
-    /** What a file of this kind is called after its dot, for a name offered when one is saved. */
-    val extension: String,
-    val alsoDeclaredAs: Set<String> = emptySet(),
-)
+typealias WebImageKind = FileKind
 
 /**
  * One web-asset slot (issue #1130): its name ([WAS.slots]), what a page calls it, the largest image it takes, and -- for
@@ -25,23 +22,21 @@ class WebSlotDef(val slot: String, val label: String, val maxSize: Int, val only
  */
 @Suppress("ConstPropertyName")
 object WebAssetKinds {
-    val png = WebImageKind("PNG", "image/png", "png")
-    val svg = WebImageKind("SVG", "image/svg+xml", "svg")
-    val ico = WebImageKind("ICO", "image/x-icon", "ico", setOf("image/vnd.microsoft.icon", "image/ico"))
-    val jpeg = WebImageKind("JPEG", "image/jpeg", "jpg", setOf("image/jpg", "image/pjpeg"))
-    val webp = WebImageKind("WebP", "image/webp", "webp")
+    // The registry's own kinds (issue #1834), so a check that compares kinds compares one instance of each.
+    val png = FileKinds.png
+    val svg = FileKinds.svg
+    val ico = FileKinds.ico
+    val jpeg = FileKinds.jpeg
+    val webp = FileKinds.webp
 
     /** Every kind accepted, in the order a message lists them. */
     val kinds = listOf(png, svg, ico, jpeg, webp)
 
     /** The content types a file picker should offer: each kind's own and the others it is declared under. */
-    val acceptedMimeTypes: List<String> = kinds.flatMap { listOf(it.mimeType) + it.alsoDeclaredAs }
+    val acceptedMimeTypes: List<String> = FileKinds.acceptedMimeTypes(kinds)
 
     /** The kind [mimeType] declares -- its parameters and case aside -- or null when it is none of ours. */
-    fun declaredKind(mimeType: String): WebImageKind? {
-        val bare = mimeType.substringBefore(';').trim().lowercase()
-        return kinds.firstOrNull { it.mimeType == bare || bare in it.alsoDeclaredAs }
-    }
+    fun declaredKind(mimeType: String): WebImageKind? = FileKinds.declaredKind(mimeType, kinds)
 
     private const val bytesPerKb = 1024
 

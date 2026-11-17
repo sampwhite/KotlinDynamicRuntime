@@ -73,6 +73,8 @@ Wherever a schema is written: a type declared by name, a field's own schema, or 
 | `g-visibleOnly` | True or false | Whether a string may hold only characters with a visible rendering, and the ordinary space. |
 | `g-outerWhitespace` | Text | What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a value that has any, or 'keep' it. Unset, a plain string is trimmed when it arrives in a request, and left as it is when stored or sent back. |
 | `g-longText` | True or false | Marks a string as long text, free text that may run over several lines, which a form draws as a text area. |
+| `g-fileKinds` | A list of text | On a field of format 'gedra-file', the kinds of file it may hold, such as 'png' or 'mp4'. A file's kind is told by its bytes. |
+| `g-fileMaxSize` | A whole number of bytes | On a field of format 'gedra-file', the largest file it may hold, in bytes. A file is held to the smaller of this and its kind's own largest. |
 | `g-derived` | True, false or an object | Marks a property the caller does not supply, because something else produces it. |
 | `g-schemaDocument` | True or false | Marks a property whose value is itself a schema, checked by parsing it. |
 | `g-options` | A list | The choices a property offers, each a label and a value. |

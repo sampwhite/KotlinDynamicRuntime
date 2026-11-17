@@ -225,6 +225,20 @@ object SCH {
     const val longText = "g-longText"
 
     /**
+     * On a [SFMT.dataFile] field, the kinds of file it may hold (issue #1834): ids of the kernel's file kinds
+     * (`FileKinds`), such as `["mp4", "webm"]`. Required on such a field, and refused anywhere else. A file is told its
+     * kind by its bytes, so a field naming `png` holds only files whose bytes are a PNG.
+     */
+    const val fileKinds = "g-fileKinds"
+
+    /**
+     * On a [SFMT.dataFile] field, the largest file it may hold, in bytes (issue #1834). Optional: unset, each kind's own
+     * largest applies. A file is held to the smaller of this and its kind's own, so the value may not exceed the
+     * largest of its kinds' -- it would constrain nothing there. Refused anywhere but such a field.
+     */
+    const val fileMaxSize = "g-fileMaxSize"
+
+    /**
      * Marks a property the client does not supply -- something else produces it (issue #254).
      *
      * Two forms, both accepted from the start so that widening later is not a migration of stored documents:
@@ -471,6 +485,15 @@ object SFMT {
      * something this schema layer already models.
      */
     const val binary = "binary"
+
+    /**
+     * A **file in a form's data** (issue #1834): a string naming a data file record by its id. The file itself is
+     * uploaded apart from the form and held by its record; the form holds only the id, so nothing about the file is
+     * copied into the data to go stale. Declared with the kinds it may hold ([SCH.fileKinds]) and optionally a largest
+     * size ([SCH.fileMaxSize]), which are checked when a form naming the file is saved. Not OpenAPI's: a house format,
+     * prefixed as our keywords are.
+     */
+    const val dataFile = "gedra-file"
 }
 
 /**

@@ -2,6 +2,8 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.filekind.FileKind
+import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemLocation
@@ -429,6 +431,7 @@ fun parseNode(
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
     val variants = parseVariants(name, map, state, depth)
+    val (fileKinds, fileMaxSize) = parseDataFile(where, map, jsonType, format)
     val (minBound, minExclusive) = parseBound(where, map, jsonType, lower = true)
     val (maxBound, maxExclusive) = parseBound(where, map, jsonType, lower = false)
     val schType = SchType(
@@ -442,6 +445,8 @@ fun parseNode(
         visibleOnly = parseVisibleOnly(map[SCH.visibleOnly], name, jsonType, format),
         outerWhitespace = parseOuterWhitespace(map[SCH.outerWhitespace], name, jsonType, format),
         longText = parseLongText(map[SCH.longText], name, jsonType, format, hasOptions = map[SCH.options] != null),
+        fileKinds = fileKinds,
+        fileMaxSize = fileMaxSize,
         pattern = parsePattern(where, map[SCH.pattern], jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
@@ -565,7 +570,7 @@ fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): 
     if (raw == null) return null
     val source = raw as? String
         ?: throw schemaFault(SchemaError.badValue, "$where sets '${SCH.pattern}' to something other than text.")
-    if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
+    if (jsonType != SCT.string || isNonTextFormat(format)) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
         throw schemaFault(
             SchemaError.notApplicable,
@@ -654,7 +659,7 @@ private fun parsePlainStringFlag(
     if (raw == null) return false
     val where = typeName?.let { " on '$it'" } ?: ""
     val on = raw as? Boolean ?: throw schemaFault(SchemaError.badValue, "'$keyword'$where must be true or false, not '$raw'.")
-    if (on && (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format) || hasOptions)) {
+    if (on && (jsonType != SCT.string || isNonTextFormat(format) || hasOptions)) {
         val actual = when {
             jsonType != SCT.string -> "'${jsonType ?: "untyped"}'"
             hasOptions -> "a string with choices"
@@ -690,7 +695,7 @@ fun parseOuterWhitespace(raw: Any?, typeName: String?, jsonType: String?, format
             "'${SCH.outerWhitespace}'$where must be '${SOWS.trim}', '${SOWS.reject}' or '${SOWS.keep}', not '$raw'."
         )
     }
-    if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
+    if (jsonType != SCT.string || isNonTextFormat(format)) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
         throw schemaFault(
             SchemaError.notApplicable,
@@ -744,6 +749,89 @@ fun isDateFormat(format: String?): Boolean = format == SFMT.date || format == SF
  */
 fun isBinaryFormat(format: String?): Boolean = format == SFMT.binary
 
+/** Whether [format] marks a file in a form's data ([SFMT.dataFile]): a string naming a data file record (issue #1834). */
+fun isDataFileFormat(format: String?): Boolean = format == SFMT.dataFile
+
+/**
+ * Whether [format] makes a string something other than free text: a date, which is parsed; file content, which is not
+ * text at all; or a data file's id, which names a record (issue #1834). The keywords that shape free text -- a pattern,
+ * choices, a `const`, edge whitespace, `g-visibleOnly`, `g-longText` -- are refused on such a string.
+ */
+fun isNonTextFormat(format: String?): Boolean = isDateFormat(format) || isBinaryFormat(format) || isDataFileFormat(format)
+
+/**
+ * Reads a [SFMT.dataFile] field's `g-fileKinds` and `g-fileMaxSize` (issue #1834), or nothing when the type is no such
+ * field. Refuses, naming [where]:
+ *
+ * - either keyword on any other type, where it would constrain nothing;
+ * - such a field without its kinds, or with an empty list -- a file field that takes no kind takes nothing;
+ * - a kind that is not one of the kernel's data kinds (`FileKinds.kinds`), or one named twice;
+ * - a largest size that is not a whole number above zero, or that is above every one of its kinds' own largest, where
+ *   it would constrain nothing.
+ *
+ * Theme: #DFILE.
+ */
+@KdrPrivate
+fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, format: String?): Pair<List<FileKind>, Long?> {
+    val rawKinds = map[SCH.fileKinds]
+    val rawMax = map[SCH.fileMaxSize]
+    val isField = jsonType == SCT.string && isDataFileFormat(format)
+    if (!isField) {
+        val stray = listOf(SCH.fileKinds to rawKinds, SCH.fileMaxSize to rawMax).firstOrNull { it.second != null }
+        if (stray != null) {
+            throw schemaFault(
+                SchemaError.notApplicable,
+                "$where has '${stray.first}', which applies to a string of format '${SFMT.dataFile}'. It would " +
+                    "constrain nothing here.",
+            )
+        }
+        if (isDataFileFormat(format)) {
+            throw schemaFault(
+                SchemaError.notApplicable,
+                "$where has format '${SFMT.dataFile}', which names a file by its id and so is a string; this type is " +
+                    "'${jsonType ?: "untyped"}'.",
+            )
+        }
+        return emptyList<FileKind>() to null
+    }
+    val names = (rawKinds as? List<*>)?.map { it.toOptStr() }
+    val known = FileKinds.kinds.joinToString(", ") { it.id }
+    if (names.isNullOrEmpty() || names.any { it == null }) {
+        throw schemaFault(
+            SchemaError.badValue,
+            "$where is a file field (format '${SFMT.dataFile}') and must name the kinds of file it holds in " +
+                "'${SCH.fileKinds}', a list of: $known.",
+        )
+    }
+    val kinds = names.map { id ->
+        FileKinds.byId(id!!) ?: throw schemaFault(
+            SchemaError.badValue,
+            "$where names '$id' in '${SCH.fileKinds}', which is not a kind of file a field may hold. The kinds are: $known.",
+        )
+    }
+    names.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let {
+        throw schemaFault(SchemaError.badValue, "$where names '${it.key}' twice in '${SCH.fileKinds}'.")
+    }
+    if (rawMax == null) return kinds to null
+    val max = (rawMax as? Number)?.toDouble() ?: rawMax.toOptStr()?.toDoubleOrNull()
+    if (max == null || max < 1 || max != kotlin.math.floor(max)) {
+        throw schemaFault(
+            SchemaError.badValue,
+            "$where sets '${SCH.fileMaxSize}' to ${describeSchemaValue(rawMax)}; it must be a whole number of bytes above zero.",
+        )
+    }
+    val largest = kinds.maxOf { it.maxSize }
+    if (max > largest) {
+        throw schemaFault(
+            SchemaError.badValue,
+            "$where sets '${SCH.fileMaxSize}' to ${max.toLong()} bytes, above the largest its kinds allow ($largest " +
+                "bytes, for ${kinds.filter { it.maxSize == largest }.joinToString(", ") { it.label }}). It would " +
+                "constrain nothing there.",
+        )
+    }
+    return kinds to max.toLong()
+}
+
 /**
  * Parses the custom `options` construct: a list whose entries are each a `{value, label}` map or a **bare value**
  * (issue #816), mixed as the author likes. A bare value, and a map with no `label`, is labeled by its value -- the
@@ -759,7 +847,7 @@ fun isBinaryFormat(format: String?): Boolean = format == SFMT.binary
 @KdrPrivate
 fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): List<SchOption>? {
     if (raw !is List<*>) return null
-    if (jsonType != null && jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
+    if (jsonType != null && jsonType != SCT.string || isNonTextFormat(format)) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'$jsonType'"
         throw schemaFault(
             SchemaError.notApplicable,
@@ -787,7 +875,7 @@ fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): 
  */
 @KdrPrivate
 fun parseConst(where: String, raw: Any?, jsonType: String?, format: String?): Any? {
-    if (raw != null && jsonType == SCT.string && (isDateFormat(format) || isBinaryFormat(format))) {
+    if (raw != null && jsonType == SCT.string && (isNonTextFormat(format))) {
         throw schemaFault(
             SchemaError.notApplicable,
             "$where has '${SCH.const}' on a '$format' string, which is never compared against it. It would " +

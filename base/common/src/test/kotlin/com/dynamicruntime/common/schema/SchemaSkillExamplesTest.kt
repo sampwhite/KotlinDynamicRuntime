@@ -1,7 +1,11 @@
 package com.dynamicruntime.common.schema
 
+
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.filekind.DataFileFields
+import com.dynamicruntime.common.filekind.FKIND
+import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -111,6 +115,27 @@ class SchemaSkillExamplesTest : StringSpec({
         isDateFormat(SFMT.date) shouldBe true
         isBinaryFormat(SFMT.binary) shouldBe true
         isBinaryFormat(SFMT.date) shouldBe false
+    }
+
+    // "dataFile(FKIND.mp4, FKIND.webm, maxSize = ...) -> {"type": "string", "format": "gedra-file", "g-fileKinds": [...]}".
+    "a file in a form's data is a string naming a record, with the kinds it holds" {
+        val defs = schemaDefs(cxt, "fmt") {
+            type("Visit") {
+                type = SCT.kObject
+                property("clip", "A short video") { dataFile(FKIND.mp4, FKIND.webm, maxSize = 100_000_000) }
+            }
+        }
+        val clip = defs["fmt.Visit"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()["clip"].toJsonMapOrEmpty()
+        clip[SCH.type] shouldBe "string"
+        clip[SCH.format] shouldBe "gedra-file"
+        clip["g-fileKinds"] shouldBe listOf("mp4", "webm")
+        clip["g-fileMaxSize"] shouldBe 100_000_000L
+        val type = parseSchemaTypes(defs).getValue("fmt.Visit")
+        val field = type.properties.getValue("clip").valueType
+        field.fileSizeLimit(FileKinds.mp4) shouldBe 100_000_000L
+        field.fileSizeLimit(FileKinds.png) shouldBe null
+        isNonTextFormat(SFMT.dataFile) shouldBe true
+        DataFileFields.collect(type, mapOf("clip" to "gd.df.acme.c1")).map { it.fileId } shouldBe listOf("gd.df.acme.c1")
     }
 
     // "A binary-format field is exempt from all of it, though required still applies."

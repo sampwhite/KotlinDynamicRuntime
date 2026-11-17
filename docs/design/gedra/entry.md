@@ -221,7 +221,8 @@ two clients would write differently processed data under one trait, and the base
 describe what is stored. Code is bound to a global trait id, and a behavior change requires an extension.
 
 Narrowing is checked against a closed list rather than inferred (`SchNarrowing.kt`, #356): fewer properties, fewer
-choices (or a choice list where there was none), and more required. Anything else that takes part in validation
+choices (or a choice list where there was none), and more required. A file field narrows the same way (#1834): fewer
+kinds of file, or a lower largest size. Anything else that takes part in validation
 is refused, and the offending alteration is dropped, leaving the global type in place. Alterations merge **raw
 documents, re-parsed**, never parsed objects. By default an alteration restates what it changes; `g-merge` (#985)
 lets it merge a part entry by entry instead, so `{"g-merge": {"properties": "merge"}}` keeps every property it does

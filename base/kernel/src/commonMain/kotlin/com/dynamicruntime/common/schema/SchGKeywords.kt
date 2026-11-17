@@ -31,6 +31,8 @@ object SchGKeywords {
         SCH.visibleOnly to boolean,
         SCH.outerWhitespace to text,
         SCH.longText to boolean,
+        SCH.fileKinds to textList,
+        SCH.fileMaxSize to SchKeywordShape("a whole number of bytes", SchShapeForm.NumberLike),
         SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
         SCH.onWrite to SchKeywordShape("a list of function objects", SchShapeForm.ListOf(SchShapeForm.Obj)),
         SCH.schemaDocument to boolean,
@@ -63,6 +65,10 @@ object SchGKeywords {
         SCH.visibleOnly to "Whether a string may hold only characters with a visible rendering, and the ordinary space.",
         SCH.longText to "Marks a string as long text, free text that may run over several lines, which a form " +
             "draws as a text area.",
+        SCH.fileKinds to "On a field of format '${SFMT.dataFile}', the kinds of file it may hold, such as 'png' or " +
+            "'mp4'. A file's kind is told by its bytes.",
+        SCH.fileMaxSize to "On a field of format '${SFMT.dataFile}', the largest file it may hold, in bytes. A file " +
+            "is held to the smaller of this and its kind's own largest.",
         SCH.outerWhitespace to "What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a " +
             "value that has any, or 'keep' it. Unset, a plain string is trimmed when it arrives in a request, and left " +
             "as it is when stored or sent back.",
@@ -101,6 +107,8 @@ object SchGKeywords {
         SCH.visibleOnly to SchKeywordPlace.schema,
         SCH.outerWhitespace to SchKeywordPlace.schema,
         SCH.longText to SchKeywordPlace.schema,
+        SCH.fileKinds to SchKeywordPlace.schema,
+        SCH.fileMaxSize to SchKeywordPlace.schema,
         SCH.derived to SchKeywordPlace.schema,
         SCH.onWrite to SchKeywordPlace.namedType,
         SCH.schemaDocument to SchKeywordPlace.schema,
