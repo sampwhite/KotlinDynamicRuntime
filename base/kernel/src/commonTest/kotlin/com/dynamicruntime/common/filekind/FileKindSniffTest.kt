@@ -11,8 +11,11 @@ class FileKindSniffTest {
 
     private fun ascii(s: String): ByteArray = ByteArray(s.length) { s[it].code.toByte() }
 
-    /** An MP4-style file: a box size, `ftyp`, then [brand]. */
-    private fun ftyp(brand: String): ByteArray = bytes(0, 0, 0, 0x20) + ascii("ftyp") + ascii(brand) + ByteArray(20)
+    /** An MP4-style file: a box size, `ftyp`, [brand], a minor version, and [compatible] brands. */
+    private fun ftyp(brand: String, vararg compatible: String): ByteArray {
+        val box = ascii("ftyp") + ascii(brand) + ByteArray(4) + compatible.fold(ByteArray(0)) { acc, b -> acc + ascii(b) }
+        return bytes(0, 0, 0, box.size + 4) + box + ByteArray(20)
+    }
 
     /** An EBML header whose `DocType` is [docType]. */
     private fun ebml(docType: String): ByteArray =
@@ -43,6 +46,27 @@ class FileKindSniffTest {
         for (brand in listOf("heic", "mif1", "avif", "qt  ")) assertNull(FileKindSniff.sniff(ftyp(brand)), brand)
         // Matroska has WebM's header, and a browser does not play Matroska in general.
         assertNull(FileKindSniff.sniff(ebml("matroska")))
+    }
+
+    @Test
+    fun anMp4IsAlsoToldByItsCompatibleBrands() {
+        // A camera may write its own brand as the major one and list `isom` after it.
+        assertEquals(FileKinds.mp4, FileKindSniff.sniff(ftyp("XAVC", "XAVC", "mp42", "iso2")))
+        assertEquals(FileKinds.mp4, FileKindSniff.sniff(ftyp("MSNV", "MSNV", "isom")))
+        assertNull(FileKindSniff.sniff(ftyp("XAVC", "XAVC")))
+        // An image's major brand refuses it, however MP4-like the brands it lists.
+        assertNull(FileKindSniff.sniff(ftyp("heic", "mif1", "heic", "iso8")))
+        assertNull(FileKindSniff.sniff(ftyp("avif", "avif", "mif1", "miaf", "isom")))
+        // A brand past the box's own size is not one of its brands.
+        val short = bytes(0, 0, 0, 16) + ascii("ftyp") + ascii("XAVC") + ByteArray(4) + ascii("isom") + ByteArray(20)
+        assertNull(FileKindSniff.sniff(short))
+    }
+
+    @Test
+    fun everyKindWithAMarkHasItsRule() {
+        // A data kind added without a rule would be offered to forms and never recognized in an upload.
+        for (kind in FileKinds.kinds + FileKinds.ico) assertTrue(FileKindSniff.hasRule(kind), kind.id)
+        assertTrue(!FileKindSniff.hasRule(FileKinds.svg))
     }
 
     @Test

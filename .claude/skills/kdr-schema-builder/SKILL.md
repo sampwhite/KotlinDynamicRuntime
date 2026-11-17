@@ -113,8 +113,10 @@ format means adding a helper and a predicate — not special-casing at each call
   to the smaller of it and its kind's own largest (`fileSizeLimit(kind)`). A file's kind is told by its **bytes**
   (`FileKindSniff`), never by its declared type or name. The parser refuses the field without kinds, an unknown or
   repeated kind, a size above every kind's own, either keyword off such a field, and the free-text keywords
-  (`pattern`, `options`, `const`, `g-longText`, …) on it. A client's alteration may take fewer kinds or a lower size,
-  never more. `DataFileFields.collect(type, value)` finds every file a value names, by its type, however deep.
+  (`pattern`, `options`, `const`, `g-longText`, …) on it. A client's alteration may take fewer kinds or smaller
+  files, never more, judged per kind by the limit in force: narrowing `[png, mp4]` at 100 MB to `[png]` needs no size,
+  since a PNG's own 20 MB is lower. `DataFileFields.collect(type, value)` finds every file a value names, by its type,
+  however deep; only a string names a file.
   <!-- Theme: #DFILE -->
 
 ## Character rules: `visibleOnly`

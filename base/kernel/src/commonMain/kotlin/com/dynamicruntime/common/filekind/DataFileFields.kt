@@ -24,6 +24,7 @@ class DataFileUse(val path: String, val fileId: String, val field: SchType) {
  *
  * Theme: #DFILE.
  */
+@Suppress("ConstPropertyName")
 object DataFileFields {
     /** How deep [collect] goes before it refuses: the depth limit the codebase holds a walk of data to. */
     const val maxDepth = 30
@@ -51,7 +52,8 @@ object DataFileFields {
         if (depth > maxDepth) throw tooDeep()
         if (value == null) return
         if (type.isDataFile()) {
-            value.toOptStr()?.takeIf { it.isNotBlank() }?.let { out += DataFileUse(path, it, type) }
+            // Only a string names a file: a number or a flag here is a value validation refuses, never an id.
+            (value as? String)?.takeIf { it.isNotBlank() }?.let { out += DataFileUse(path, it, type) }
             return
         }
         when (value) {

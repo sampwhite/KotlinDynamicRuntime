@@ -46,6 +46,12 @@ class Sha256 private constructor(
         var at = offset
         val end = offset + count
         while (at < end) {
+            if (blockFill == 0 && end - at >= blockSize) {
+                // Whole blocks straight from the input: copied only when a block straddles two calls.
+                compress(bytes, at)
+                at += blockSize
+                continue
+            }
             val take = minOf(blockSize - blockFill, end - at)
             bytes.copyInto(block, blockFill, at, at + take)
             blockFill += take
@@ -60,7 +66,7 @@ class Sha256 private constructor(
     }
 
     /** The digest of everything hashed, as 64 lower-case hex digits. Leaves this hash as it was, so it may go on. */
-    fun hexDigest(): String = digest().toLowerHex()
+    fun hexDigest(): String = digest().toHexString()
 
     /** The digest of everything hashed, as 32 bytes. Leaves this hash as it was, so it may go on. */
     fun digest(): ByteArray {
@@ -89,9 +95,9 @@ class Sha256 private constructor(
 
     /** The running state, as a JSON-ready map ([SHA]): what [fromState] resumes from. */
     fun toState(): Map<String, Any?> = mapOf(
-        SHA.words to h.joinToString("") { it.toUInt().toString(16).padStart(8, '0') },
+        SHA.words to ByteArray(32) { (h[it / 4] ushr (24 - 8 * (it % 4))).toByte() }.toHexString(),
         SHA.length to length,
-        SHA.tail to block.copyOf(blockFill).toLowerHex(),
+        SHA.tail to block.copyOf(blockFill).toHexString(),
     )
 
     private fun compress(data: ByteArray, from: Int) {
@@ -139,6 +145,7 @@ class Sha256 private constructor(
         h[7] += hh
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         private const val blockSize = 64
 
@@ -166,33 +173,31 @@ class Sha256 private constructor(
          * a stored session row damaged or from elsewhere is a fault to report, never a hash to go on from wrongly.
          */
         fun fromState(state: Map<String, Any?>): Sha256 {
-            val words = state[SHA.words].toOptStr()
+            val words = hexBytes(state[SHA.words])
             val length = (state[SHA.length] as? Number)?.toLong()
-            val tail = state[SHA.tail].toOptStr() ?: ""
-            val tailBytes = hexToBytes(tail)
-            if (words == null || words.length != 64 || length == null || length < 0 || tailBytes == null ||
-                tailBytes.size >= blockSize || length % blockSize != tailBytes.size.toLong()
+            val tail = hexBytes(state[SHA.tail] ?: "")
+            if (words == null || words.size != 32 || length == null || length < 0 || tail == null ||
+                tail.size >= blockSize || length % blockSize != tail.size.toLong()
             ) {
                 throw KdrException.mkConv("A saved hash state is not one: $state.")
             }
-            val h = IntArray(8)
-            for (i in 0 until 8) {
-                h[i] = words.substring(8 * i, 8 * i + 8).toUIntOrNull(16)?.toInt()
-                    ?: throw KdrException.mkConv("A saved hash state's words are not hex: '$words'.")
+            val h = IntArray(8) {
+                ((words[4 * it].toInt() and 0xFF) shl 24) or ((words[4 * it + 1].toInt() and 0xFF) shl 16) or
+                    ((words[4 * it + 2].toInt() and 0xFF) shl 8) or (words[4 * it + 3].toInt() and 0xFF)
             }
             val block = ByteArray(blockSize)
-            tailBytes.copyInto(block)
-            return Sha256(h, length, block, tailBytes.size)
+            tail.copyInto(block)
+            return Sha256(h, length, block, tail.size)
         }
 
-        private fun hexToBytes(hex: String): ByteArray? {
-            if (hex.length % 2 != 0) return null
-            return ByteArray(hex.length / 2) {
-                hex.substring(2 * it, 2 * it + 2).toIntOrNull(16)?.toByte() ?: return null
+        /** [value] read as hex digits and nothing else -- no sign, no space -- or null when it is not. */
+        private fun hexBytes(value: Any?): ByteArray? {
+            val hex = value as? String ?: return null
+            return try {
+                hex.hexToByteArray()
+            } catch (e: IllegalArgumentException) {
+                null
             }
         }
     }
 }
-
-/** These bytes as lower-case hex, two digits a byte. */
-fun ByteArray.toLowerHex(): String = joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }

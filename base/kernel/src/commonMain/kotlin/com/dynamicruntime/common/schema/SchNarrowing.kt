@@ -1,10 +1,13 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.filekind.FileKind
+import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.overlay.OverlayMergeError
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
 import com.dynamicruntime.common.util.ProblemLocation
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toOptDoubleOrNull
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -34,7 +37,7 @@ import com.dynamicruntime.common.util.toOptStr
  *  3. **More required**: [SCH.required] as a superset of the base's.
  *
  * A file field's kinds and largest size ([SCH.fileKinds], [SCH.fileMaxSize], issue #1834) narrow as a choice list does:
- * fewer kinds, or a lower largest size -- one where there was none included -- and never the other way.
+ * fewer kinds, or smaller files of each kind it keeps -- judged by the limit in force, not by the keyword alone.
  *
  * Anything else that affects validation is refused, naming the alternative.
  *
@@ -125,7 +128,7 @@ enum class NarrowingError : ProblemCode {
     /** A file field's kinds widened (issue #1834): a kind the type's field does not take, or the list removed. */
     addsFileKind,
 
-    /** A file field's largest size raised, or removed (issue #1834). */
+    /** A file field made to hold a larger file of some kind than the type's does (issue #1834). */
     raisesFileMaxSize,
 }
 
@@ -308,34 +311,43 @@ private fun checkProperties(
 }
 
 /**
- * A file field narrows by taking fewer kinds or a lower largest size (issue #1834), and widens by the reverse: a kind
- * the base does not take, the kinds removed, a largest size raised, or one removed where the base had one.
+ * A file field narrows by taking fewer kinds or smaller files (issue #1834), and widens by the reverse: a kind the base
+ * does not take, the kinds removed, or a larger file of some kind than the base allows.
+ *
+ * **Sizes are judged per kind, by what is in force**: the smaller of the field's `g-fileMaxSize` and the kind's own
+ * largest ([fileSizeLimit]'s rule). So narrowing `[png, mp4]` at 100 MB to `[png]` needs no size at all -- a PNG's own
+ * 20 MB is below 100 MB -- where comparing the keyword alone would call dropping it a widening. A size is read as the
+ * parser reads it, a number or text spelling one.
  *
  * Themes: #DFILE, #NARRW.
  */
 private fun checkFileField(path: String, at: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<Problem>) {
-    val baseKinds = (base[SCH.fileKinds] as? List<*>)?.mapNotNull { it.toOptStr() }
-    if (baseKinds != null) {
-        val kinds = (variant[SCH.fileKinds] as? List<*>)?.mapNotNull { it.toOptStr() }
-        val added = kinds?.filterNot { it in baseKinds } ?: baseKinds
-        if (kinds == null || added.isNotEmpty()) {
-            out += narrowed(
-                NarrowingError.addsFileKind, "$at.${SCH.fileKinds}",
-                "'$path' " + (if (kinds == null) "removes its '${SCH.fileKinds}'" else "takes ${added.joinToString(", ") { "'$it'" }}") +
-                    ", which widens the kinds of file the type takes. A client may take fewer kinds, never more.",
-            )
-        }
-    }
-    val baseMax = (base[SCH.fileMaxSize] as? Number)?.toDouble()
-    val max = (variant[SCH.fileMaxSize] as? Number)?.toDouble()
-    if (baseMax != null && (max == null || max > baseMax)) {
+    val baseKinds = (base[SCH.fileKinds] as? List<*>)?.mapNotNull { it.toOptStr() } ?: return
+    val kinds = (variant[SCH.fileKinds] as? List<*>)?.mapNotNull { it.toOptStr() }
+    val added = kinds?.filterNot { it in baseKinds } ?: baseKinds
+    if (kinds == null || added.isNotEmpty()) {
         out += narrowed(
-            NarrowingError.raisesFileMaxSize, "$at.${SCH.fileMaxSize}",
-            "'$path' " + (if (max == null) "removes its '${SCH.fileMaxSize}'" else "raises '${SCH.fileMaxSize}' to ${max.toLong()} bytes") +
-                ", above the type's ${baseMax.toLong()}. A client may lower a file field's largest size, never raise it.",
+            NarrowingError.addsFileKind, "$at.${SCH.fileKinds}",
+            "'$path' " + (if (kinds == null) "removes its '${SCH.fileKinds}'" else "takes ${added.joinToString(", ") { "'$it'" }}") +
+                ", which widens the kinds of file the type takes. A client may take fewer kinds, never more.",
         )
+        return
     }
+    val baseMax = base[SCH.fileMaxSize].toOptDoubleOrNull()
+    val max = variant[SCH.fileMaxSize].toOptDoubleOrNull()
+    // A kind the registry does not know is the parser's to refuse; here it has no limit to compare.
+    val raised = kinds.mapNotNull { FileKinds.byId(it) }.firstOrNull { kind ->
+        limitInForce(max, kind) > limitInForce(baseMax, kind)
+    } ?: return
+    out += narrowed(
+        NarrowingError.raisesFileMaxSize, "$at.${SCH.fileMaxSize}",
+        "'$path' allows a ${raised.label} file of up to ${limitInForce(max, raised).toLong()} bytes, above the type's " +
+            "${limitInForce(baseMax, raised).toLong()}. A client may lower a file field's largest size, never raise it.",
+    )
 }
+
+/** The largest file of [kind] a field with largest size [max] (null for none) holds. */
+private fun limitInForce(max: Double?, kind: FileKind): Double = minOf(max ?: kind.maxSize.toDouble(), kind.maxSize.toDouble())
 
 /** A shorter choice list, or a choice list where the base had none. Labels are presentation and are ignored. */
 private fun checkOptions(path: String, at: String, baseValue: Any?, value: Any?, out: MutableList<Problem>) {

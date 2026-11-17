@@ -61,6 +61,9 @@ class Sha256Test {
             good + (SHA.words to "xyz"),
             good + (SHA.length to 71L),
             good + (SHA.tail to "0"),
+            // A sign is no hex digit, though a lenient number parse would take one.
+            good + (SHA.tail to "-1"),
+            good + (SHA.words to "+" + (good[SHA.words] as String).drop(1)),
             good - SHA.length,
         )) {
             assertFailsWith<KdrException> { Sha256.fromState(bad) }

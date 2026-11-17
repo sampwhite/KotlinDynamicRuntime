@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.filekind
 
+import com.dynamicruntime.common.fileref.FREF
+
 /**
  * Whether a file of a kind is shown in the page or only offered as a download (issue #1834). A closed operational set:
  * it decides the `Content-Disposition` a file is served with, and nothing a client configures may add to it.
@@ -74,6 +76,7 @@ object FKFAM {
  *
  * Theme: #DFILE.
  */
+@Suppress("ConstPropertyName")
 object FileKinds {
     private const val mb = 1024L * 1024L
 
@@ -88,11 +91,17 @@ object FileKinds {
     val webm = FileKind(FKIND.webm, "WebM video", FKFAM.video, "video/webm", "webm", maxSize = videoMax)
     val pdf = FileKind(FKIND.pdf, "PDF", FKFAM.document, "application/pdf", "pdf", maxSize = 50 * mb, disposition = FileDisposition.attachment)
 
-    /** Not a data kind (see the class note); its size is the named images' own limit, the largest any slot takes. */
-    val svg = FileKind(FKIND.svg, "SVG", FKFAM.image, "image/svg+xml", "svg", maxSize = 2 * mb)
+    /**
+     * Not a data kind (see the class note), so no field reads its size: it is the named images' own limit
+     * ([FREF.maxSize]), and a web-asset slot holds an SVG to its own, smaller one.
+     */
+    val svg = FileKind(FKIND.svg, "SVG", FKFAM.image, "image/svg+xml", "svg", maxSize = FREF.maxSize.toLong())
 
-    /** Not a data kind (see the class note). */
-    val ico = FileKind(FKIND.ico, "ICO", FKFAM.image, "image/x-icon", "ico", setOf("image/vnd.microsoft.icon", "image/ico"), maxSize = 2 * mb)
+    /** Not a data kind (see the class note); its size is the named images' limit, as [svg]'s is. */
+    val ico = FileKind(
+        FKIND.ico, "ICO", FKFAM.image, "image/x-icon", "ico", setOf("image/vnd.microsoft.icon", "image/ico"),
+        maxSize = FREF.maxSize.toLong(),
+    )
 
     /** The kinds a trait's file field may hold, in the order a message lists them. */
     val kinds: List<FileKind> = listOf(png, jpeg, webp, gif, mp4, webm, pdf)

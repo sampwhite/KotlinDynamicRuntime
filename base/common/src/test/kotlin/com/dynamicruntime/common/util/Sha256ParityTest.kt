@@ -10,7 +10,7 @@ import kotlin.random.Random
  * chunk across nodes gets the hash the file store records for the same bytes put whole.
  */
 class Sha256ParityTest : StringSpec({
-    fun jdk(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).toLowerHex()
+    fun jdk(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).toHexString()
 
     "random lengths and random splits agree with the JDK" {
         val random = Random(1834)
