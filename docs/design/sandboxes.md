@@ -28,12 +28,14 @@ its users and forms, and has them back if it is added again.
 
 ### Trying a change
 
-1. **Make the change.** In a client with a sandbox, every change to its configuration is a **draft**, whether it is made
-   on the client's own pages or from inside the sandbox: in the Clients page's editors, in the bundle editor, or by the
-   workflow assistant. Design View works only inside the sandbox, where its change can be seen. The result of each save
-   says it was saved as a draft.
-2. **Open the sandbox.** **Open sandbox** in the app bar switches to the person's own user in the sandbox, made the
-   first time. The page is tinted, and the client's name reads "Acme Sandbox", so it is plain where you are.
+1. **Open the sandbox.** **Open sandbox** in the app bar switches to the person's own user in the sandbox, made the
+   first time. The page is tinted, and the client's name reads "Acme Sandbox", so it is plain where you are. An
+   administrator of every client opens the sandbox's Clients page from the client's instead.
+2. **Make the change.** In a client with a sandbox, every change to its configuration is made in the sandbox, as a
+   **draft**: in the sandbox's Clients page's editors, in its bundle editor, in Design View, or by the workflow
+   assistant, which works as the person's user there. The client's own page shows its configuration and leads to the
+   sandbox, and a change made from the client itself is refused (#1824), since the client would not show it. The
+   result of each save says it was saved as a draft.
 3. **Try it.** The sandbox runs every draft at once. Open the New form, fill in a form, and step it through the
    workflow, as the client's people would.
 4. **Go back.** **Back to Acme** in the app bar returns to the person's user in the client.
@@ -79,6 +81,7 @@ The sections from here on are the design record. **Status: built**, under the tr
 | Loading and reloading a sandbox beside its parent | #928 |
 | Who may open a sandbox, and as whom | #929 |
 | Edits from inside a sandbox act on the parent, as drafts | #930 |
+| A client with a sandbox is changed from the sandbox alone | #1824 |
 | Entering, marking, and leaving the sandbox in the webapp | #931 |
 | Managing a client's sandbox from the Clients page | #932 |
 | The impact report a publish is judged by | #935 |
@@ -242,9 +245,15 @@ parent is then reloaded, and so the sandbox shows the change. This covers the `/
 client: copy, menu, the definition's presentation, named images (configuration file refs), and Design View's shared
 edits.
 
-**For a client with a sandbox, every such edit is a draft, from either side.** An edit made on the client's own page
-is a draft too, and the sandbox is where it shows. Each result says whether it was saved live or as a draft (`mode`).
-A caller may say which it expects, and a save that would do otherwise is a 409 (`saveNotAsExpected`): one expected as a
+**For a client with a sandbox, every such edit is made from the sandbox** (#1824, `SandboxEdits.requireChangedInSandbox`).
+One made from the client itself is refused, the published-only setting excepted: it would be a draft its own page does
+not show, so the person who made it would see nothing change where they made it. The client's own Clients page shows
+its configuration read-only and leads to the sandbox's, as its bundle editor, Reports, and Design View already did. A
+client whose sandbox this node does not carry is the exception: its bundles are written from itself, so a configuration
+that broke its sandbox's load can be mended. So are a deployment operator's `/admin/client/config/…` endpoints, the
+deployment's own raw door, which name the client itself and are not held to this; the Clients page, which an operator
+reaches them through, leads a sandboxed client to its sandbox all the same. Each result says whether it was saved live or as a draft (`mode`). A
+caller may say which it expects, and a save that would do otherwise is a 409 (`saveNotAsExpected`): one expected as a
 draft that would be live, one that names a sandbox the client no longer has, or one for a client that asks for a
 sandbox this node does not carry.
 
@@ -254,8 +263,6 @@ Some things are deliberately not drafted:
 - **Web assets** (the favicon and brand mark) are not configuration. A sandbox shows its parent's and may change none.
   [Named images](config-file-refs.md), the client's configuration file refs, are configuration, and are drafted
   like the rest.
-- **Design View** on a client with a sandbox refuses the client's own page and points to the sandbox, where a change
-  can be seen.
 
 ## Publishing is judged against the client
 <!-- Theme: #CFGFG -->

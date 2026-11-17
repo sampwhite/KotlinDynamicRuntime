@@ -30,7 +30,7 @@ fun simulationSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.simulation
         ImpactDemo.simulationName,
         "Provisions the publish impact demo (issue #935): a client with a sandbox, three forms stored under its two " +
             "traits, and an unpublished draft of its traits that would strand them -- one trait dropped, a field " +
-            "made required that no stored form has. Publishing the draft from the client page is refused with the " +
+            "made required that no stored form has. Publishing the draft from its sandbox's page is refused with the " +
             "impact report; Check impact shows it first. Give a suffix for a fresh copy (impactdemo2). A rerun " +
             "publishes the harmless traits again and leaves the draft anew; its forms accumulate.",
         inputFields = {

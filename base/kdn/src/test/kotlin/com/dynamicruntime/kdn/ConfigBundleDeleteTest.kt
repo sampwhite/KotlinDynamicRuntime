@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -116,6 +117,8 @@ class ConfigBundleDeleteTest : StringSpec({
 
     "a published configuration is emptied, the empty revision published, and then deleted" {
         val admin = defineClient("pub1461", sandbox = true)
+        // In the sandbox, where a client with one is changed (issue #1824): each call acts on the parent's configuration.
+        admin.postData(AEP.openSandbox, emptyMap())
         admin.writeExtra("pub1461")
         admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("extra")))
         counts(admin.extraListed()) shouldBe "1/1 1/1"

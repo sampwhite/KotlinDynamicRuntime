@@ -338,9 +338,13 @@ class AssistantTranscriptTest {
 
     @Test
     fun thePageShowsTheFaceItsStatusCallsFor() {
-        fun status(on: Boolean = false, offered: Boolean = false, inSandbox: Boolean = false) = parseAssistantStatus(
-            mapOf(ASST.client to "free_shop1", ACNV.on to on, ACNV.offered to offered, ACNV.inSandbox to inSandbox),
-        )
+        fun status(on: Boolean = false, offered: Boolean = false, inSandbox: Boolean = false, hasSandbox: Boolean = false) =
+            parseAssistantStatus(
+                mapOf(
+                    ASST.client to "free_shop1", ACNV.on to on, ACNV.offered to offered, ACNV.inSandbox to inSandbox,
+                    ACNV.hasSandbox to hasSandbox,
+                ),
+            )
         assertEquals(AssistantView.loading, assistantViewOf(null, failed = false))
         assertEquals(AssistantView.failed, assistantViewOf(null, failed = true))
         assertEquals(AssistantView.on, assistantViewOf(status(on = true), failed = false))
@@ -352,6 +356,11 @@ class AssistantTranscriptTest {
         assertEquals(AssistantView.off, assistantViewOf(status(), failed = false))
         // A status read already failed again keeps the one the page has.
         assertEquals(AssistantView.on, assistantViewOf(status(on = true), failed = true))
+        // Issue #1824: on, with a sandbox the person is outside, it is used in the sandbox; inside, the page itself.
+        assertEquals(AssistantView.openSandbox, assistantViewOf(status(on = true, hasSandbox = true), failed = false))
+        assertEquals(AssistantView.on, assistantViewOf(status(on = true, hasSandbox = true, inSandbox = true), failed = false))
+        assertTrue(AssistantView.openSandbox.isOn)
+        assertFalse(AssistantView.switchOn.isOn)
     }
 
     @Test

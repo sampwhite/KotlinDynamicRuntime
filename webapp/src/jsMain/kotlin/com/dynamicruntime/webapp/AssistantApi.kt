@@ -46,12 +46,19 @@ enum class AssistantView {
 
     /** Off, and only an operator switches it on. */
     off,
+
+    /** On, and the client has a sandbox, but the person is outside it (issue #1824): the assistant is used in the sandbox. */
+    openSandbox,
     on,
 }
+
+/** Whether the view is of an assistant switched on: [AssistantView.on], or on and used in the sandbox (issue #1824). */
+val AssistantView.isOn: Boolean get() = this == AssistantView.on || this == AssistantView.openSandbox
 
 /** The face of the page for [status], or none read yet ([failed] when the read failed). Pure, and covered under `jsNodeTest`. */
 fun assistantViewOf(status: AssistantStatus?, failed: Boolean): AssistantView = when {
     status == null -> if (failed) AssistantView.failed else AssistantView.loading
+    status.on && status.hasSandbox && !status.inSandbox -> AssistantView.openSandbox
     status.on -> AssistantView.on
     status.offered && status.inSandbox -> AssistantView.switchOnFromClient
     status.offered -> AssistantView.switchOn

@@ -32,6 +32,7 @@ import com.dynamicruntime.common.gedra.workflow.WfParams
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -269,9 +270,12 @@ class DeletedWorkflowTest : StringSpec({
     "deleting a workflow past its lifetime is safe: the impact report finds nothing, where deleting a live one does" {
         val client = "wfsafe1354"
         val admin = defineClient(client, sandbox = true)
+        // The same person in a second session, in the sandbox, where a client with one changes its configuration (issue
+        // #1824); the workflow's parameters are set from the client.
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", userClient = client).also { it.postData(AEP.openSandbox, emptyMap()) }
         engagedForm(client)
         fun impactOfDeleting(): List<Map<String, Any?>> {
-            patchFlows(admin, GedraEditAction.deleteOrNoOp, mapOf(CCT.workflowId to "review"))
+            patchFlows(inSandbox, GedraEditAction.deleteOrNoOp, mapOf(CCT.workflowId to "review"))
             return admin.getItem(CFEP.bundleImpact, mapOf(CFEP.names to "flows"))[IMP.findings].toJsonListOfMaps()
         }
 
@@ -281,7 +285,7 @@ class DeletedWorkflowTest : StringSpec({
 
         // Past its lifetime -- its parameters in the client its people use (issue #1356), in force at once -- deleting it
         // changes nothing anybody sees.
-        patchFlows(admin, GedraEditAction.addOrReplace, review)
+        patchFlows(inSandbox, GedraEditAction.addOrReplace, review)
         admin.postData(
             UADEP.clientWorkflowParams,
             mapOf(
@@ -289,12 +293,14 @@ class DeletedWorkflowTest : StringSpec({
                 IMP.acknowledgeImpact to true,
             ),
         )
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("flows"), IMP.acknowledgeImpact to true, CFEP.reloadField to true))
+        inSandbox.postData(
+            CFEP.bundlePublish, mapOf(CFEP.names to listOf("flows"), IMP.acknowledgeImpact to true, CFEP.reloadField to true),
+        )
         // Dropping the task the form's state names, from a workflow past its lifetime, strands nothing anybody sees.
         val current = reviewEntry(admin)
         val definition = current[CCT.definition].toJsonMapOrEmpty()
         val withoutCheck = definition + (WFD.tasks to definition[WFD.tasks].toJsonListOfMaps().filter { it[WFD.id] != "check" })
-        patchFlows(admin, GedraEditAction.addOrReplace, current + (CCT.definition to withoutCheck))
+        patchFlows(inSandbox, GedraEditAction.addOrReplace, current + (CCT.definition to withoutCheck))
         admin.getItem(CFEP.bundleImpact, mapOf(CFEP.names to "flows"))[IMP.findings].toJsonListOfMaps().shouldBeEmpty()
         impactOfDeleting().shouldBeEmpty()
     }

@@ -734,6 +734,51 @@ fun parseCopyEditResult(results: Map<String, Any?>): CopyEditResult = CopyEditRe
 fun savesAsDraft(sandboxOf: String?, hasSandbox: Boolean): Boolean = sandboxOf != null || hasSandbox
 
 /**
+ * Whether [row]'s configuration is changed in its sandbox rather than on its own page (issue #1824): a client with a
+ * sandbox, seen from itself. A change made here would be a draft its own page does not show, so the page shows the
+ * configuration read-only and leads to the sandbox, where a change is previewed and published -- as the bundle editor,
+ * Reports, and Design View already did. A client whose sandbox this node does not carry is edited here, so its
+ * configuration can be mended. Pure, and covered under `jsNodeTest`.
+ */
+fun editedInSandbox(row: ClientOverview?): Boolean = row != null && row.hasSandbox && row.sandboxOf == null && !row.staticHere
+
+/**
+ * Why the page changes nothing of [row]'s configuration, or null where it does: a visitor kept out of a demo client's
+ * configuration (issue #1668), or a client edited in its sandbox ([editedInSandbox]). Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun configEditLock(row: ClientOverview?): String? = when {
+    row?.configLocked != null -> row.configLocked
+    editedInSandbox(row) -> sandboxEditLock
+    else -> null
+}
+
+private const val sandboxEditLock =
+    "This client has a sandbox: its configuration is changed there, where a change is previewed and published."
+
+/**
+ * How the client page edits a client's configuration (issues #1191, #1824), worked out once for every editor on it:
+ * why it changes nothing ([lock], null where it may change it), whether a save is a draft ([savesDraft]), and whether
+ * the client is changed in its sandbox rather than here ([changedInSandbox]), which the page leads to. An editor reads
+ * [lock] before it offers a save and [savesDraft] for how one takes effect, from this one answer.
+ */
+class PageEditing(val lock: String?, val savesDraft: Boolean, val changedInSandbox: Boolean) {
+    /** Whether the page may change the configuration at all. */
+    val editable: Boolean get() = lock == null
+}
+
+/**
+ * The client page's [PageEditing] for `clientId`, from the overview [row] it last read -- or, before the row is read, from whether its
+ * definition asks for a sandbox ([defSandbox]), so a client with one is read-only from the first render rather than
+ * editable until its row arrives (issue #1824). Pure, and covered under `jsNodeTest`.
+ */
+fun pageEditing(clientId: String, row: ClientOverview?, defSandbox: Boolean): PageEditing {
+    val inSandbox = editedInSandbox(row) || (row == null && defSandbox && sandboxParentOf(clientId) == null)
+    val lock = row?.configLocked ?: sandboxEditLock.takeIf { inSandbox }
+    return PageEditing(lock, pageSavesDraft(clientId, row, defSandbox), inSandbox)
+}
+
+/**
  * How the page expects a save to take effect, which it sends with each one (`mode`). The backend decides at the
  * request, by whether the client has a sandbox *then*; the page said which before the person acted, from what it last
  * read. A save the page called a draft that would be live is refused, and not made ([saveConflict]): a change the
@@ -1270,7 +1315,7 @@ fun definitionEditChanges(request: Map<String, Any?>): Boolean = ClientPresentat
  * under `jsNodeTest`.
  */
 fun definitionEditable(row: ClientOverview?): Boolean =
-    row != null && row.status == ClientStatus.present.name && !row.staticHere && row.configLocked == null &&
+    row != null && row.status == ClientStatus.present.name && !row.staticHere && configEditLock(row) == null &&
         (row.origin == GedraConfigOrigin.stored.name || row.sandboxOf != null)
 
 /** What the detail offers for editing the definition (issue #1026): the [editor], a [note] in its place, or neither yet. */

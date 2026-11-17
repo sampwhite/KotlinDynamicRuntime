@@ -159,6 +159,8 @@ class AssistantNewFormTest : StringSpec({
             { ScriptedModel.toolResponse(ATOOL.viewWorkflow to emptyMap()) },
             { ScriptedModel.textResponse("Your New form now asks for a note too.") },
         )
+        // From the client's sandbox, where the assistant is used (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
         val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "nf1", ACNV.text to "Ask for a note on New form."))
         service.awaitTurn(started[ACNV.turnId].toString())
         val results = admin.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to started[ACNV.conversationId]))[ACNV.messages]

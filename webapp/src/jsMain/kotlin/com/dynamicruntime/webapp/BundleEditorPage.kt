@@ -208,30 +208,16 @@ val BundleEditorPage = FC<Props> {
         }
         gate.note?.let { p { className = ClassName("subtitle"); +it } }
         gate.sandbox?.let { sandbox ->
-            // The word leads to the sandbox's own bundle editor, as the publishing bar's "Publish from its sandbox" leads
-            // to its page: straight there for an administrator who sees every client, and for a client-scoped one by
+            // The word leads to the sandbox's own bundle editor, by the link the Clients page leads to a sandbox with
+            // (`SandboxPageLink`): straight there for an administrator who sees every client, and for a client-scoped one by
             // first opening the sandbox (#929) -- a fresh session as their user in it.
             p {
                 className = ClassName("subtitle")
                 +"This client has a sandbox: its configuration is edited in its "
-                a {
-                    className = ClassName("wf-cell-link")
-                    href = bundleEditorHref(sandbox)
-                    if (!acrossClients) {
-                        title = "Open the sandbox and edit this configuration there."
-                        onClick = { e ->
-                            e.preventDefault()
-                            bundleEditorScope.launch {
-                                try {
-                                    AuthApi.openSandbox()
-                                    afterSessionChange(bump, listOf(HP.page to pageBundleEditor, HP.client to sandbox))
-                                } catch (e: Throwable) {
-                                    error = userFacingError(e)
-                                }
-                            }
-                        }
-                    }
-                    +"sandbox"
+                SandboxPageLink {
+                    route = listOf(HP.page to pageBundleEditor, HP.client to sandbox)
+                    this.acrossClients = acrossClients
+                    text = "sandbox"
                 }
                 +", as drafts, and published from there."
             }

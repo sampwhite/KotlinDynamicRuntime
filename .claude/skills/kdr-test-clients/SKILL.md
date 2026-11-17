@@ -257,8 +257,16 @@ later schema rejects" test.
 - **Config edits in a sandbox act on the parent, as drafts** (issue #930). A sandbox has no configuration of its own:
   the `/clientAdmin/config/...` endpoints and the copy and menu editors, called in one, read and write the parent's,
   attributed to the person's parent user, and a write reloads the parent (so the sandbox shows it, while the
-  parent -- published-only, as every client with a sandbox is -- keeps its published revision). The editors save a **draft** for any client with a sandbox
-  (result `mode` = `EDM.draft`) and publish at once for one without. `SandboxEditsTest.kt` is the reference.
+  parent -- published-only, as every client with a sandbox is -- keeps its published revision). The editors save a **draft** from a sandbox
+  (result `mode` = `EDM.draft`) and publish at once for a client without one. **A client with a sandbox is changed from
+  it alone** (issue #1824): an editor's save, or a `/clientAdmin/config/bundle/*` write, patch, publish, revert, or
+  delete, made from the client itself is refused (`SandboxEdits.requireChangedInSandbox`: a 409 carrying
+  `EDM.notAsExpected`, which the page re-reads on) -- only the published-only toggle is the client's own. The operator's
+  `/admin/client/config/*` routes (`ACEP`) are not held to it: they name the client itself, as `publishAcme` does.
+  So a test edits such a client from its sandbox: an `allClients` administrator names
+  `sandboxOf(parent)` as the client, and a client-scoped one opens the sandbox first. A client whose sandbox the node
+  does not carry is the exception: its bundles are written from itself, so its configuration can be mended.
+  `SandboxEditsTest.kt` is the reference.
 - **Code may file an overlay under a sandbox** (issue #940): a config built with `client = sandboxOf(parent)`
   and the **parent's** namespace (`clientNamespace(parent)`), which the sandbox runs and the parent does not -- a
   per-client feature flag, promoted by moving it into the parent's code. It layers above the parent's code and

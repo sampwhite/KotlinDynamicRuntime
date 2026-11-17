@@ -495,6 +495,9 @@ sandbox**. Open **Workflow assistant** from the menu. If it is not on yet, the p
 whose AI it is, and offers **Switch on the assistant**: choose it, and **Switch on** to confirm. Your client's
 **Getting started** checklist has the same step.
 
+The assistant is used in your sandbox, where what it drafts can be tried, so once it is on the page offers **Open it
+there**. Choose it: the bar shows **Book Club Sandbox**, and you are back on the assistant's page.
+
 Under **Conversation**, type this, and choose **Send**:
 
 ```text
@@ -549,8 +552,7 @@ JSON in the bundle editor, and try it again.
 ### Add an approval
 
 Once the review is saved, the workflow is done. The second change makes a review wait for an administrator to approve
-it. Open **Workflow assistant** again: it works from inside the sandbox too, and your conversation is where you left
-it. Type this, and choose **Send**:
+it. Open **Workflow assistant** again, from inside the sandbox, and your conversation is where you left it. Type this, and choose **Send**:
 
 ```text
 Add a second step to Review the book, "Approve the review", that only an administrator may take: a button, "Approve

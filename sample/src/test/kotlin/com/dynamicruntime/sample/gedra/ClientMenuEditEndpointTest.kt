@@ -12,11 +12,13 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -32,11 +34,11 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Editing a client's home menu (issue #919): a rename and a hide for acme land in its stored `copy` config as drafts
- * (acme has a sandbox, issue #994), and once published show in the items listing and in what an acme user is served,
- * leaving globex alone; a show puts a withdrawn item on offer for globex -- which has no sandbox, so at once -- under
- * a condition the shipped menu knows, and a made-up condition is refused; a reset restores the shipped item; and the
- * scoping is the client overview's.
+ * Editing a client's home menu (issue #919): a rename and a hide for acme, made in its sandbox, land in its stored
+ * `copy` config as drafts (acme has a sandbox, issue #994, so it is changed there alone, issue #1824), and once
+ * published show in the items listing and in what an acme user is served, leaving globex alone; a show puts a
+ * withdrawn item on offer for globex -- which has no sandbox, so at once -- under a condition the shipped menu knows,
+ * and a made-up condition is refused; a reset restores the shipped item; and the scoping is the client overview's.
  */
 class ClientMenuEditEndpointTest : StringSpec({
     // An instance of its own (issue #1736): it publishes menu edits to acme, which every test on a shared instance would then be served.
@@ -76,12 +78,12 @@ class ClientMenuEditEndpointTest : StringSpec({
         servedMenu(acmeUser)[HMENU.profile] shouldBe "Profile"
         servedMenu(acmeUser).keys shouldContain HMENU.docs
 
-        val renamed = edit(SC.acme, HMENU.profile, MNU.label to "My account")
+        val renamed = edit(sandboxOf(SC.acme), HMENU.profile, MNU.label to "My account")
         renamed[COV.configName] shouldBe CPY.copyConfigName
         renamed[MNU.label] shouldBe "My account"
         renamed[CPY.stored] shouldBe true
         renamed[CPY.mode] shouldBe EDM.draft
-        val hidden = edit(SC.acme, HMENU.docs, MNU.visibility to MNU.hide)
+        val hidden = edit(sandboxOf(SC.acme), HMENU.docs, MNU.visibility to MNU.hide)
         hidden[MNU.condition] shouldBe CFACT.neverName
         // Drafts: an acme user still sees the shipped menu, until they are published.
         servedMenu(acmeUser)[HMENU.profile] shouldBe "Profile"
@@ -192,7 +194,7 @@ class ClientMenuEditEndpointTest : StringSpec({
     }
 
     "a reset restores the shipped item; one with nothing stored is refused" {
-        val reset = admin.postData(MNU.resetPath, mapOf(COV.client to SC.acme, COV.itemId to HMENU.docs))
+        val reset = admin.postData(MNU.resetPath, mapOf(COV.client to sandboxOf(SC.acme), COV.itemId to HMENU.docs))
         reset[CPY.stored] shouldBe false
         reset[MNU.condition] shouldBe CFACTS.app
         servedMenu(acmeUser).keys shouldNotContain HMENU.docs
@@ -200,15 +202,19 @@ class ClientMenuEditEndpointTest : StringSpec({
         servedMenu(acmeUser).keys shouldContain HMENU.docs
         // The rename in the same entry survived the reset of the other item.
         servedMenu(acmeUser)[HMENU.profile] shouldBe "My account"
-        admin.expectError(EXC.badInput, MNU.resetPath, data = mapOf(COV.client to SC.acme, COV.itemId to HMENU.docs))
+        admin.expectError(EXC.badInput, MNU.resetPath, data = mapOf(COV.client to sandboxOf(SC.acme), COV.itemId to HMENU.docs))
         // An item acme's *source* config changes is not data's to reset.
-        val refused = admin.expectError(EXC.badInput, MNU.resetPath, data = mapOf(COV.client to SC.acme, COV.itemId to HMENU.cfactReference))
+        val refused = admin.expectError(
+            EXC.badInput, MNU.resetPath, data = mapOf(COV.client to sandboxOf(SC.acme), COV.itemId to HMENU.cfactReference),
+        )
         refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "code or the shipped menu"
     }
 
     "a client-scoped administrator edits their own client's menu and may not name another" {
         val scoped = TestUser.create(cxt, "menu-scoped@acme.test", level = ROLE.admin, userClient = SC.acme)
         scoped.getItems(MNU.itemsPath).map { it[COV.itemId] } shouldContain HMENU.profile
+        // acme is changed in its sandbox (issue #1824): from here on the session is there, and edits acme's draft.
+        scoped.postData(AEP.openSandbox, emptyMap())
         scoped.postData(MNU.setPath, mapOf(COV.itemId to HMENU.profile, MNU.label to "Me"))[MNU.label] shouldBe "Me"
         publishAcme(scoped, acrossClients = false)
         servedMenu(acmeUser)[HMENU.profile] shouldBe "Me"

@@ -20,8 +20,9 @@ object ClientStoredEdit {
      * - **The configuration's owner.** A Shadow Sandbox holds no configuration, so a save named for one lands in its
      *   parent's, made in [bound] -- bound to the parent and acting as the person's user there ([SandboxEdits]).
      * - **Live or draft, by whether the owner has a sandbox.** Without one, a save publishes and goes live at once
-     *   (#918's behavior). With one -- from the parent or the sandbox alike -- a save writes the parent's editable
-     *   revision and reloads, so the sandbox shows it, and publishing is the explicit step.
+     *   (#918's behavior). With one, a save is made from the sandbox alone (issue #1824): it writes the parent's
+     *   editable revision and reloads, so the sandbox shows it, and publishing is the explicit step. One made from the
+     *   client itself is refused ([SandboxEdits.requireChangedInSandbox]), since the client would not show it.
      */
     class EditTarget(
         /** The context the configuration is read and written in, bound to [client]. */
@@ -63,7 +64,10 @@ object ClientStoredEdit {
             throw notAsExpected("'$client' is a sandbox this node no longer carries: its parent's sandbox has been removed. Nothing was changed.")
         }
         val target = SandboxEdits.parentCxt(cxt, client)?.let { EditTarget(it, it.client, draft = true) }
-            ?: EditTarget(cxt.mkSubContext(what, client), client, ClientService.get(cxt).known(client)?.sandbox == true)
+            ?: run {
+                SandboxEdits.requireChangedInSandbox(cxt, client)
+                EditTarget(cxt.mkSubContext(what, client), client, ClientService.get(cxt).known(client)?.sandbox == true)
+            }
         if (target.draft && !ClientService.get(cxt).isPresent(sandboxOf(target.client))) {
             throw notAsExpected(
                 "Client '${target.client}' asks for a sandbox, which this node does not carry -- its issues say why -- so " +

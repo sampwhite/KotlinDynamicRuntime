@@ -87,7 +87,9 @@ private fun clientChecklistTests() = stringSpec {
         )
         checklistOf(founder)[CHKL.firstForm] shouldBe true
 
-        // A workflow of its own, made from a template.
+        // A workflow of its own, made from a template -- in the sandbox, where a client with one is changed (issue
+        // #1824), and from where the checklist is still the client's.
+        founder.postData(AEP.openSandbox, emptyMap())
         val collect = WfTemplateSlots(null, WFT.collect, "Feedback", listOf(WfTaskSlot("collect", "Info", listOf(WfTraitRef(GT.name)))))
         founder.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to collect.toInfo()))
         checklistOf(founder)[CHKL.workflow] shouldBe true
@@ -166,21 +168,23 @@ private fun unpublishedDraftsTests() = stringSpec {
         before[CFEP.client] shouldBe client
         before[CFEP.inSandbox] shouldBe false
         val baseline = before[CFEP.names].toJsonListOfStrings()
+        // The same person in a second session, in the sandbox, where a client with one is changed (issue #1824).
+        val inSandbox = TestUser.create(cxt, "maker@drafts1638.test", userClient = client)
+        inSandbox.postData(AEP.openSandbox, emptyMap())
 
-        person.postData(CFEP.bundleWrite, bundle(client, "draft1638"))
+        inSandbox.postData(CFEP.bundleWrite, bundle(client, "draft1638"))
         val drafted = person.getItem(CFEP.drafts)
         drafted[CFEP.names].toJsonListOfStrings() shouldContain "draft1638"
         (drafted[CFEP.count] as Number).toInt() shouldBe baseline.size + 1
 
-        person.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("draft1638")))
+        inSandbox.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("draft1638")))
         val published = person.getItem(CFEP.drafts)
         published[CFEP.names].toJsonListOfStrings() shouldNotContain "draft1638"
         (published[CFEP.count] as Number).toInt() shouldBe baseline.size
 
         // From inside the sandbox: the parent's drafts, which the sandbox runs, said to be asked from there.
-        person.postData(CFEP.bundleWrite, bundle(client, "sandboxed1638"))
-        person.postData(AEP.openSandbox, emptyMap())
-        val inside = person.getItem(CFEP.drafts)
+        inSandbox.postData(CFEP.bundleWrite, bundle(client, "sandboxed1638"))
+        val inside = inSandbox.getItem(CFEP.drafts)
         inside[CFEP.client] shouldBe client
         inside[CFEP.inSandbox] shouldBe true
         inside[CFEP.names].toJsonListOfStrings() shouldContain "sandboxed1638"

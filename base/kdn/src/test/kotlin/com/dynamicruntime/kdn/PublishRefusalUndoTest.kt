@@ -225,9 +225,11 @@ class PublishRefusalUndoTest : StringSpec({
         ok(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed", CFEP.dryRun to true))[CFEP.dryRun] shouldBe true
         ClientService.get(cxt).known(client)?.name shouldBe "Client $client"
 
-        // With a sandbox, a save is a draft, which publishes nothing: its dry run passes, checked again at publishing.
+        // With a sandbox, a save -- made in the sandbox, as such a client is changed (issue #1824) -- is a draft, which
+        // publishes nothing: its dry run passes, checked again at publishing.
         val drafted = "dryrundraft"
         val chief = defineClient(drafted, sandbox = true)
+        chief.postData(AEP.openSandbox, emptyMap())
         refusing += drafted
         ok(chief, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed", CFEP.dryRun to true))[CPY.mode] shouldBe EDM.draft
     }

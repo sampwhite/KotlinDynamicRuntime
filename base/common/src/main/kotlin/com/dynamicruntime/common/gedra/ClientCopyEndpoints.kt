@@ -198,8 +198,8 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             "first overlaying the file, else '${CPY.copyConfigName}' -- trial-checked once, then published and " +
             "reloaded once; a refused publish puts every key back. Each change is judged as a set or reset of one key " +
             "is, and a key may be changed once. Keys held by two stored configurations are refused, since saving them " +
-            "would publish each on its own. For a client with a Shadow Sandbox (issue #930) the save is a draft its " +
-            "sandbox shows.",
+            "would publish each on its own. A client with a Shadow Sandbox (issue #930) is changed from its sandbox " +
+            "alone, where the save is a draft the sandbox shows; one made from the client itself is refused (issue #1824).",
         HttpMethod.POST,
         outputRef = CPY.applyResultTypeName,
         needsClientConfig = true,

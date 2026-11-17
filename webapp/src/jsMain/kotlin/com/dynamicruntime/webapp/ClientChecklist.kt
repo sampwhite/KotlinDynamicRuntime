@@ -36,8 +36,11 @@ object CHKV {
     const val showOnHome = "Show on Home again"
 }
 
-/** The checklist's read (issue #1639): whose it is -- the sandbox's parent from inside it -- and each step's id and state. */
-class ChecklistRead(val client: String, val steps: List<Pair<String, Boolean>>)
+/**
+ * The checklist's read (issue #1639): whose it is -- the sandbox's parent from inside it -- each step's id and state, and
+ * the client's [sandbox], where its workflow steps are done, while it has one (issue #1824).
+ */
+class ChecklistRead(val client: String, val steps: List<Pair<String, Boolean>>, val sandbox: String? = null)
 
 /**
  * `/clientAdmin/client/checklist`'s answer as a [ChecklistRead] (issue #1639), or null when it names no client. A step
@@ -49,22 +52,33 @@ fun parseChecklistRead(item: Map<String, Any?>): ChecklistRead? {
         val id = step[CHKL.id].toOptStr() ?: return@mapNotNull null
         id to (step[CHKL.done] == true)
     }
-    return ChecklistRead(client, steps)
+    return ChecklistRead(client, steps, item[CHKL.sandbox].toOptStr())
 }
 
-/** One step as the card lists it: its words, whether it is done, and the page where it is done. */
-class ChecklistStep(val id: String, val label: String, val done: Boolean, val route: List<Pair<String, String>>)
+/**
+ * One step as the card lists it: its words, whether it is done, and the page where it is done -- a sandbox's page when
+ * [opensSandbox] (issue #1824), which a person outside it opens the sandbox to reach ([SandboxPageLink]).
+ */
+class ChecklistStep(
+    val id: String,
+    val label: String,
+    val done: Boolean,
+    val route: List<Pair<String, String>>,
+    val opensSandbox: Boolean = false,
+)
 
 /**
  * The words and the page for each step the backend names (issue #1639), for [client]: null for an id the page does not
- * know, which is left out rather than shown by its id.
+ * know, which is left out rather than shown by its id. A client with a [sandbox] makes its workflows there (issue #1824).
  */
-fun checklistStepOf(id: String, done: Boolean, client: String): ChecklistStep? {
-    // Workflows, the New form among them, are made and changed in the client page's Forms and data panel.
-    val workflows = listOf(HP.page to HMENU.pageClients, HP.client to client, HP.section to panelFormsData)
+fun checklistStepOf(id: String, done: Boolean, client: String, sandbox: String? = null): ChecklistStep? {
+    // Workflows, the New form among them, are made and changed in the client page's Forms and data panel -- its
+    // sandbox's, when it has one.
+    val workflows = listOf(HP.page to HMENU.pageClients, HP.client to (sandbox ?: client), HP.section to panelFormsData)
+    val inSandbox = sandbox != null
     return when (id) {
-        CHKL.newForm -> ChecklistStep(id, "Make the New form your own", done, workflows)
-        CHKL.workflow -> ChecklistStep(id, "Add a workflow of your own", done, workflows)
+        CHKL.newForm -> ChecklistStep(id, "Make the New form your own", done, workflows, inSandbox)
+        CHKL.workflow -> ChecklistStep(id, "Add a workflow of your own", done, workflows, inSandbox)
         CHKL.invite -> ChecklistStep(id, "Invite someone to your client", done, listOf(HP.page to HMENU.pageUsers))
         CHKL.firstForm -> ChecklistStep(id, "Fill in a first form", done, listOf(HP.page to HMENU.pageNewForm))
         else -> null
@@ -80,12 +94,12 @@ fun checklistStepOf(id: String, done: Boolean, client: String): ChecklistStep? {
  */
 fun checklistSteps(read: ChecklistRead, assistantOffered: Boolean, assistantView: AssistantView?): List<ChecklistStep> {
     if (assistantOffered && (assistantView == null || assistantView == AssistantView.loading)) return emptyList()
-    val assistant = if (assistantOffered && (assistantView == AssistantView.on || assistantView == AssistantView.switchOn)) {
-        ChecklistStep(CHKL.assistant, "Switch on the workflow assistant", assistantView == AssistantView.on, listOf(HP.page to ASST.page))
+    val assistant = if (assistantOffered && (assistantView?.isOn == true || assistantView == AssistantView.switchOn)) {
+        ChecklistStep(CHKL.assistant, "Switch on the workflow assistant", assistantView?.isOn == true, listOf(HP.page to ASST.page))
     } else {
         null
     }
-    return listOfNotNull(assistant) + read.steps.mapNotNull { (id, done) -> checklistStepOf(id, done, read.client) }
+    return listOfNotNull(assistant) + read.steps.mapNotNull { (id, done) -> checklistStepOf(id, done, read.client, read.sandbox) }
 }
 
 /** The `localStorage` key under which hiding [client]'s checklist on Home is remembered. */
@@ -138,10 +152,15 @@ fun ChildrenBuilder.checklistCardBody(steps: List<ChecklistStep>, onHide: () -> 
                     className = ClassName("visually-hidden")
                     +(if (step.done) "Done: " else "To do: ")
                 }
-                if (step.done) {
-                    span { +step.label }
-                } else {
-                    a {
+                when {
+                    step.done -> span { +step.label }
+                    // A step done in the sandbox (issue #1824): Home is outside it, so the link opens it first.
+                    step.opensSandbox -> SandboxPageLink {
+                        route = step.route
+                        acrossClients = false
+                        text = step.label
+                    }
+                    else -> a {
                         href = routeHref(step.route)
                         +step.label
                     }
@@ -188,6 +207,8 @@ class ClientNextStep(val step: ChecklistStep, val panel: String? = null, val not
 fun clientNextSteps(steps: List<ChecklistStep>, inSandbox: Boolean, formsDataShown: Boolean): List<ClientNextStep> =
     steps.map { step ->
         when {
+            // On a client edited in its sandbox (issue #1824), from outside it, the step leads there instead.
+            (step.id == CHKL.newForm || step.id == CHKL.workflow) && step.opensSandbox && !inSandbox -> ClientNextStep(step)
             step.id == CHKL.newForm || step.id == CHKL.workflow ->
                 if (formsDataShown) ClientNextStep(step, panel = panelFormsData) else ClientNextStep(step)
             inSandbox && (step.id == CHKL.invite || step.id == CHKL.firstForm) ->
@@ -223,6 +244,11 @@ fun ChildrenBuilder.clientNextStepsBody(steps: List<ClientNextStep>) {
                     step.done -> span { +step.label }
                     panel != null -> panelLink(panel, step.label)
                     note != null -> span { +"${step.label} ($note)" }
+                    step.opensSandbox -> SandboxPageLink {
+                        route = step.route
+                        acrossClients = false
+                        text = step.label
+                    }
                     else -> a {
                         href = routeHref(step.route)
                         +step.label

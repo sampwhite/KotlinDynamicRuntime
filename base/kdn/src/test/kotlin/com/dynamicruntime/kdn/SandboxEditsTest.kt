@@ -4,6 +4,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
@@ -51,9 +52,10 @@ import io.kotest.matchers.shouldNotBe
 /**
  * Configuration edits made from inside a Shadow Sandbox act on its parent, as drafts (issue #930). A sandbox runs its
  * parent's **latest** configuration, so an edit there writes the parent's editable revision and reloads: the sandbox
- * shows it at once, a published-only parent keeps running what it published, and publishing -- from either side --
- * makes it live. The editors (copy, #918; menu, #919) save drafts for any client with a sandbox, and publish at once
- * for one without, as before. One booted instance; a parent client per case.
+ * shows it at once, a published-only parent keeps running what it published, and publishing makes it live. A client
+ * with a sandbox is changed there alone (issue #1824): the editors (copy, #918; menu, #919) and the bundle endpoints
+ * refuse a change made from the client itself, and the editors save drafts from the sandbox, publishing at once for a
+ * client without one, as before. One booted instance; a parent client per case.
  */
 class SandboxEditsTest : StringSpec({
     val cxt = TestInstances.default("sandboxEdits930")
@@ -98,6 +100,8 @@ class SandboxEditsTest : StringSpec({
         defineParent(parent, publishedOnly = true)
         val shipped = brand(parent)
         val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        // The change, its publish, and the reload are made in the sandbox, where a client with one is changed.
+        admin.postData(AEP.openSandbox, emptyMap())
 
         val saved = setBrand(admin, "Draft Brand")
         saved[CPY.mode] shouldBe EDM.draft
@@ -119,6 +123,63 @@ class SandboxEditsTest : StringSpec({
         saved[CPY.mode] shouldBe EDM.live
         brand(parent) shouldBe "Live Brand"
         copyPublished(parent) shouldBe true
+    }
+
+    // A draft made from the client itself would be a change nobody there sees: the sandbox is where it is previewed and
+    // published, so it is the one way in (issue #1824). Whether the client runs published configuration only is the
+    // client's own setting, not its configuration, and is still set from the client.
+    "a client with a sandbox is changed from the sandbox alone, while its tier is still set from the client (issue #1824)" {
+        val parent = "sbxonly"
+        defineParent(parent)
+        val sandbox = sandboxOf(parent)
+        val shipped = brand(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val refusal = "Client '$parent' has a sandbox, so its configuration is changed in the sandbox, '$sandbox', where a " +
+            "change is previewed and published. Nothing was changed."
+        val fact = "${parent}Ready"
+        val write = mapOf(
+            CFEP.name to "extra", CFEP.namespaceField to clientNamespace(parent),
+            CFEP.slots to mapOf(
+                CCT.cfactDef to listOf(mapOf(CCT.name to fact, CCT.group to "grp", CCT.description to "Ready.", CCT.toFrontend to false)),
+            ),
+        )
+        fun latest(name: String) = svc.readLatest(cxt.mkSubContext("check", parent), GedraId.of(GedraConfigType.configDoc, parent, name))
+
+        // From the client itself, an editor's save and a bundle write are both refused, and nothing is stored.
+        val copySet = mapOf(COV.fileId to HFRAG.home, COV.namespaceField to "home", COV.key to "brand", COV.value to "Refused")
+        // A 409 the page re-reads on (`notAsExpected`), as for a page that read the client before its sandbox came.
+        admin.expectError(EXC.conflict, CPY.setPath, copySet).let {
+            it[EP.errorMessage] shouldBe refusal
+            it[EP.errorCode] shouldBe EDM.notAsExpected
+        }
+        admin.expectError(EXC.conflict, CFEP.bundleWrite, write)[EP.errorMessage] shouldBe refusal
+        latest(CPY.copyConfigName) shouldBe null
+        latest("extra") shouldBe null
+        brand(sandbox) shouldBe shipped
+        (fact in cfacts(sandbox)) shouldBe false
+
+        // The tier is the client's own, so its toggle answers from the client -- published-only, as a sandbox makes it.
+        admin.postData(CFEP.publishedOnly, mapOf(CFEP.publishedOnlyField to true)).let {
+            it[CFEP.client] shouldBe parent
+            it[CFEP.publishedOnlyField] shouldBe true
+        }
+
+        // Naming the sandbox, an administrator of every client saves a draft the sandbox shows.
+        setBrand(TestUser.createFullAdmin(cxt, "full@$parent.test"), "From The Sandbox", sandbox)[CPY.mode] shouldBe EDM.draft
+        brand(sandbox) shouldBe "From The Sandbox"
+        brand(parent) shouldBe shipped
+        copyPublished(parent) shouldBe false
+
+        // Signed in to the sandbox, the client's own administrator saves and writes drafts too.
+        admin.postData(AEP.openSandbox, emptyMap())
+        setBrand(admin, "From Inside")[CPY.mode] shouldBe EDM.draft
+        brand(sandbox) shouldBe "From Inside"
+        val written = admin.postData(CFEP.bundleWrite, write)
+        written[CFEP.client] shouldBe parent
+        written[CFEP.published] shouldBe false
+        (fact in cfacts(sandbox)) shouldBe true
+        (fact in cfacts(parent)) shouldBe false
+        brand(parent) shouldBe shipped
     }
 
     "a copy edit made in the sandbox lands in the parent's configuration, attributed to the parent's user" {
@@ -181,7 +242,8 @@ class SandboxEditsTest : StringSpec({
         svc.publishedOnly(cxt, parent) shouldBe true
         val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
         val shipped = brand(parent)
-        setBrand(admin, "Not Yet")[CPY.mode] shouldBe EDM.draft
+        // Saved naming the sandbox, where a client with one is changed, by an administrator of every client.
+        setBrand(TestUser.createFullAdmin(cxt, "full@$parent.test"), "Not Yet", sandboxOf(parent))[CPY.mode] shouldBe EDM.draft
         brand(parent) shouldBe shipped
         brand(sandboxOf(parent)) shouldBe "Not Yet"
         // Switching the toggle off does not take it off the tier: the answer says what the client runs.
@@ -212,6 +274,7 @@ class SandboxEditsTest : StringSpec({
         val parent = "sbxmenu"
         defineParent(parent, publishedOnly = true)
         val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        admin.postData(AEP.openSandbox, emptyMap())
         admin.postData(MNU.setPath, mapOf(COV.itemId to HMENU.docs, MNU.label to "Papers"))[CPY.mode] shouldBe EDM.draft
     }
 

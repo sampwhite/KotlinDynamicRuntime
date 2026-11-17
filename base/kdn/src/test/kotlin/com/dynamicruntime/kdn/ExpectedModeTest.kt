@@ -25,6 +25,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -39,8 +40,9 @@ import io.kotest.matchers.string.shouldContain
  * Every editor that saves a client's configuration is held to how its page told its user the save would take effect
  * (issue #1191), by the one check in `ClientStoredEdit.target`: a save sent as a draft that would be live is refused
  * with a 409 and nothing is written, since a change the person meant to look at first must not reach the client's
- * people; one sent as live that is a draft goes ahead, and says it is a draft. And a save naming a sandbox this node no
- * longer carries is refused, whatever was expected. One booted instance; a client per case.
+ * people; one sent as live that is a draft goes ahead, and says it is a draft -- for a client with a sandbox, a save
+ * made in the sandbox, where such a client is changed (issue #1824). And a save naming a sandbox this node no longer
+ * carries is refused, whatever was expected. One booted instance; a client per case.
  */
 class ExpectedModeTest : StringSpec({
     val cxt = TestInstances.default("expectedMode1191")
@@ -120,6 +122,8 @@ class ExpectedModeTest : StringSpec({
         val admin = defineClient(client, sandbox = true)
         val shipped = brand(client)
         val live = CPY.mode to EDM.live
+        // Made in the sandbox, as a client with one is changed (issue #1824): what the page there tells its user.
+        admin.postData(AEP.openSandbox, emptyMap())
         saved(admin, CPY.setPath, brandKey() + (COV.value to "Previewed") + live)[CPY.mode] shouldBe EDM.draft
         saved(admin, MNU.setPath, mapOf(COV.itemId to HMENU.docs, MNU.label to "Papers", live))[CPY.mode] shouldBe EDM.draft
         saved(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed", live))[CPY.mode] shouldBe EDM.draft
@@ -152,7 +156,7 @@ class ExpectedModeTest : StringSpec({
         ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe false
         refused(admin, CPY.setPath, brandKey() + (COV.value to "Nowhere")) shouldContain "asks for a sandbox, which this node does not carry"
         // The way out is said, and works: here, mending what keeps the sandbox from loading -- the draft that is not
-        // enabled in this environment -- brings it back, and saves are drafts again.
+        // enabled in this environment -- brings it back, and saves are drafts again, made in the sandbox (issue #1824).
         refused(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed")) shouldContain "Mend what its sandbox's issues name, or remove the sandbox"
         svc.writeConfig(
             setup,
@@ -167,6 +171,7 @@ class ExpectedModeTest : StringSpec({
         )
         GedraConfigReload.reloadClient(cxt, client)
         ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe true
+        admin.postData(AEP.openSandbox, emptyMap())
         saved(admin, CPY.setPath, brandKey() + (COV.value to "Somewhere"))[CPY.mode] shouldBe EDM.draft
     }
 

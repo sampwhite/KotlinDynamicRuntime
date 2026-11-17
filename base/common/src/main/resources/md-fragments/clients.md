@@ -180,11 +180,11 @@ how to change Home's cards.
 A sandbox is where this client's changes are tried before its people see them.
 
 - **Without one,** a saved change to the client's configuration is live for its people at once.
-- **With one,** the client's people run only **published** configuration. Every change, made on this page or in the
-  sandbox, is a draft until it is published.
+- **With one,** the client's people run only **published** configuration. Every change is made in the sandbox, as a
+  draft until it is published, and this page shows the configuration without changing it.
 
 The sandbox runs the drafts, with users and data of its own, so a change can be seen as the client's people will
-see it before it reaches them. Open the sandbox to try a change, and publish from the sandbox's page.
+see it before it reaches them. Open the sandbox to make and try a change, and publish from the sandbox's page.
 
 **Getting there.** As an administrator of this client, choose **Open sandbox** in the bar at the top of the page.
 You become a second version of yourself: a user of the sandbox, also an administrator. The bar then shows the

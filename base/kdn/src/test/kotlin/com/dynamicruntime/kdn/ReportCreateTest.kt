@@ -36,6 +36,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -292,6 +293,8 @@ class ReportCreateTest : StringSpec({
             it[RCR.createFrom] shouldBe sandboxOf(client)
         }
         ReportEdit.offer(cxt, sandboxOf(client)) shouldBe mapOf(RCR.canCreate to true, RCR.createsDraft to true)
+        // Where the page leads: the sandbox, where a client with one is changed (issue #1824).
+        chief.postData(AEP.openSandbox, emptyMap())
         val made = create(chief, "Talk roster", listOf(column("Length", "form.talk.minutes")), mapOf(CPY.mode to EDM.draft))
         made[CPY.mode] shouldBe EDM.draft
         ReportService.get(cxt).forClient(client).report("talkRoster") shouldBe null

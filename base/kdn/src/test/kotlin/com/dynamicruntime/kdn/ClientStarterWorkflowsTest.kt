@@ -100,8 +100,10 @@ class ClientStarterWorkflowsTest : StringSpec({
         val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Starter Shop"))[CLD.client].toOptStr().shouldNotBeNull()
         WorkflowService.get(cxt).forClient(client).workflows.keys shouldContainExactly setOf("newForm", "formDetails")
         PlanLimits.usageOf(cxt, client, forms = 0, users = 0).shouldNotBeNull().measures.single { it.measure == QUOTA.workflows }.used shouldBe 2
-        // Removed as the client's sandbox makes every change: a draft, live for its people until published -- and the
-        // page lists what the sandbox runs, so the next edit finds what this one left.
+        // Removed in the client's sandbox, where a client with one makes every change (issue #1824): a draft, still
+        // live for its people until published -- and the page lists what the sandbox runs, so the next edit finds what
+        // this one left.
+        person.postData(AEP.openSandbox, emptyMap())
         val removed = person.postData(UADEP.clientWorkflowRemove, mapOf(WFD.workflowId to "formDetails", CPY.mode to EDM.draft))
         removed[CPY.mode] shouldBe EDM.draft
         WorkflowService.get(cxt).forClient(client).workflows.keys shouldContainExactly setOf("newForm", "formDetails")

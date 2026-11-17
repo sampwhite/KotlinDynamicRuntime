@@ -275,7 +275,8 @@ none of its own.
   founder, and a first form. The workflows are read as its editors change them, drafts included. The webapp leads with
   **Switch on the workflow assistant** where the menu offers the assistant and the person may switch it on
   (`checklistSteps`, from the status Home already reads; core never asks the module), and links each step that is left
-  to where it is done: the client page's Forms and data panel, Users, or New form. The steps wait for the assistant's
+  to where it is done: the client page's Forms and data panel (its sandbox's, for a client with one, which the link
+  opens first: `CHKL.sandbox`, `ChecklistStep.opensSandbox`, issue #1824), Users, or New form. The steps wait for the assistant's
   status where the menu offers it, so the list never grows a step after it is drawn. The card draws while a step is
   left; once every one is done, or **Hide here** is pressed, it is put away on Home in this browser
   (`checklistHiddenKey`, per client, read once per client) and Home stops reading it. Hiding it is Home's alone (issue

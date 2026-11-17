@@ -21,6 +21,8 @@ external interface ClientListingLayoutProps : Props {
     var savesDraft: Boolean
     /** What a save calls once it has taken effect: the page re-reads. */
     var onChanged: () -> Unit
+    /** Whether the page changes nothing of the configuration ([configEditLock]): the layout is shown, not chosen. */
+    var readOnly: Boolean?
 }
 
 /**
@@ -94,7 +96,7 @@ val ClientListingLayout = FC<ClientListingLayoutProps> { props ->
                 o.value = l.name
                 o
             }.toTypedArray()
-            disabled = saving
+            disabled = saving || props.readOnly == true
             style = js("({ minWidth: 260 })")
             onChange = { v -> WorkflowLayout.entries.firstOrNull { it.name == v }?.let { setLayout(it) } }
         }

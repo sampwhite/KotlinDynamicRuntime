@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -177,6 +178,8 @@ class MultiBundlePatchTest : StringSpec({
         val client = "mbsandbox"
         val admin = defineClient(client, sandbox = true)
         val (user, gid) = engagedForm(client)
+        // Moved and published from the sandbox, where a client with one is changed (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
 
         admin.postData(CFEP.bundlePatch, moveBody(reviewEntry(admin)))
         admin.getItems(CFEP.bundles).filter { it[CFEP.name] in setOf("flows", "moved") }.map { it[CFEP.published] } shouldBe listOf(false, false)

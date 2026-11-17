@@ -21,6 +21,12 @@ object CHKL {
     /** Whether the step is done. */
     const val done = "done"
 
+    /**
+     * The client's sandbox, while it has one (issue #1824): where its workflow steps are done, since a client with a
+     * sandbox changes its configuration there. Absent otherwise.
+     */
+    const val sandbox = "sandbox"
+
     // --- step ids ---
     /** The client's New form, its creation workflow, made its own: changed since the starter it was created with. */
     const val newForm = "newForm"

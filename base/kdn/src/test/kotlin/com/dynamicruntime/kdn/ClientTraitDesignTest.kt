@@ -32,6 +32,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -208,7 +209,9 @@ class ClientTraitDesignTest : StringSpec({
     "for a client with a sandbox a new trait is a draft its sandbox runs" {
         val client = "tdsbx1118"
         defineClient(client, sandbox = true)
-        val saved = save(admin(client), safety)
+        // Designed in the sandbox, where a client with one is changed (issue #1824).
+        val chief = admin(client).also { it.postData(AEP.openSandbox, emptyMap()) }
+        val saved = save(chief, safety)
         saved[CPY.mode] shouldBe EDM.draft
         supported(client) shouldNotContain "siteSafety"
         supported(sandboxOf(client)) shouldContain "siteSafety"

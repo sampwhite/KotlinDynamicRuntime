@@ -364,10 +364,12 @@ private fun demoSwitchesTests() = stringSpec {
         // The demo's own organizer, who did not join it, may.
         TestUser.create(joinable, "organizer@${ConfDemo.client}.example", userClient = ConfDemo.client).postData(CFEP.bundlePatch, change)
 
-        // A client the visitor makes for themselves is theirs, whatever the switch says.
+        // A client the visitor makes for themselves is theirs, whatever the switch says -- changed in its sandbox, which
+        // one made so has, and where a client with one is changed (issue #1824).
         visitor.postData(AEP.switchUser, mapOf(AFLD.userId to publicUser))
         val made = visitor.postData(AEP.createOwnClient, mapOf(CLD.name to "Visitor's own"))[CLD.client].toOptStr().shouldNotBeNull()
         visitor.getData(AEP.selfInfo)[UPF.client] shouldBe made
+        visitor.postData(AEP.openSandbox, emptyMap())[UPF.client] shouldBe sandboxOf(made)
         visitor.postData(CFEP.bundlePatch, change)
     }
 

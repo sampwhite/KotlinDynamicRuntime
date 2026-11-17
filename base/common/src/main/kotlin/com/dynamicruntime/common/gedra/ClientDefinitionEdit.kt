@@ -31,8 +31,9 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * The copy and menu editors' rule ([ClientStoredEdit], issue #930): a client without a sandbox has the config
  * published and the client reloaded in the one call, refused while that config carries somebody's unpublished
- * changes, which the publish would take live; a client with a sandbox saves a draft -- written and reloaded, not
- * published -- so the sandbox shows the new name and publishing is the explicit step. A publish the trial refuses is
+ * changes, which the publish would take live; a client with a sandbox saves a draft from its sandbox alone (issue
+ * #1824) -- written and reloaded, not published -- so the sandbox shows the new name and publishing is the explicit
+ * step. A publish the trial refuses is
  * undone, the definition put back as it was.
  */
 object ClientDefinitionEdit {
