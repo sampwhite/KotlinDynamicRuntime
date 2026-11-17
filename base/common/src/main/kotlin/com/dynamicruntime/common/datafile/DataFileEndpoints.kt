@@ -15,8 +15,6 @@ import com.dynamicruntime.common.util.toOptStr
 /** The namespace of the data-file endpoints' types. */
 private const val namespace = "kdr.${DFILE.section}"
 
-private const val goneType = "DataFileGone"
-private const val removed = "removed"
 
 /**
  * The data-file endpoints (issue #1837), in the `files` section, which any signed-in user reaches: an upload's begin,
@@ -49,10 +47,10 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         property(DFILE.nextOffset, "Where the next chunk begins: the bytes taken so far.") { type = SCT.integer }
         property(DFILE.expiresAt, "When the upload is no longer taken.") { dateTime() }
     }
-    type(goneType) {
+    type(DFILE.goneType) {
         type = SCT.kObject
         property(DFILE.fileId, "The file's id.", required = true)
-        property(removed, "Whether there was a file, or an upload, to remove.", required = true) { type = SCT.boolean }
+        property(DFILE.removed, "Whether there was a file, or an upload, to remove.", required = true) { type = SCT.boolean }
     }
 
     itemEndpoint(
@@ -104,11 +102,11 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         DFILE.abortPath,
         "Ends an upload without a file, dropping what was sent.",
         HttpMethod.POST,
-        outputRef = goneType,
+        outputRef = DFILE.goneType,
         inputFields = { field(DFILE.fileId, "The file being uploaded.", required = true) },
     ) { c, request ->
         val fileId = request[DFILE.fileId].toOptStr().orEmpty()
-        mapOf(DFILE.fileId to fileId, removed to DataFileService.abort(c, fileId))
+        mapOf(DFILE.fileId to fileId, DFILE.removed to DataFileService.abort(c, fileId))
     }
 
     itemEndpoint(
@@ -138,10 +136,10 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         DFILE.deletePath,
         "Removes a file, aborting its upload if one is under way. Its owner may, and an administrator of its client.",
         HttpMethod.DELETE,
-        outputRef = goneType,
+        outputRef = DFILE.goneType,
         inputFields = { field(DFILE.fileId, "The file.", required = true) },
     ) { c, request ->
         val fileId = request[DFILE.fileId].toOptStr().orEmpty()
-        mapOf(DFILE.fileId to fileId, removed to DataFileService.delete(c, fileId))
+        mapOf(DFILE.fileId to fileId, DFILE.removed to DataFileService.delete(c, fileId))
     }
 }

@@ -25,7 +25,7 @@ object GDT {
 
     /**
      * An upload under way (issue #1837): one row per data file still taking its chunks, under the same
-     * [gedraDataTran] lock as the file's record, and removed once the upload finishes or is aborted. Never cached --
+     * [gedraDataTran] lock as the file's record, and deleted once the upload finishes or is aborted. Never cached --
      * every chunk reads and writes it under the lock.
      */
     const val gedraFileUploads = "GedraFileUploads"
@@ -60,6 +60,12 @@ object GDU {
 
     /** Under [progress]: the SHA-256 of every byte taken so far, as `Sha256.toState` saves it. */
     const val hashState = "hashState"
+
+    /**
+     * Under [progress]: true once the file store has put the chunks together, so a finish that failed after it takes up
+     * from the file rather than asking the store to complete an upload it already has.
+     */
+    const val completed = "completed"
 
     // Each part's keys.
     const val number = "number"

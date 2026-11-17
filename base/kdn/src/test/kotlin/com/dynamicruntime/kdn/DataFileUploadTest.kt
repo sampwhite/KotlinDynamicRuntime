@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.datafile.DFSTAT
+import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
@@ -20,7 +21,11 @@ import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.gedra.QUOTA
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.test.ClockOp
+import com.dynamicruntime.common.test.TCLK
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.sha256Hex
@@ -206,10 +211,61 @@ class DataFileUploadTest : StringSpec({
         sendChunk(admin, pending, 0, video)[EP.status] shouldBe EXC.notAuthorized.toLong()
 
         // Removing one still uploading drops what the store held of it.
-        owner.deleteData(DFILE.deletePath, mapOf(DFILE.fileId to pending))["removed"] shouldBe true
+        owner.deleteData(DFILE.deletePath, mapOf(DFILE.fileId to pending))[DFILE.removed] shouldBe true
         FileStoreService.get(cxt).store.stagedUploads(cxt, DFILE.bucket).filter { it.key.endsWith(pending.substringAfterLast('.')) }.shouldBeEmpty()
-        admin.deleteData(DFILE.deletePath, mapOf(DFILE.fileId to fileId))["removed"] shouldBe true
+        admin.deleteData(DFILE.deletePath, mapOf(DFILE.fileId to fileId))[DFILE.removed] shouldBe true
         envelope(owner.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
+    }
+
+    "an aborted upload is gone, record and staged chunks; a file declared empty is refused at the begin" {
+        val video = mp4("avc1", 30_000)
+        val fileId = begin(owner, "dropped.mp4", "video/mp4", video.size)[DFILE.fileId].toOptStr()!!
+        sendChunk(owner, fileId, 0, video)
+        owner.postData(DFILE.abortPath, mapOf(DFILE.fileId to fileId))[DFILE.removed] shouldBe true
+        envelope(owner.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
+        FileStoreService.get(cxt).store.stagedUploads(cxt, DFILE.bucket).filter { it.key.endsWith(fileId.substringAfterLast('.')) }.shouldBeEmpty()
+
+        val empty = envelope(
+            owner.client.sendEditRequest(DFILE.beginPath, null, mapOf(DFILE.mimeType to "image/png", DFILE.declaredSize to 0), HttpMethod.POST),
+        )
+        empty[EP.status] shouldBe EXC.badInput.toLong()
+    }
+
+    "an MP4 whose boxes are no video we can read is refused like any other, and leaves nothing behind" {
+        // An `ftyp` box and data, with no index: what a recording cut off before it was written looks like.
+        val truncated = box("ftyp", ascii("isom"), ByteArray(4), ascii("isom")) + box("mdat", ByteArray(20_000))
+        val begun = begin(owner, "cut.mp4", "video/mp4", truncated.size)
+        val fileId = begun[DFILE.fileId].toOptStr()!!
+        sendChunk(owner, fileId, 0, truncated)
+        val refused = finish(owner, fileId)
+        refused[EP.status] shouldBe EXC.badInput.toLong()
+        refused[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "no index"
+        envelope(owner.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
+        FileStoreService.get(cxt).store.objects(cxt, DFILE.bucket, "clients/$client/staging/").none {
+            it.name.contains(fileId.substringAfterLast('.'))
+        } shouldBe true
+    }
+
+    "a WebM and a PDF are told by their bytes, the PDF offered as a download" {
+        val webm = byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte(), 0x9F.toByte(), 0x42, 0x82.toByte(), 0x84.toByte()) +
+            ascii("webm") + ByteArray(3000)
+        upload(owner, "clip.webm", "video/webm", webm)[EP.item].toJsonMapOrEmpty()[DFILE.kind] shouldBe "webm"
+        val pdf = ascii("%PDF-1.7\n") + ByteArray(3000)
+        val fileId = upload(owner, "report.pdf", "application/pdf", pdf)[EP.item].toJsonMapOrEmpty()[DFILE.fileId].toOptStr()!!
+        val content = owner.client.sendGetRequest(DFILE.contentPath, mapOf(DFILE.fileId to fileId))
+        content.rptStatusCode shouldBe 200
+        content.rptResponseHeaders["content-disposition"]?.single() shouldBe "attachment; filename=\"report.pdf\""
+    }
+
+    "a file uploaded in a sandbox keeps its bytes in the parent's folder, as its named images do" {
+        val parent = "files1837s"
+        createClient(parent, CLD.sandbox to true)
+        val chief = TestUser.create(cxt, "chief@files1837s.test", level = ROLE.admin, userClient = parent)
+        chief.postData(AEP.openSandbox, emptyMap())
+        val made = upload(chief, "in-sandbox.png", "image/png", png)[EP.item].toJsonMapOrEmpty()
+        made[DFILE.fileId].toOptStr().shouldNotBeNull() shouldContain ":sandbox"
+        FileStoreService.get(cxt).forOwner(cxt, parent).meta(cxt, DFILE.bucket, "clients/$parent/files/${png.sha256Hex()}").shouldNotBeNull()
+        chief.getItem(DFILE.infoPath, mapOf(DFILE.fileId to made[DFILE.fileId]))[DFILE.status] shouldBe DFSTAT.ready
     }
 
     "a data file holds no entries, so nothing that writes entries makes one" {
@@ -237,5 +293,42 @@ class DataFileUploadTest : StringSpec({
 
         upload(member, "small.png", "image/png", png)[EP.status] shouldBe null
         PlanLimits.usageOf(cxt, free).shouldNotBeNull().measures.single { it.measure == QUOTA.fileMegabytes }.used shouldBe 1
+    }
+})
+
+/**
+ * An upload past its time (issue #1837): no longer taken, and holding no room in its client's plan. Its own instance,
+ * since it travels the instance clock, which is instance-wide.
+ */
+class DataFileExpiryTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt("filesExpiry", "dataFileExpiryTest")
+    val operator = TestUser.createFullAdmin(cxt, "operator@expiry1837.test")
+    val client = "expiry1837"
+    operator.postData(
+        ADEP.clientCreate,
+        mapOf(
+            CLD.clientId to client, CLD.name to "Expiry", CLD.usageType to ClientUsageType.dev.name,
+            CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+            CLD.starterWorkflows to false,
+        ),
+    )
+    val owner = TestUser.create(cxt, "pat@expiry1837.test", userClient = client)
+    val clock = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
+
+    "an upload past its hours takes no more chunks, and no longer counts against its client's plan" {
+        val bytes = ByteArray(5000) { 1 }
+        val begun = owner.postItem(DFILE.beginPath, mapOf(DFILE.mimeType to "image/png", DFILE.declaredSize to bytes.size))
+        val fileId = begun[DFILE.fileId].toOptStr()!!
+        DataFileService.usedBytes(cxt, client) shouldBe 5000L
+        clock.sendJsonPostRequest(TCLK.path, mapOf(TCLK.op to ClockOp.advance.name, TCLK.deltaMs to (DFILE.uploadHours + 1) * 3_600_000L))
+        try {
+            val late = owner.client.sendRawBodyRequest(
+                DFILE.chunkPath, mapOf(DFILE.fileId to fileId, DFILE.offset to 0, DFILE.chunkHash to bytes.sha256Hex()), bytes,
+            ).rptResponseData?.jsonMap().shouldNotBeNull()
+            late[EP.status] shouldBe EXC.conflict.toLong()
+            DataFileService.usedBytes(cxt, client) shouldBe 0L
+        } finally {
+            clock.sendJsonPostRequest(TCLK.path, mapOf(TCLK.op to ClockOp.reset.name))
+        }
     }
 })

@@ -28,8 +28,8 @@ import com.dynamicruntime.common.gedra.gedraDataTopic
 import com.dynamicruntime.common.gedra.mkGedraId
 import com.dynamicruntime.common.http.request.StreamedContent
 import com.dynamicruntime.common.sql.KdrTable
-import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
+import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -127,13 +127,15 @@ object DataFileService {
         val kind = FileKinds.declaredKind(mimeType) ?: throw KdrException.mkInput(
             "A file may be one of these kinds: ${FileKinds.kinds.joinToString(", ") { it.label }}. This one was sent as '$mimeType'.",
         )
-        if (declaredSize < 1 || declaredSize > kind.maxSize) {
-            throw KdrException("A ${kind.label} file is 1 to ${kind.maxSize} bytes, not $declaredSize.", code = EXC.payloadTooLarge)
+        if (declaredSize < 1) throw KdrException.mkInput("A file has at least one byte; this one says it has $declaredSize.")
+        if (declaredSize > kind.maxSize) {
+            throw KdrException("A ${kind.label} file is at most ${kind.maxSize} bytes, not $declaredSize.", code = EXC.payloadTooLarge)
         }
         PlanLimits.requireRoomForFile(cxt, cxt.client, declaredSize)
         val gedraService = GedraService.get(cxt)
         val gedraId = gedraService.intern(cxt.mkGedraId(GedraDataType.dataFile, cxt.client, GedraIdContext.ui))
         val now = cxt.instanceNow()
+        val expires = now + DFILE.uploadHours.hours
         val file = linkedMapOf<String, Any?>(
             DFILE.name to fileName?.trim()?.takeIf { it.isNotEmpty() },
             DFILE.kind to kind.id,
@@ -142,6 +144,8 @@ object DataFileService {
             DFILE.status to DFSTAT.uploading,
             DFILE.renditions to emptyList<Any?>(),
             DFILE.uploadedAt to now.formatDate(),
+            // On the record too, so what a plan counts can leave out an upload abandoned, without reading its row.
+            DFILE.expiresAt to expires.formatDate(),
         ).filterValues { it != null }
         val txCxt = cxt.mkTransactionSubContext(tranBegin)
         val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
@@ -163,7 +167,7 @@ object DataFileService {
             GDU.chunkSize to DFILE.chunkBytes.toLong(),
             GDU.declaredSize to declaredSize,
             GDU.nextOffset to 0L,
-            GDU.expiresAt to now + DFILE.uploadHours.hours,
+            GDU.expiresAt to expires,
             GDU.progress to mapOf(GDU.parts to emptyList<Any?>(), GDU.hashState to Sha256().toState()),
         )
         SqlTopicUtil.prepForStdExecute(txCxt, uploads, upload)
@@ -259,8 +263,13 @@ object DataFileService {
     /**
      * Finishes the upload of [fileId], all its chunks taken: puts them together, checks the result is the kind it was
      * sent as -- by its bytes, and an MP4's video by its codec ([Mp4Video]) -- names it by its hash, sharing the bytes of
-     * a file of the same hash already stored, and marks the record [DFSTAT.ready]. A file that fails a check is removed,
-     * record and bytes, and the refusal says why: what was sent is not a file this record can be.
+     * a file of the same hash already stored, and marks the record [DFSTAT.ready]. A file that fails a check -- one whose
+     * boxes are no MP4 we can read among them -- is removed, record and bytes, and the refusal says why: what was sent is
+     * not a file this record can be.
+     *
+     * **It may be called again after a failure part-way**, a store's or the network's: that the chunks were put together
+     * is recorded in the upload's row (`completed`) the moment it is done, so a second call takes up from where the file
+     * is -- staged, or already under its hash -- rather than asking the store to complete an upload it has completed.
      */
     fun finish(cxt: KdrCxt, fileId: String): Map<String, Any?> {
         val row = ownUpload(cxt, fileId)
@@ -279,52 +288,70 @@ object DataFileService {
         val kind = FileKinds.byId(file[DFILE.kind].toOptStr().orEmpty())
             ?: throw KdrException("The record of '$fileId' names no kind of file.")
         val progress = upload[GDU.progress].toJsonMapOrEmpty()
-        val parts = progress[GDU.parts].toJsonListOfMaps().map {
-            StagedPart(it[GDU.number].toOptLong()?.toInt() ?: 0, it[GDU.size].toOptLong() ?: 0L, it[GDU.tag].toOptStr().orEmpty())
-        }
         val hash = Sha256.fromState(progress[GDU.hashState].toJsonMapOrEmpty()).hexDigest()
         val files = FileStoreService.get(cxt).forOwner(cxt, ownerOf(row))
         val stagingKey = upload[GDU.stagingKey].toOptStr().orEmpty()
-        files.completeStaged(
-            cxt, DFILE.bucket, stagingKey, upload[GDU.token].toOptStr().orEmpty(), parts, kind.mimeType, hash,
-            fileName = file[DFILE.name].toOptStr(),
-        )
-        val problem = contentProblem(cxt, files, stagingKey, kind, declared)
-            ?: PlanLimits.fileRoomProblem(cxt, row.client)
+        val contentKey = contentKeyOf(row, hash)
+        if (progress[GDU.completed] != true) {
+            val parts = progress[GDU.parts].toJsonListOfMaps().map {
+                StagedPart(it[GDU.number].toOptLong()?.toInt() ?: 0, it[GDU.size].toOptLong() ?: 0L, it[GDU.tag].toOptStr().orEmpty())
+            }
+            files.completeStaged(
+                cxt, DFILE.bucket, stagingKey, upload[GDU.token].toOptStr().orEmpty(), parts, kind.mimeType, hash,
+                fileName = file[DFILE.name].toOptStr(),
+            )
+            markCompleted(cxt, fileId)
+        }
+        // Where the whole file is now: still staged, or -- a call before this one moved it -- under its hash.
+        val staged = files.meta(cxt, DFILE.bucket, stagingKey) != null
+        if (!staged && files.meta(cxt, DFILE.bucket, contentKey) == null) {
+            endUpload(cxt, row)
+            GedraDataService.get(cxt).deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted)
+            throw KdrException("The file put together for '$fileId' is no longer in the store; upload it again.", code = EXC.conflict)
+        }
+        val source = if (staged) stagingKey else contentKey
+        val problem = try {
+            contentProblem(cxt, files, source, kind) ?: PlanLimits.fileRoomProblem(cxt, row.client)
+        } catch (e: KdrException) {
+            // A file the checks cannot read -- an MP4 with no index we take -- is refused as one that fails them.
+            if (e.code != EXC.badInput) throw e
+            e.message
+        }
         if (problem != null) {
-            files.delete(cxt, DFILE.bucket, stagingKey)
+            // The bytes under the hash may be another record's too, so only a staged copy goes.
+            if (staged) files.delete(cxt, DFILE.bucket, stagingKey)
             endUpload(cxt, row)
             GedraDataService.get(cxt).deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted)
             throw KdrException.mkInput(problem)
         }
-        // Named by its hash: a file of the same hash already stored is these bytes, so the staged copy goes.
-        val contentKey = contentKeyOf(row, hash)
-        if (files.meta(cxt, DFILE.bucket, contentKey) != null) {
-            files.delete(cxt, DFILE.bucket, stagingKey)
-        } else {
-            files.move(cxt, DFILE.bucket, stagingKey, contentKey)
+        if (staged) {
+            // Named by its hash: a file of the same hash already stored is these bytes, so the staged copy goes.
+            if (files.meta(cxt, DFILE.bucket, contentKey) != null) {
+                files.delete(cxt, DFILE.bucket, stagingKey)
+            } else {
+                files.move(cxt, DFILE.bucket, stagingKey, contentKey)
+            }
         }
-        val ready = file + mapOf(DFILE.size to declared, DFILE.hash to hash, DFILE.status to DFSTAT.ready)
+        val ready = file - DFILE.expiresAt + mapOf(DFILE.size to declared, DFILE.hash to hash, DFILE.status to DFSTAT.ready)
         writeRecord(cxt, row, ready, endingUpload = true)
         return info(readable(cxt, fileId))
     }
 
     /**
-     * What is wrong with the file staged at [stagingKey] as one of [kind], or null: its first bytes are another kind, or
-     * none we take; or, for an MP4, its video is not H.264.
+     * What is wrong with the file at [key] as one of [kind], or null: its first bytes are another kind, or none we take;
+     * or, for an MP4, its video is not H.264. Its record is read once, and every range after it straight from the store.
      */
-    private fun contentProblem(
-        cxt: KdrCxt, files: FileStoreService.FileStoreView, stagingKey: String, kind: FileKind, size: Long,
-    ): String? {
+    private fun contentProblem(cxt: KdrCxt, files: FileStoreService.FileStoreView, key: String, kind: FileKind): String? {
+        val content = files.streamed(cxt, DFILE.bucket, key)
+            ?: throw KdrException("The file put together at '$key' is not there.")
         fun read(offset: Long, length: Int): ByteArray =
-            files.openRange(cxt, DFILE.bucket, stagingKey, offset, length.toLong())?.stream?.use { it.readAllBytes() }
-                ?: throw KdrException("The staged upload at '$stagingKey' is not there.")
-        val found = FileKindSniff.sniff(read(0, minOf(size, FileKindSniff.headSize.toLong()).toInt()))
+            if (length == 0) ByteArray(0) else content.open(offset, length.toLong()).use { it.readAllBytes() }
+        val found = FileKindSniff.sniff(read(0, minOf(content.size, FileKindSniff.headSize.toLong()).toInt()))
         if (found?.id != kind.id) {
             val what = found?.let { "a ${it.label} file" } ?: "none of the kinds a file may be"
             return "This file was sent as a ${kind.label} file, but its content is $what."
         }
-        if (kind.id == FKIND.mp4) return Mp4Video.h264Problem(Mp4Video.videoCodecs(size, ::read))
+        if (kind.id == FKIND.mp4) return Mp4Video.h264Problem(Mp4Video.videoCodecs(content.size, ::read))
         return null
     }
 
@@ -374,12 +401,20 @@ object DataFileService {
         return GedraDataService.get(cxt).deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScopeRules.forCaller(cxt))
     }
 
-    /** The bytes [client]'s live data files take: each one's size, one being uploaded at the size it said. */
+    /**
+     * The bytes [client]'s live data files take: each one's size, one being uploaded at the size it said -- unless its
+     * upload ran past its time, which no longer takes chunks and so holds no room. Read from the gedra cache's index of the
+     * client's rows, in memory, so it costs no query however many files the client holds.
+     */
     fun usedBytes(cxt: KdrCxt, client: String): Long {
         val service = GedraDataService.get(cxt)
+        val now = cxt.instanceNow()
         val ids = service.liveGedraIds(cxt, GedraDataType.dataFile, client)
-        return service.readGedras(cxt, GedraDataType.dataFile, ids, ReadScope.unrestricted).values
-            .sumOf { fileOf(it)[DFILE.size].toOptLong() ?: 0L }
+        return service.readGedras(cxt, GedraDataType.dataFile, ids, ReadScope.unrestricted).values.sumOf { row ->
+            val file = fileOf(row)
+            val abandoned = file[DFILE.status] == DFSTAT.uploading && (file[DFILE.expiresAt].toOptInstant()?.let { it < now } == true)
+            if (abandoned) 0L else file[DFILE.size].toOptLong() ?: 0L
+        }
     }
 
     /** [bytes] as whole megabytes, rounded up: what a plan counts. */
@@ -415,19 +450,29 @@ object DataFileService {
         val txCxt = cxt.mkTransactionSubContext(tranFinish)
         val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranFinish, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
-            disableUpload(txCxt, sqlCxt, row.gedraId.fullId)
+            deleteUpload(txCxt, sqlCxt, row.gedraId.fullId)
         }
     }
 
-    private fun disableUpload(cxt: KdrCxt, sqlCxt: SqlCxt, fileId: String) {
+    /** Removes [fileId]'s upload row: an upload that ended keeps nothing, its parts and hash state of no further use. */
+    private fun deleteUpload(cxt: KdrCxt, sqlCxt: SqlCxt, fileId: String) {
         val table = uploadTable(cxt)
-        val current = readUpload(cxt, sqlCxt, fileId) ?: return
-        val bind = mutableMapOf<String, Any?>(GD.gedraId to fileId)
-        SqlTopicUtil.prepForStdUpdate(cxt, table, bind, current)
-        val stmt = SqlTopicUtil.mkPartialUpdateStmt(
-            sqlCxt, table, "uGedraFileUploadEnd", "c:${PF.enabled} = false", "c:${GD.gedraId} = :${GD.gedraId}",
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "dGedraFileUpload", table.columns, "delete from t:${GDT.gedraFileUploads} where c:${GD.gedraId} = :${GD.gedraId}",
         )
-        sqlCxt.sqlDb.executeStatement(cxt, stmt, bind)
+        sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(GD.gedraId to fileId))
+    }
+
+    /** Records, under the file's lock, that the store has put [fileId]'s chunks together: what [finish] resumes from. */
+    private fun markCompleted(cxt: KdrCxt, fileId: String) {
+        val txCxt = cxt.mkTransactionSubContext(tranFinish)
+        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranFinish, null, mapOf(GD.gedraId to fileId)) {
+            val current = readUpload(txCxt, sqlCxt, fileId) ?: return@executeTopicTran
+            val updated = current.toMutableMap()
+            updated[GDU.progress] = current[GDU.progress].toJsonMapOrEmpty() + (GDU.completed to true)
+            writeUpload(txCxt, sqlCxt, updated, current)
+        }
     }
 
     /** Writes [file] as [row]'s record under its lock, ending its upload row in the same transaction when [endingUpload]. */
@@ -445,7 +490,7 @@ object DataFileService {
             sqlCxt.sqlDb.executeStatement(
                 txCxt, data.mkScopedGedraUpdate(sqlCxt, table, ReadScope.unrestricted, "uDataFileRecord", "c:${GD.data} = :${GD.data}", bind), bind,
             )
-            if (endingUpload) disableUpload(txCxt, sqlCxt, row.gedraId.fullId)
+            if (endingUpload) deleteUpload(txCxt, sqlCxt, row.gedraId.fullId)
         }
     }
 

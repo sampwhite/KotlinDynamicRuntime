@@ -75,8 +75,8 @@ not the part recorded: never a file made of parts nobody checked.
 `KDR_RAW_BODY_PERMITS` (#1836), so the separate chunk permits this issue first planned are the same thing, and not built
 twice.
 
-An upload may run for 24 hours from its beginning. One past it is no longer taken, and the sweep (#1839) removes what it
-left.
+An upload may run for 24 hours from its beginning. One past it is no longer taken, holds no room in its client's plan,
+and the sweep (#1839) removes what it left. The upload's row is deleted once its upload finishes or is aborted.
 
 ## What finishing checks
 
@@ -90,8 +90,13 @@ The chunks are put together, and the file is checked before it is ready:
 - **A WebM** is checked by its EBML document type.
 - **The plan still has room**: asked again, since two uploads begun at once can each have found room the other took.
 
-A file that fails is removed, record and bytes, and the refusal says why. One that passes is named by its hash -- the
-staged copy moved there, or dropped for a copy already stored -- and marked `ready`.
+A file that fails is removed, record and bytes, and the refusal says why -- an MP4 whose boxes are no video we can read
+among them. One that passes is named by its hash -- the staged copy moved there, or dropped for a copy already stored --
+and marked `ready`.
+
+**A finish may be called again after a failure part-way**, a store's or the network's. That the store put the chunks
+together is recorded in the upload's row the moment it is done, so a second call takes up from where the file is --
+staged, or already under its hash -- and never asks the store to complete an upload it has completed.
 
 ## Reading a file
 
@@ -113,8 +118,9 @@ The `files` section is any signed-in user's, and how far a caller reaches is the
 ## The plan
 
 A plan counts the megabytes of a client's files (`fileMegabytes`, 500 on the free plan): every live data file's size,
-added up and rounded up -- one being uploaded at the size it said. It is asked when an upload begins and again when it
-finishes.
+added up and rounded up -- one being uploaded at the size it said, unless its upload ran past its 24 hours. It is asked
+when an upload begins and again when it finishes, from the gedra cache's index of the client's rows, so it costs no
+query.
 
 ## What is not built
 

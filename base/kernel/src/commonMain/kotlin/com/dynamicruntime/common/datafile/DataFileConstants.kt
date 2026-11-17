@@ -35,12 +35,17 @@ object DFILE {
     const val chunkHash = "chunkHash"
     const val chunkSize = "chunkSize"
     const val nextOffset = "nextOffset"
+    /** When an upload is no longer taken: in an upload's answer, and on the record of a file still uploading. */
     const val expiresAt = "expiresAt"
     const val ownerId = "ownerId"
+
+    /** In the answer to an abort or a removal: whether there was a file, or an upload, to remove. */
+    const val removed = "removed"
 
     /** Schema type names. */
     const val recordType = "DataFile"
     const val uploadType = "DataFileUpload"
+    const val goneType = "DataFileGone"
 
     // --- endpoint paths ---
     const val beginPath = "/$section/upload/begin"
