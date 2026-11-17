@@ -143,17 +143,17 @@ the status, the conversations, and cancel answer either way, with nothing to sho
 ## Conversations and turns
 <!-- Themes: #APIKR, #SBXAU -->
 
-**Who the tools act as.** The administrator's own user in the client's sandbox -- their enabled one when it was opened
-from the user they are now; otherwise one claimed in their own signed-in request (`claimOwnSandboxUser`), as opening
-the sandbox does, made on first use or brought up to date, since a sandbox user may do what its opener may; one another
-administrator disabled is refused, not enabled again -- re-read on every call by the in-process seam (#1524). So a
-configuration edit can only become a draft on the parent, written as the administrator who stands behind the sandbox
-user; reads show the drafts; and the assistant never holds more than the administrator does at that moment. A client
-with no sandbox is refused (`noSandbox`): the administrator turns one on from the Clients page, and the assistant
-never does. The assistant works only for the client the administrator is signed in to. Signed in to its sandbox --
-where "Try it in the sandbox" leaves them -- they are still the person outside it: the user the sandbox user was opened
-from (`AssistantTurns.personOf`), whose conversations these are, and the tools act as the session's own sandbox user. A
-sandbox user nobody opened, or one opened from another client, has nobody outside to speak for, and is refused.
+**Who the tools act as.** The administrator's own user in the client's sandbox, the one their session is signed in
+as, re-read on every call by the in-process seam (#1524). A message is taken only in the sandbox (#1824), where what
+the assistant drafts is tried and published: one sent from the client itself is refused (`assistantOutsideSandbox`),
+and the page outside the sandbox offers **Open it there** instead. So a configuration edit can only become a draft on
+the parent, written as the administrator who stands behind the sandbox user; reads show the drafts; and the assistant
+never holds more than the administrator does at that moment. A client with no sandbox is refused (`noSandbox`): the
+administrator turns one on from the Clients page, and the assistant never does. The assistant works only for the
+client the administrator is signed in to. Signed in to its sandbox, they are still the person outside it: the user the
+sandbox user was opened from (`AssistantTurns.personOf`), whose conversations these are, and the tools act as the
+session's own sandbox user. A sandbox user nobody opened, or one opened from another client, has nobody outside to
+speak for, and is refused.
 
 **The tools** are the allowlist: the seam admits exactly the endpoints they name (`AssistantTools.scope`), so everything
 else is refused, and a drift test holds each tool to its endpoint.

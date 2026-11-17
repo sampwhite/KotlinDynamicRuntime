@@ -9,9 +9,11 @@ import io.kotest.matchers.shouldBe
 
 /**
  * Publishes acme's stored configuration [name] as [admin] and reloads acme, so acme's people are served it (issue
- * #994). acme has a Shadow Sandbox, which makes it published-only: an editor's save is a draft that `acme:sandbox`
- * runs, and acme runs it once it is published. The calls are the client page's Publish (`ClientsApi.publishBundles`):
- * the deployment-wide routes, naming acme, for an administrator [acrossClients]; the caller's own client's otherwise.
+ * #994). acme has a Shadow Sandbox, which makes it published-only: an editor's save, made in `acme:sandbox` (issue
+ * #1824), is a draft the sandbox runs, and acme runs it once it is published. The calls are the client page's Publish
+ * (`ClientsApi.publishBundles`): the deployment-wide routes, naming acme, for an administrator [acrossClients]; the
+ * caller's own client's otherwise, which for a client-scoped [admin] is the sandbox -- it has opened `acme:sandbox`
+ * to make the change -- so the publish and the reload act on acme from there.
  */
 fun publishAcme(admin: TestUser, acrossClients: Boolean = true, name: String = CPY.copyConfigName) {
     val published = if (acrossClients) {

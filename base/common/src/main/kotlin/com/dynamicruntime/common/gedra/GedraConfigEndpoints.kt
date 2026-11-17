@@ -539,7 +539,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
         },
-    ) { c, request -> inConfigScope(c, mutating = true) { cfgPublishedOnlyBody(it, request) } }
+    ) { c, request -> inConfigScope(c, mutating = true, changesConfig = false) { cfgPublishedOnlyBody(it, request) } }
 }
 
 // --- Shared handler bodies (issue #685) -------------------------------------------------------------------
@@ -1176,9 +1176,16 @@ private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<Str
  * called in a Shadow Sandbox, which holds none -- in the sandbox's parent, acting as the caller's user there
  * ([SandboxEdits.parentCxt]). A [mutating] call redirected so then reloads the parent, and with it the sandbox, so
  * the sandbox shows the change on its next request; a published-only parent still runs its published revision.
+ *
+ * A [mutating] call that changes the configuration -- not the published-only setting, which is the client's own --
+ * is refused for a client with a sandbox when made from the client itself (issue #1824): it is written, previewed,
+ * and published from the sandbox ([SandboxEdits.requireChangedInSandbox]).
  */
-private fun <T> inConfigScope(c: KdrCxt, mutating: Boolean = false, body: (KdrCxt) -> T): T {
-    val parent = SandboxEdits.parentCxt(c, c.client) ?: return body(c)
+private fun <T> inConfigScope(c: KdrCxt, mutating: Boolean = false, changesConfig: Boolean = mutating, body: (KdrCxt) -> T): T {
+    val parent = SandboxEdits.parentCxt(c, c.client) ?: run {
+        if (changesConfig) SandboxEdits.requireChangedInSandbox(c, c.client)
+        return body(c)
+    }
     val out = body(parent)
     if (mutating) SandboxEdits.reloadParent(c, parent.client)
     return out

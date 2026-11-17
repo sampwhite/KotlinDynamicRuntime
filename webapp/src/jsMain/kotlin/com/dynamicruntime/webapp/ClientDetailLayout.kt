@@ -152,15 +152,17 @@ fun clientStatusChips(row: ClientOverview?, issueCount: Int): List<String> {
 
 /**
  * The line under the chips that says how a save on the page takes effect (issue #1397), before anything is edited:
- * the answer every editor below says beside its own save ([saveEffectText], [pageSavesDraft]). Null for a client
+ * the answer every editor below says beside its own save ([saveEffectText], [pageEditing]). Null for a client
  * that takes nothing stored here, whose page saves nothing. Pure, and covered under `jsNodeTest`.
  */
-fun clientSaveEffectLine(row: ClientOverview?, savesDraft: Boolean): String? = when {
+fun clientSaveEffectLine(row: ClientOverview?, editing: PageEditing): String? = when {
     row?.staticHere == true -> null
     // A visitor kept out of a demo client's configuration (issue #1668): why the page changes nothing for them.
     row?.configLocked != null -> "${row.configLocked} Its configuration is shown here, and not changed."
+    // A client edited in its sandbox (issue #1824): the page leads there, after this line.
+    editing.changedInSandbox -> "Its configuration is shown here, and changed in its sandbox, where a change is previewed and published:"
     row?.sandboxOf != null -> "Changes made here are drafts of ${row.sandboxOf}'s configuration, which this sandbox shows until they are published."
-    savesDraft -> "Changes made here are drafts, shown in the client's sandbox until they are published."
+    editing.savesDraft -> "Changes made here are drafts, shown in the client's sandbox until they are published."
     else -> "Changes made here are live for the client's people at once."
 }
 

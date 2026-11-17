@@ -7,7 +7,6 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
-import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.InProcessPrincipal
 import com.dynamicruntime.common.logging.KdrLogger
@@ -52,12 +51,12 @@ object TURN {
  * The assistant's turns (issue #1526): starting one for a message the administrator sent, running it on a thread of its
  * own, and the recovery, cancel, and reads around it.
  *
- * **Starting** ([start]) runs in the administrator's own signed-in request -- every assistant endpoint is session-only
- * -- because only such a request may claim their user in the sandbox, which the turn's tools then act as; signed in to
- * the sandbox already, they act as the user the session has there ([personOf]). It checks, in
- * order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the administrator has
- * turns left this hour, the client has room for another running turn, and no turn is running in the conversation. Then
- * it records the turn, hands it to a worker, and answers at once.
+ * **Starting** ([start]) runs in the administrator's own signed-in request in the client's sandbox -- every assistant
+ * endpoint is session-only -- and the turn's tools act as the user the session has there ([personOf]). It checks, in
+ * order: the assistant is on for the client, the client has a sandbox and the person is in it (issue #1824: a message
+ * from the client itself is refused), its budget is not spent, the administrator has turns left this hour, the client
+ * has room for another running turn, and no turn is running in the conversation. Then it records the turn, hands it to
+ * a worker, and answers at once.
  *
  * **A worker** ([TurnRunner]) holds a lease on its turn, renewed at every step. A turn whose lease lapsed -- its node
  * stopped -- is marked interrupted by whoever next looks at the conversation ([recoverLapsed]).
@@ -79,6 +78,14 @@ object AssistantTurns {
             throw refused(
                 "'$client' has no sandbox. Turn one on from the Clients page: the assistant drafts there, for you to try.",
                 EXC.conflict, ACNV.noSandboxCode,
+            )
+        }
+        // Used in the sandbox (issue #1824), where its drafts are tried and published -- never from the client itself.
+        if (person.sandboxUser == null) {
+            throw refused(
+                "The assistant is used in the sandbox of '$client', where what it drafts is tried and published: open the " +
+                    "sandbox to send it a message.",
+                EXC.conflict, ACNV.outsideSandboxCode,
             )
         }
         // A message the page sends again -- a retry after a lost answer -- is the turn it already started.
@@ -119,7 +126,7 @@ object AssistantTurns {
         }
         try {
             // The administrator's own user in the sandbox, which the tools act as.
-            val sandboxUser = person.sandboxUser ?: sandboxUserOf(cxt, client)
+            val sandboxUser = person.sandboxUser
             if (newConversation) {
                 AssistantStore.insertConversation(
                     cxt,
@@ -180,29 +187,6 @@ object AssistantTurns {
         "The model declined to go on with this conversation, and would again. Start a new one."
     } else {
         "This conversation was begun with an earlier version of the assistant; start a new one to go on."
-    }
-
-    /**
-     * The administrator's own user in the client's sandbox, which the tools act as. Their enabled one when it was opened
-     * from the user they are now, as it stands; otherwise claimed -- made on first use, or its opener brought up to
-     * date, since what a sandbox user may do is what its opener may -- in their own signed-in request, as opening the
-     * sandbox does. One another administrator disabled is refused rather than enabled again.
-     */
-    @KdrPrivate
-    fun sandboxUserOf(cxt: KdrCxt, client: String): AuthUserRow {
-        val users = UserService.get(cxt)
-        val own = users.queryByUserId(cxt, cxt.userProfile.userId)
-            ?: throw KdrException("Your user could not be found.", code = EXC.notFound)
-        val existing = users.usersOfIdentity(cxt, own.identityId).firstOrNull {
-            it.client == sandboxOf(client) && it.persona == own.persona && it.personaSuffix == own.personaSuffix && !it.isDeleted
-        }
-        return when {
-            existing != null && !existing.enabled -> throw KdrException(
-                "Your user in the sandbox has been disabled, so the assistant cannot act there.", code = EXC.notAuthorized,
-            )
-            existing != null && existing.openedBy == own.userId -> existing
-            else -> users.authFormHandler.claimOwnSandboxUser(cxt, null)
-        }
     }
 
     /** What [start] answers: the conversation and the turn. */

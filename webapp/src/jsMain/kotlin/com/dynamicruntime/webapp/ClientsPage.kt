@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.clientLabel
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.PFRAG
@@ -356,9 +357,11 @@ private fun ChildrenBuilder.clientDetail(
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
     onChanged: () -> Unit,
 ) {
-    // Whether a save made here is a draft, as the page last read the client: the one answer every editor below says
-    // beside its save and sends with it (issue #1191). The listing's row when it holds one, else the definition read.
-    val savesDraft = pageSavesDraft(clientId, row, defSandbox = def?.info?.get(CLD.sandbox) == true)
+    // How the page edits the configuration (issues #1191, #1824): the one answer every editor below reads -- whether it
+    // may change anything, and whether a save is a draft, said beside its save and sent with it. The listing's row when
+    // it holds one, else the definition read.
+    val editing = pageEditing(clientId, row, defSandbox = def?.info?.get(CLD.sandbox) == true)
+    val savesDraft = editing.savesDraft
     val present = row?.status == ClientStatus.present.name
     // Whether the client's stored configuration is edited on this page: its definition, traits, and workflows.
     val configEditable = def?.stored != null && definitionEditable(row) &&
@@ -425,10 +428,20 @@ private fun ChildrenBuilder.clientDetail(
                     }
                 }
             }
-            clientSaveEffectLine(row, savesDraft)?.let {
+            clientSaveEffectLine(row, editing)?.let {
                 p {
                     className = ClassName("subtitle")
                     +it
+                    // A client edited in its sandbox (issue #1824): the way there, as the publishing bar's.
+                    if (editing.changedInSandbox) {
+                        +" "
+                        SandboxPageLink {
+                            route = clientDetailRoute(sandboxOf(clientId))
+                            this.acrossClients = acrossClients
+                            text = "open its sandbox"
+                        }
+                        +"."
+                    }
                 }
             }
             unpublishedBannerText(row, configs)?.let { text ->
@@ -571,6 +584,7 @@ private fun ChildrenBuilder.clientDetail(
                     this.clientId = clientId
                     this.savesDraft = savesDraft
                     this.onChanged = onChanged
+                    readOnly = !editing.editable
                 }
                 // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
                 h3 { +"Workflows" }
@@ -578,7 +592,7 @@ private fun ChildrenBuilder.clientDetail(
                     this.clientId = clientId
                     this.savesDraft = savesDraft
                     this.configEditable = configEditable
-                    paramsEditable = row?.configLocked == null
+                    paramsEditable = editing.editable
                     formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                     // How a workflow made restricted is opened to people (issue #1384): empty as shipped, said by a flavor.
                     newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
@@ -618,7 +632,7 @@ private fun ChildrenBuilder.clientDetail(
                             this.inPlace = inPlace
                             this.overrides = overrides.copy
                             this.savesDraft = savesDraft
-                            readOnly = row?.configLocked != null
+                            readOnly = !editing.editable
                             this.onChanged = onChanged
                         }
                     }
@@ -649,7 +663,7 @@ private fun ChildrenBuilder.clientDetail(
                     sandboxOf = row.sandboxOf
                     hasSandbox = row.hasSandbox
                     staticHere = row.staticHere
-                    configLocked = row.configLocked
+                    configLocked = editing.lock
                     this.onChanged = onChanged
                 }
             }
@@ -740,7 +754,7 @@ private fun ChildrenBuilder.clientDetail(
                                 this.clientId = clientId
                                 this.savesDraft = savesDraft
                                 this.setBy = setBy
-                                readOnly = row?.configLocked != null
+                                readOnly = !editing.editable
                                 this.onChanged = onChanged
                             }
                             if (otherBlocks.isNotEmpty()) {
@@ -1013,6 +1027,56 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
 }
 
 /** A labeled row holding a control other than a text input, laid out as [textField]'s row is. */
+external interface SandboxPageLinkProps : Props {
+    /** The page the link opens: a sandbox's Clients page, a panel of it, or its bundle editor. */
+    var route: List<Pair<String, String>>
+
+    /** Whether the caller may open another client's page: then the link goes straight there. */
+    var acrossClients: Boolean
+
+    /** The link's words. */
+    var text: String
+
+}
+
+/**
+ * A link to a page of a sandbox (issues #1001, #1824) -- its Clients page, or its bundle editor -- where its parent's
+ * configuration is changed, previewed, and published. An administrator who may open another client's page goes
+ * straight there; a client-scoped one first opens the sandbox (#929) -- a fresh session as their user in it -- and lands
+ * on that page. A failure to open it is said beside the link.
+ */
+val SandboxPageLink = FC<SandboxPageLinkProps> { props ->
+    val bump = useRefreshBump()
+    var error by useState<DisplayError?>(null)
+    val route = props.route
+    a {
+        className = ClassName("wf-cell-link")
+        href = routeHref(route)
+        if (!props.acrossClients) {
+            title = "Open the sandbox and show this configuration there."
+            onClick = { e ->
+                e.preventDefault()
+                clientsScope.launch {
+                    try {
+                        AuthApi.openSandbox()
+                        afterSessionChange(bump, route)
+                    } catch (e: Throwable) {
+                        error = userFacingError(e)
+                    }
+                }
+            }
+        }
+        +props.text
+    }
+    // Beside the link, which sits inside a line of text: a span, not errorText's paragraph.
+    error?.let {
+        span {
+            className = ClassName("error-text")
+            +" Couldn't open the sandbox: ${it.text}"
+        }
+    }
+}
+
 external interface StoredConfigTableProps : Props {
     var configs: List<ConfigSummaryView>
     var row: ClientOverview?
@@ -1170,30 +1234,14 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                 }
             } else {
                 // "Publish from its sandbox": the word leads to the sandbox's own page, where this table publishes, at
-                // its publishing panel, where this link is. An administrator who may open another client's detail goes
-                // straight there; a client-scoped one first opens the sandbox (#929) -- a fresh session as their user in
-                // it -- and lands on that page (#1001).
+                // its publishing panel, where this link is.
                 span {
                     className = ClassName("type-hint")
                     +"Publish from its "
-                    a {
-                        className = ClassName("wf-cell-link")
-                        href = clientDetailHref(sandbox, panelPublishing)
-                        if (!props.acrossClients) {
-                            title = "Open the sandbox and show this configuration there."
-                            onClick = { e ->
-                                e.preventDefault()
-                                clientsScope.launch {
-                                    try {
-                                        AuthApi.openSandbox()
-                                        afterSessionChange(bump, clientDetailRoute(sandbox, panelPublishing))
-                                    } catch (e: Throwable) {
-                                        error = userFacingError(e)
-                                    }
-                                }
-                            }
-                        }
-                        +"sandbox"
+                    SandboxPageLink {
+                        route = clientDetailRoute(sandbox, panelPublishing)
+                        acrossClients = props.acrossClients
+                        text = "sandbox"
                     }
                     +", after previewing it there."
                 }

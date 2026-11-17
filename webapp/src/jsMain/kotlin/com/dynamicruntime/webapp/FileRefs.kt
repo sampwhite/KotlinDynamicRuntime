@@ -138,9 +138,9 @@ fun parseFileRefTakes(item: Map<String, Any?>): FileRefTakes = FileRefTakes(
 
 /**
  * What the section says above its list: what a file ref is, how a change to one takes effect, and -- where it is a
- * draft -- that the list is the sandbox's view. Live at once for a client that runs its latest configuration; a
- * draft for one with a sandbox ([hasSandbox]), unlike a web asset, which is never one; and for a sandbox's own
- * page ([sandboxOf] is its parent), where what is listed is the parent's latest. A client that takes nothing
+ * draft -- that the list is the sandbox's view. Live at once for a client that runs its latest configuration; for one
+ * with a sandbox ([hasSandbox]), changed in the sandbox as a draft (issue #1824), unlike a web asset, which is never
+ * one; and for a sandbox's own page ([sandboxOf] is its parent), where what is listed is the parent's latest. A client that takes nothing
  * stored on this node ([staticHere]) is listed and not changed, and is told that and nothing of drafts.
  */
 fun fileRefsIntro(sandboxOf: String?, hasSandbox: Boolean, staticHere: Boolean): String {
@@ -152,9 +152,10 @@ fun fileRefsIntro(sandboxOf: String?, hasSandbox: Boolean, staticHere: Boolean):
     return when {
         staticHere -> "$what This client's configuration comes from code on this node, so its files are listed here and not changed."
         sandboxOf != null -> "The files of $sandboxOf's sandbox. $listed A change made here is a draft of $sandboxOf's, and goes live for its people once that is published."
+        // A client with a sandbox is changed there (issue #1824), so its own page lists its files and changes none.
         hasSandbox ->
-            "$what This client has a sandbox, so a change here is a draft: the sandbox shows it, and it goes live " +
-                "for the client's people once its configuration is published, from the configuration listed below. $listed"
+            "$what This client has a sandbox, so its files are changed there, as drafts the sandbox shows, and go live " +
+                "for the client's people once its configuration is published. $listed"
         else -> "$what A change takes effect at once for everyone in the client."
     }
 }

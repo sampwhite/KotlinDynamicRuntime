@@ -38,6 +38,7 @@ private val assistantScope = MainScope()
 /** The page's panels' element ids, which the links at its top lead to. */
 private const val panelSandbox = "assistant-sandbox"
 private const val panelSwitchOn = "assistant-switch-on"
+private const val panelOpenSandbox = "assistant-open-sandbox"
 private const val panelConversation = "assistant-conversation"
 private const val panelDrafts = "assistant-drafts"
 private const val panelAllowance = "assistant-allowance"
@@ -48,8 +49,10 @@ private const val panelAllowance = "assistant-allowance"
  * none (the assistant drafts in it); the conversation; the drafts this conversation made, each to try or publish; and the
  * month's allowance. Nothing here publishes.
  *
- * It works from the client and from inside its sandbox, where "Try it in the sandbox" leaves the person: the backend
- * answers for the person either way (`AssistantTurns.personOf`). The open conversation rides the address
+ * It is used in the client's sandbox (issue #1824), where what it drafts is tried and published: outside it, a client
+ * with a sandbox is shown one panel that opens the sandbox and lands back here. The client's side keeps what has to
+ * happen there -- switching the assistant on, and turning the sandbox on -- and the backend answers for the person from
+ * either side (`AssistantTurns.personOf`), but starts a turn only in the sandbox. The open conversation rides the address
  * ([HP.conversation]); while a turn runs the page polls it every [assistantPollMs], reading only the messages after
  * the last it has, and stops when it is idle.
  */
@@ -86,6 +89,9 @@ val AssistantPage = FC<Props> {
     var switchBusy by useState(false)
     var switchError by useState<DisplayError?>(null)
     var tryError by useState<DisplayError?>(null)
+    // Opening the sandbox from outside it (issue #1824), and why it failed.
+    var openBusy by useState(false)
+    var openError by useState<DisplayError?>(null)
     // Drops an answer for a conversation the page has moved on from: a read's token must still be current, and the
     // conversation it read still the one open.
     val readToken = useRef(0)
@@ -244,7 +250,7 @@ val AssistantPage = FC<Props> {
                 unanswered = null
                 sendError = userFacingError(e)
                 when (e.errorCode) {
-                    ACNV.budgetSpentCode, ACNV.noSandboxCode, ACNV.notOnCode -> setStatusReads { it + 1 }
+                    ACNV.budgetSpentCode, ACNV.noSandboxCode, ACNV.notOnCode, ACNV.outsideSandboxCode -> setStatusReads { it + 1 }
                     // The conversation changed under the page: read again, it says it cannot go on, or that a turn runs
                     // in it -- which the read then follows.
                     ACNV.readOnlyCode, ACNV.busyCode -> conversationId?.let { read(it, whole = false) }
@@ -326,6 +332,21 @@ val AssistantPage = FC<Props> {
         }
     }
 
+    // Into the sandbox, back to this page and the conversation open here (issue #1824).
+    fun openInSandbox() {
+        openBusy = true
+        openError = null
+        assistantScope.launch {
+            try {
+                AuthApi.openSandbox()
+                afterSessionChange(bump, listOfNotNull(HP.page to ASST.page, conversationId?.let { HP.conversation to it }))
+            } catch (e: Throwable) {
+                openError = userFacingError(e)
+                openBusy = false
+            }
+        }
+    }
+
     // Into the sandbox (unless already there), at the draft's workflow's forms -- or the forms, for traits.
     fun tryIt(draft: AssistantDraft, inSandbox: Boolean) {
         val to = draft.workflowIds.firstOrNull()?.let { listOf(HP.page to pageWorkflowForms, WAGG.workflowId to it) }
@@ -390,6 +411,25 @@ val AssistantPage = FC<Props> {
             AssistantView.off -> p {
                 className = ClassName("subtitle")
                 +"The workflow assistant is not on for ${current!!.clientName}. A deployment operator switches it on for a client."
+            }
+            // Outside the sandbox of a client with one (issue #1824): the way in, and no conversation here.
+            // A way somewhere, changing nothing here: a view, with no "take effect immediately" line.
+            AssistantView.openSandbox -> panel(panelOpenSandbox, "Use it in your sandbox", kind = PanelKind.view) {
+                val name = current!!.clientName
+                p {
+                    +(
+                        "The assistant works in $name's sandbox, where what it drafts runs at once, so you can try it before " +
+                            "anyone else sees it, and publish it from there. Open the sandbox to go on: you come back to this page, " +
+                            "as your user in the sandbox, with your conversations."
+                    )
+                }
+                Button {
+                    type = "primary"
+                    loading = openBusy
+                    onClick = { openInSandbox() }
+                    +"Open it there"
+                }
+                panelNote(openError, null, "Couldn't open the sandbox.")
             }
             AssistantView.on -> {
                 current!!

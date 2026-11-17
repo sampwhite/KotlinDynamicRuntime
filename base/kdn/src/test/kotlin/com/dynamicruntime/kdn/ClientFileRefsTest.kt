@@ -56,6 +56,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -406,13 +407,14 @@ private fun clientFileRefsTests() = stringSpec {
         inSandbox.selfClient() shouldBe sandbox
 
         // A page says how it told its user a change would take effect (issues #1176, #1191). One it called live that
-        // is a draft goes ahead -- nothing reaches the client's people -- and the answer says it is a draft.
-        admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.live)).let {
+        // is a draft goes ahead -- nothing reaches the client's people -- and the answer says it is a draft. The uploads
+        // are made in the sandbox, where a client with one is changed (issue #1824).
+        inSandbox.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.live)).let {
             it[EP.status].shouldBeNull()
             it[EP.results].toJsonMapOrEmpty()[FREF.mode] shouldBe EDM.draft
         }
         // A draft: the sandbox, which runs the latest revision, shows it; the client runs what it published.
-        admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.draft)).let {
+        inSandbox.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.draft)).let {
             it[EP.status].shouldBeNull()
             it[EP.results].toJsonMapOrEmpty()[FREF.mode] shouldBe EDM.draft
         }
@@ -463,7 +465,8 @@ private fun clientFileRefsTests() = stringSpec {
         admin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
         val sandbox = sandboxOf(client)
         val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandbox)
-        val removed = admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo", FREF.mode to EDM.draft))
+        // Removed in the sandbox, where a client with one is changed (issue #1824); listed from either side.
+        val removed = inSandbox.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo", FREF.mode to EDM.draft))
         removed[FREF.mode] shouldBe EDM.draft
         // The answer is the row as the listing now draws it, not a row gone.
         removed[FREF.ref].toJsonMapOrEmpty().let {
@@ -483,8 +486,10 @@ private fun clientFileRefsTests() = stringSpec {
         admin.getItem(UADEP.clientFilesDownloadMeta, mapOf(CCT.refId to "logo", FREF.served to true))[FMETA.hash] shouldBe png.sha256Hex()
 
         // Only a removed one is put back: not one the draft still holds, nor one nobody is served.
-        admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "kept"))[EP.errorMessage].toString() shouldContain "still holds"
-        admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "ghost"))[EP.errorMessage].toString() shouldContain "served no file ref 'ghost'"
+        inSandbox.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "kept"))[EP.errorMessage].toString() shouldContain
+            "still holds"
+        inSandbox.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "ghost"))[EP.errorMessage].toString() shouldContain
+            "served no file ref 'ghost'"
 
         // Put back from the sandbox's own page: the entry as it is published, a draft, an ordinary row again.
         val restored = inSandbox.postData(UADEP.clientFilesRestore, mapOf(CCT.refId to "logo", FREF.mode to EDM.draft))
@@ -496,7 +501,7 @@ private fun clientFileRefsTests() = stringSpec {
         static(inSandbox, "logo").rptResponseBytes!!.toList() shouldBe png.toList()
 
         // Removed again and published, it is gone: nobody is served it.
-        admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
+        inSandbox.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
         svc.publish(cxt.mkSubContext("publish", client).also { it.userId = 11531L }, listOf(GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)))
         GedraConfigReload.reloadClient(cxt, client)
         listed(admin).keys shouldBe setOf("kept")
@@ -508,6 +513,8 @@ private fun clientFileRefsTests() = stringSpec {
         val fullAdmin = adminOf(full)
         uploaded(fullAdmin, "logo", image(png))
         fullAdmin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // From here on the session is in the sandbox, where a client with one is changed (issue #1824).
+        fullAdmin.postData(AEP.openSandbox, emptyMap())
         fullAdmin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
         val hash = plant(full, otherPng)
         svc.writeConfig(writerOf(full), gedraConfig(cxt, "many", clientNamespace(full), full) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
@@ -956,6 +963,8 @@ private fun clientFileRefsTests() = stringSpec {
         defineClient(client, w)
         val admin = adminOf(client, w)
         admin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // From here on the session is in the sandbox, where a client with one is changed (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
         uploaded(admin, "logo", image(png))[FREF.mode] shouldBe EDM.draft
 
         FileStoreService.get(w).forOwner(w, client).delete(w, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true

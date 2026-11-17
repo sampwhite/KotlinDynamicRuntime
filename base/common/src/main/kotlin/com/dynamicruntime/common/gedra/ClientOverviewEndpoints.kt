@@ -677,9 +677,9 @@ fun InputFieldsBuilder.expectedModeField() {
     field(
         CPY.mode,
         "How the caller told its user the save would take effect: live, or a draft. Whether it is a draft is decided " +
-            "at the request, by whether the client has a sandbox then; a save expected to be a draft that would be " +
-            "live is refused with a 409 and nothing is changed. One expected live that is a draft goes ahead, and the " +
-            "answer's mode says so. Absent, it is not asked.",
+            "at the request: a save made from a sandbox is one, and a client with a sandbox is changed from it alone " +
+            "(issue #1824). A save expected to be a draft that would be live is refused with a 409 and nothing is " +
+            "changed. One expected live that is a draft goes ahead, and the answer's mode says so. Absent, it is not asked.",
     ) {
         option(EDM.live, "Live")
         option(EDM.draft, "Draft")

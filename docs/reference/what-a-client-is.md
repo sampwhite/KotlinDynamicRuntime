@@ -58,9 +58,11 @@ on its own.
 
 A client may have a **sandbox**: a second client, `acme:sandbox` for `acme`, with users and forms of its own,
 that runs the client's latest configuration, drafts and all. In a client with a sandbox, every change to the
-configuration is a **draft**. The sandbox runs it at once, so it can be tried on a real form, and the client's people
-get it only when a person publishes it, from the Clients page's **Sandbox and publishing** panel. Until then, the
-client runs only what is published. A client a visitor makes for themselves is made with one.
+configuration is made in the sandbox, as a **draft**. The sandbox runs it at once, so it can be tried on a real form,
+and the client's people get it only when a person publishes it, from the **Sandbox and publishing** panel of the
+sandbox's Clients page. Until then, the client runs only what is published. The client's own page shows its
+configuration and leads to the sandbox, and a change made from the client itself is refused. A client a visitor makes
+for themselves is made with one.
 
 A client without a sandbox takes a change as it is saved. Its administrator adds or removes the sandbox from the
 Clients page (`POST /clientAdmin/client/sandbox`).

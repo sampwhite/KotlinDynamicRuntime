@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.mail.MCOPY
@@ -91,10 +92,12 @@ class CopyMailPreviewTest : StringSpec({
         svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
-        // A draft of the footer, which the client's own people do not read yet.
-        admin.postData(
+        // A draft of the footer, which the client's own people do not read yet: made naming the sandbox, where a client
+        // with one is changed (issue #1824), by an administrator of every client.
+        TestUser.createFullAdmin(cxt, "full@$client.test").postData(
             CPY.applyPath,
             mapOf(
+                COV.client to sandboxOf(client),
                 COV.fileId to AFRAG.mail,
                 CPY.changes to listOf(mapOf(COV.namespaceField to MCOPY.common, COV.key to MCOPY.footer, COV.value to "Draft Co, signing off.")),
             ),

@@ -31,6 +31,7 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -139,6 +140,8 @@ class FormStatesAutoRecalcTest : StringSpec({
         val admin = defineClient(client, sandbox = true)
         val sandbox = sandboxOf(client)
         val gids = forms(sandbox, 2)
+        // Written in the sandbox, where a client with one is changed (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
         val drafted = auto(addWorkflow(admin, client))
         drafted[FSR.outcome] shouldBe FSR.completed
         drafted[FSR.client] shouldBe sandbox

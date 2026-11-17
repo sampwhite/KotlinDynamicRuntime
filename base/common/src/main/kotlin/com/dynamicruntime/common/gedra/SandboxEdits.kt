@@ -45,6 +45,29 @@ object SandboxEdits {
         }
     }
 
+    /**
+     * Refuses a change to [client]'s configuration made from outside its sandbox, while it has one (issue #1824): a
+     * client with a sandbox is changed in the sandbox, where the change is previewed and published, never from the
+     * client itself, where a draft would be a change nobody there sees. A sandbox named is the way in, and passes, as a
+     * client without a sandbox does. So does one whose sandbox this node does not carry -- its load failed -- whose
+     * configuration then has to be mendable from the client itself; an editor's save refuses that case on its own
+     * terms ([ClientStoredEdit.target]).
+     *
+     * A 409 carrying [EDM.notAsExpected], as the edit target's other refusals of a save the page did not expect: a page
+     * that read the client before its sandbox was added re-reads on it, and then shows the configuration read-only, with
+     * the way to the sandbox.
+     */
+    fun requireChangedInSandbox(cxt: KdrCxt, client: String) {
+        if (isSandboxClient(client)) return
+        val sandbox = sandboxOf(client)
+        if (!ClientService.get(cxt).isPresent(sandbox)) return
+        throw KdrException(
+            "Client '$client' has a sandbox, so its configuration is changed in the sandbox, '$sandbox', where a " +
+                "change is previewed and published. Nothing was changed.",
+            code = EXC.conflict,
+        ).also { it.extraData[KdrException.errorCodeKey] = EDM.notAsExpected }
+    }
+
     /** Reloads [parent] -- and so its sandbox -- on this node and announces it, so the sandbox shows an edit at once. */
     fun reloadParent(cxt: KdrCxt, parent: String): ConfigReloadResult {
         val reload = GedraConfigReload.reloadClient(cxt, parent)

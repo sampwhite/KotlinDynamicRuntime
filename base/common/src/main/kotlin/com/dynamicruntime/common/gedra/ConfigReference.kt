@@ -113,7 +113,10 @@ private class ConfigReferenceWriter(private val shapes: ServedSlotShapes, privat
                 "people get it only when the bundle is published. So the way you divide a configuration into bundles is " +
                 "the way you can release it. To publish a change to one workflow and nothing else, keep that workflow " +
                 "in a bundle of its own. Publishing is done by the client's own people in the app, after trying the changes " +
-                "in the sandbox, so a change written through the endpoints below stays a draft until then.",
+                "in the sandbox, so a change written through the endpoints below stays a draft until then. It is written " +
+                "from the sandbox, `${sandboxOf("acme")}` for `acme`: one written from the client itself is refused. A " +
+                "deployment operator's `/admin/client/config` endpoints are the exception: they name the client itself, " +
+                "and write its configuration as these do.",
         )
         line()
         line(

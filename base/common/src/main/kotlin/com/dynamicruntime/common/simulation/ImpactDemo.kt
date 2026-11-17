@@ -18,7 +18,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 /**
  * The publish impact demo (issue #935): a client with a Shadow Sandbox -- so it runs only what it publishes -- forms
  * stored under both of its traits, and an unpublished **draft** of its traits that would strand them: it drops
- * [visit] and makes a [note] require an `owner` no stored note has. Publishing that draft from the client page is
+ * [visit] and makes a [note] require an `owner` no stored note has. Publishing that draft from the sandbox's page is
  * refused with the impact report, which the page shows with "Publish anyway"; "Check impact" shows it first.
  */
 @Suppress("ConstPropertyName")

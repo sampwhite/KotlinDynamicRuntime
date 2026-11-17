@@ -216,6 +216,12 @@ object ACNV {
     const val notOfferedCode = "assistantNotOffered"
     const val inSandboxCode = "assistantInSandbox"
     const val noSandboxCode = "noSandbox"
+
+    /**
+     * A message sent from the client itself while it has a sandbox (issue #1824): the assistant is used in the sandbox,
+     * where what it drafts can be tried and published.
+     */
+    const val outsideSandboxCode = "assistantOutsideSandbox"
     const val budgetSpentCode = "budgetSpent"
     const val turnLimitCode = "turnLimit"
     const val busyCode = "turnRunning"

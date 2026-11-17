@@ -7,7 +7,9 @@ import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.home.PFRAG
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** The client page's layout (issue #1397): its header, the definition's groups, and the Menu panel's filter. */
 class ClientDetailLayoutTest {
@@ -48,11 +50,39 @@ class ClientDetailLayoutTest {
         assertEquals(listOf("Loaded", "Sandbox of acme"), clientStatusChips(row(sandboxOf = "acme"), 0))
         assertEquals(emptyList(), clientStatusChips(null, 0))
 
-        assertEquals("Changes made here are live for the client's people at once.", clientSaveEffectLine(row(), savesDraft = false))
-        assertEquals(true, clientSaveEffectLine(row(hasSandbox = true), savesDraft = true)!!.startsWith("Changes made here are drafts"))
-        assertEquals(true, clientSaveEffectLine(row(sandboxOf = "acme"), savesDraft = true)!!.contains("acme's configuration"))
+        fun line(row: ClientOverview?, defSandbox: Boolean = false) = clientSaveEffectLine(row, pageEditing("acme", row, defSandbox))
+        assertEquals("Changes made here are live for the client's people at once.", line(row()))
+        // A client with a sandbox is changed there (issue #1824), and its page leads there after the line.
+        assertEquals(true, line(row(hasSandbox = true))!!.contains("changed in its sandbox"))
+        assertEquals(true, line(row(sandboxOf = "acme"))!!.contains("acme's configuration"))
         // A client that takes nothing stored here saves nothing from this page.
-        assertNull(clientSaveEffectLine(row(staticHere = true), savesDraft = false))
+        assertNull(line(row(staticHere = true)))
+    }
+
+    @Test
+    fun aClientWithASandboxIsChangedThereAndItsOwnPageChangesNothing() {
+        // Issue #1824: seen from itself, a client with a sandbox is read-only, and its sandbox's page is where it changes.
+        assertTrue(editedInSandbox(row(hasSandbox = true)))
+        assertFalse(editedInSandbox(row()))
+        assertFalse(editedInSandbox(row(sandboxOf = "acme")))
+        assertFalse(editedInSandbox(row(hasSandbox = true, staticHere = true)))
+        assertFalse(editedInSandbox(null))
+        assertEquals(true, configEditLock(row(hasSandbox = true))?.contains("changed there"))
+        assertNull(configEditLock(row()))
+        assertNull(configEditLock(row(sandboxOf = "acme")))
+        assertFalse(definitionEditable(row(hasSandbox = true)))
+        // Before its row is read, a client whose definition asks for a sandbox is read-only already, and says why.
+        pageEditing("acme", null, defSandbox = true).let {
+            assertFalse(it.editable)
+            assertTrue(it.changedInSandbox)
+            assertEquals(true, clientSaveEffectLine(null, it)?.contains("changed in its sandbox"))
+        }
+        assertTrue(pageEditing("acme", null, defSandbox = false).editable)
+        // The sandbox's own page edits, as drafts.
+        pageEditing("acme:sandbox", row(sandboxOf = "acme"), defSandbox = false).let {
+            assertTrue(it.editable)
+            assertTrue(it.savesDraft)
+        }
     }
 
     @Test

@@ -302,9 +302,13 @@ class WorkflowVisibilityTest : StringSpec({
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
         val params = WorkflowParamsService.get(cxt)
         val slots = WfTemplateSlots(null, WFT.collect, "Pilot", listOf(WfTaskSlot("collect", "Info", listOf(WfTraitRef(GT.name)))))
+        // Saved naming the sandbox, where a client with one is changed (issue #1824).
         val saved = full.postData(
             UADEP.clientWorkflowSave,
-            mapOf(CLD.client to client, CWF.slots to slots.toInfo(), CWF.visibility to WfVisibility.everyone.toInfo(), CPY.mode to EDM.draft),
+            mapOf(
+                CLD.client to sandbox, CWF.slots to slots.toInfo(), CWF.visibility to WfVisibility.everyone.toInfo(),
+                CPY.mode to EDM.draft,
+            ),
         )
         saved[CPY.mode] shouldBe EDM.draft
         // Two rows: the sandbox's as chosen, the client's administrators only.

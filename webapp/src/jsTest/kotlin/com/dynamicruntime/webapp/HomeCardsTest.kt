@@ -242,6 +242,8 @@ class ClientChecklistTest {
         assertEquals(listOf(HP.page to ASST.page), off.first().route)
         // On: done.
         assertEquals(true, checklistSteps(read, assistantOffered = true, assistantView = AssistantView.on).first().done)
+        // On, as Home outside the sandbox reads it (issue #1824): done too.
+        assertEquals(true, checklistSteps(read, assistantOffered = true, assistantView = AssistantView.openSandbox).first().done)
         // Not offered, only an operator's to switch on, or its status unreadable: no step for it.
         for ((offered, view) in listOf(false to AssistantView.switchOn, true to AssistantView.off, true to AssistantView.failed)) {
             assertEquals(CHKL.newForm, checklistSteps(read, offered, view).first().id)
@@ -319,6 +321,32 @@ class ClientChecklistTest {
         assertEquals(listOf(false, false, false, true, true), sandbox.map { it.note != null })
         // With no Forms and data panel drawn, a workflow step goes nowhere rather than to a panel that is not there.
         assertEquals(listOf<String?>(null, null), clientNextSteps(steps.drop(1).take(2), inSandbox = false, formsDataShown = false).map { it.panel })
+    }
+
+    @Test
+    fun aClientWithASandboxMakesItsWorkflowsThere() {
+        // Issue #1824: the read names the sandbox, and the workflow steps lead to its page, opening it from outside.
+        val read = parseChecklistRead(
+            mapOf(
+                CLD.client to "free_pat", CHKL.sandbox to "free_pat:sandbox",
+                CHKL.steps to listOf(
+                    mapOf(CHKL.id to CHKL.workflow, CHKL.done to false),
+                    mapOf(CHKL.id to CHKL.invite, CHKL.done to false),
+                ),
+            ),
+        )!!
+        assertEquals("free_pat:sandbox", read.sandbox)
+        val steps = checklistSteps(read, assistantOffered = false, assistantView = null)
+        assertEquals(listOf(true, false), steps.map { it.opensSandbox })
+        assertEquals(
+            listOf(HP.page to HMENU.pageClients, HP.client to "free_pat:sandbox", HP.section to panelFormsData),
+            steps.first().route,
+        )
+        // On the client's own page the step leads to the sandbox; on the sandbox's, to its own Forms and data panel.
+        assertEquals(listOf(null, null), clientNextSteps(steps, inSandbox = false, formsDataShown = true).map { it.panel })
+        assertEquals(panelFormsData, clientNextSteps(steps, inSandbox = true, formsDataShown = true).first().panel)
+        // Without a sandbox, the client's own page, as before.
+        assertEquals(false, checklistStepOf(CHKL.workflow, false, "free_pat")!!.opensSandbox)
     }
 }
 

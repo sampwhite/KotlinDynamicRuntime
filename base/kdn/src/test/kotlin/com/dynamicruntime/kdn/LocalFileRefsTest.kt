@@ -47,6 +47,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.ADEP
@@ -595,6 +596,8 @@ class LocalFileRefsTest : StringSpec({
         defineClient(client)
         val admin = adminOf(client)
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // The administrator's edits are made in the sandbox, where a client with one is changed (issue #1824).
+        posted(admin, AEP.openSandbox, emptyMap())
         val file = File(brand, "sandpic.png").also { it.writeBytes(png) }
         posted(full, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("pic", "sandpic.png"), client = client))
         GedraConfigReload.reloadClient(cxt, client)
@@ -694,6 +697,8 @@ class LocalFileRefsTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, client)
         val admin = adminOf(client)
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // In the sandbox, where a client with one is changed (issue #1824).
+        posted(admin, AEP.openSandbox, emptyMap())
 
         posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "pic"))[FREF.ref].toJsonMapOrEmpty()[FREF.removedInDraft] shouldBe true
         storedRefs(client, "art").shouldBeEmpty()
@@ -714,6 +719,8 @@ class LocalFileRefsTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, client)
         val admin = adminOf(client)
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // In the sandbox, where a client with one is changed (issue #1824).
+        posted(admin, AEP.openSandbox, emptyMap())
         // The draft's pic names a root that is no name: stored, and left out of the sandbox's load.
         val odd = localEntry("pic", "logo.png", root = "../brand")
         svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(odd) })
@@ -830,6 +837,8 @@ class LocalFileRefsTest : StringSpec({
         approve(drafted, "kept2.png", png)
         named(draftAdmin, "pic", "kept.png")
         posted(draftAdmin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // Named in the sandbox, where a client with one is changed (issue #1824).
+        posted(draftAdmin, AEP.openSandbox, emptyMap())
         named(draftAdmin, "pic", "kept2.png")[FREF.mode] shouldBe EDM.draft
         listed(draftAdmin).getValue("pic").let {
             it[CCT.path] shouldBe "kept2.png"
@@ -990,17 +999,19 @@ class LocalFileRefsTest : StringSpec({
         named(full, "named", "named.png", client = client)[FREF.client] shouldBe client
         storedRefs(client, CPY.copyConfigName) shouldBe listOf(ownEntry("named", "named.png"))
 
-        // With a sandbox, what its administrator names is a draft, and the sandbox is served the parent's file: the
-        // directory is the client's whose configuration it is, and a sandbox has none of its own.
+        // With a sandbox, what its administrator names -- in the sandbox, where a client with one is changed (issue
+        // #1824) -- is a draft, and the sandbox is served the parent's file: the directory is the client's whose
+        // configuration it is, and a sandbox has none of its own.
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
         approve(client, "draft.png", otherPng)
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
         // Naming one is held to what the page told its user, as every change is: one it called live that is a draft
         // goes ahead, and says it is a draft (issue #1191).
         posted(
-            admin, UADEP.clientFilesLocal,
+            inSandbox, UADEP.clientFilesLocal,
             mapOf(CCT.refId to "draft", CCT.root to openRoot, CCT.path to "draft.png", FREF.mode to EDM.live),
         )[FREF.mode] shouldBe EDM.draft
-        named(admin, "draft", "draft.png")[FREF.mode] shouldBe EDM.draft
+        named(inSandbox, "draft", "draft.png")[FREF.mode] shouldBe EDM.draft
         refs.forClient(sandboxOf(client)).refs.keys shouldBe setOf("pic", "top", "named", "draft")
         refs.forClient(client).refs.keys shouldBe setOf("pic", "top", "named")
         listed(admin).getValue("draft").let {
@@ -1009,7 +1020,6 @@ class LocalFileRefsTest : StringSpec({
         }
         admin.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(CCT.refId to "draft")).rptResponseBytes!!.toList() shouldBe otherPng.toList()
         // Somebody in the sandbox is served both, from the parent's directory -- and names a file there the same way.
-        val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
         static(inSandbox, nameOf("draft", otherPng)).rptResponseBytes!!.toList() shouldBe otherPng.toList()
         static(inSandbox, "pic").rptResponseBytes!!.toList() shouldBe png.toList()
         named(inSandbox, "pic2", "pic.png")[FREF.mode] shouldBe EDM.draft

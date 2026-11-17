@@ -22,6 +22,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -195,6 +196,8 @@ private fun clientCopyApplyTests() = stringSpec {
     "a client with a sandbox saves the batch as a draft its sandbox shows" {
         val client = "applydraft"
         val admin = defineClient(client, sandbox = true)
+        // Saved in the sandbox, where a client with one is changed (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
         val result = admin.postData(CPY.applyPath, apply(HFRAG.home, set("home", "brand", "Draft Co"), set("home", "title", "Draft title")))
         result[CPY.mode] shouldBe EDM.draft
         keysOf(result).getValue("home.brand")[COV.value] shouldBe "Draft Co"

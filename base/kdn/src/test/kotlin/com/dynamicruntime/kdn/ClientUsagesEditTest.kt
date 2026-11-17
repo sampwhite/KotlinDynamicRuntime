@@ -24,6 +24,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -203,11 +204,13 @@ class ClientUsagesEditTest : StringSpec({
         val client = "usageSandbox1491"
         defineClient(client, sandbox = true)
         val chief = admin(client)
-        val saved = chief.postData(UADEP.clientUsageSave, mapOf(CUS.column to column("Minutes", $$"${minutes}"), CPY.mode to EDM.draft))
+        // Saved in a second session, in the sandbox, where a client with one is changed (issue #1824).
+        val inSandbox = admin(client).also { it.postData(AEP.openSandbox, emptyMap()) }
+        val saved = inSandbox.postData(UADEP.clientUsageSave, mapOf(CUS.column to column("Minutes", $$"${minutes}"), CPY.mode to EDM.draft))
         saved[CPY.mode] shouldBe EDM.draft
         labels(client) shouldBe listOf("Name")
         labels(sandboxOf(client)) shouldBe listOf("Name", "Minutes")
-        // The catalog shows what the sandbox runs, drafts included.
+        // The catalog, on the client's page, shows what the sandbox runs, drafts included.
         chief.getItem(UADEP.clientUsages)[CUS.columns].toJsonListOfMaps().map { it[CCT.label] } shouldBe listOf("Name", "Minutes")
         // A save its page said would be a draft is refused where it would be live: that client has no sandbox.
         val plain = "usageNoSandbox1491"

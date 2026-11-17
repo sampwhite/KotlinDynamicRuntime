@@ -20,10 +20,15 @@ the module is not loaded the page says it could not load the assistant. Home off
 `public-home.md`'s "Home cards"): one for whoever the menu entry is offered to, and one in `public` that gives the
 assistant as the reason to create a client.
 
-**It works from the client and from inside its sandbox.** "Try it in the sandbox" moves the session into the sandbox, and
-the person comes back to the page to go on. The backend answers for the person either way
-(`AssistantTurns.personOf`): signed in to the sandbox, it is the user the sandbox user was opened from, and the tools
-act as the session's own sandbox user. A sandbox user nobody opened has nobody outside to speak for, and is refused.
+**It is used in the sandbox** (issue #1824), where what it drafts is tried and published. Outside it, a client with a
+sandbox and the assistant on is shown one live panel, **Use it in your sandbox**, whose **Open it there** opens the
+sandbox and lands back on the page with the open conversation (`AssistantView.openSandbox`, which counts as on for the
+checklist: `AssistantView.isOn`). The page does not switch the session by itself on load. The menu entry and the Home
+cards still lead to the page, since a card's action is a route, never a call. What has to happen on the client's side
+stays there: switching the assistant on, and turning the sandbox on. The backend answers for the person from either
+side (`AssistantTurns.personOf`): signed in to the sandbox, it is the user the sandbox user was opened from, and the
+tools act as the session's own sandbox user. A sandbox user nobody opened has nobody outside to speak for, and is
+refused. A message sent from the client itself is refused (`ACNV.outsideSandboxCode`), and the page re-reads its status.
 
 **Switching it on, where it is offered** (issue #1568). While the assistant is off but offered to the client -- a
 self-serve client, on a deployment with `KDR_ASSISTANT_SELF_SERVE` on and a model, that no operator has set -- the page

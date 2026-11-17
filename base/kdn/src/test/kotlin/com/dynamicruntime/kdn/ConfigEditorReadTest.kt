@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -55,7 +56,10 @@ private fun configEditorReadTests() = stringSpec {
     fun write(client: String, name: String, build: GedraConfigBuilder.() -> Unit) =
         svc.writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 14360L }, gedraConfig(cxt, name, clientNamespace(client), client, build = build))
 
-    /** [client], with a sandbox: its definition in `main`, a trait in `traits`, both published. Returns its administrator. */
+    /**
+     * [client], with a sandbox: its definition in `main`, a trait in `traits`, both published. Returns its administrator,
+     * signed in to the sandbox, where a client with one is changed (issue #1824): each call acts on the client's configuration.
+     */
     fun defineClient(client: String): TestUser {
         write(client, "main") {
             defineClient(
@@ -71,6 +75,7 @@ private fun configEditorReadTests() = stringSpec {
         svc.publish(cxt.mkSubContext("setup", client).also { it.userId = 14360L }, listOf("main", "traits").map { GedraId.of(GedraConfigType.configDoc, client, it) })
         GedraConfigReload.reloadClient(cxt, client)
         return TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+            .also { it.postData(AEP.openSandbox, emptyMap()) }
     }
 
     /** Changes `memo`'s description in a draft over the published `traits`. */

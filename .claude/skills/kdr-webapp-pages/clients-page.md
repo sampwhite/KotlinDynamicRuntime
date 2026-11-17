@@ -107,7 +107,8 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   (`/clientAdmin/client/checklist`, `checklistSteps`, the assistant's step included where the menu offers it), whether
   or not Home's card was hidden (issue #1757). While it is hidden on Home in this browser, the panel offers **Show on
   Home again** (`showOnHomeOffered`, `showChecklistOnHome`): the way back from a hide. Each step leads to the panel of the page that does it (`clientNextSteps`: the workflow
-  steps scroll to Forms and data) or to its page; from the sandbox, inviting someone and a first form say they are done
+  steps scroll to Forms and data -- the sandbox's, opened first from the client itself, when the client has one, issue
+  #1824) or to its page; from the sandbox, inviting someone and a first form say they are done
   in the client itself rather than lead to the sandbox's users and forms. The definition's **Platform** and **Where it
   runs** groups, which such a person did not choose and cannot change, wait under a closed **More options**. A platform
   operator, who sees across clients, keeps the page as it is.
@@ -245,8 +246,16 @@ whatever the address says.
 
 **How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
 page that saves its configuration -- the copy, the menu, the definition, the traits, the workflows, the files -- is live at once for a client
-that runs its latest configuration, and a draft its sandbox shows for one with a sandbox (or on a sandbox's own
-page). The page decides which **once**, from the overview row it last read (`savesAsDraft`, in `clientDetail`), says
+that runs its latest configuration, and a draft its sandbox shows on a sandbox's own page. **A client with a sandbox is
+changed in its sandbox alone** (issue #1824): seen from itself (`editedInSandbox`), its page shows the configuration
+read-only -- every editor reads the page's one `pageEditing` answer (`lock`, `savesDraft`, `changedInSandbox`), which
+also covers a visitor kept out of a demo client (#1668) and holds the page read-only from its first render, before
+the row is read -- and the line under the chips leads to the sandbox's page (`SandboxPageLink`: straight there for an
+`allClients` administrator, by opening the sandbox first for a client-scoped one), as the publishing bar, the bundle
+editor, Reports, and Design View already did. The backend refuses such a save from the client itself
+(`SandboxEdits.requireChangedInSandbox`) with the 409 `notAsExpected` the page re-reads on, so a page that read the
+client before its sandbox came turns read-only. A client whose sandbox this node does not carry is edited from itself, so its
+configuration can be mended. The page decides which **once**, from the overview row it last read (`savesAsDraft`, in `clientDetail`), says
 it beside the save (`saveEffectText`) and sends it as `mode` (`expectedMode`), so the wording and what is sent cannot
 differ. The backend decides at the request (`ClientStoredEdit.target`): a save sent as a draft that would be live is
 a 409 and not made, and the editor answers it by re-reading the page, which then says how a save takes effect

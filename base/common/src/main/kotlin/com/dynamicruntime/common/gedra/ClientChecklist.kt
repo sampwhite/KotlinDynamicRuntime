@@ -48,10 +48,13 @@ object ClientChecklist {
             CHKL.invite to (UserService.get(cxt).countActiveUsers(cxt, owner).total > 1),
             CHKL.firstForm to GedraDataService.get(cxt).hasLiveGedras(cxt, GedraDataType.formDoc, owner),
         )
-        return linkedMapOf(
+        return linkedMapOf<String, Any?>(
             CLD.client to owner,
             CHKL.steps to steps.map { (id, done) -> linkedMapOf(CHKL.id to id, CHKL.done to done) },
-        )
+        ).also { out ->
+            // Where its workflow steps are done, when it has a sandbox (issue #1824): the editors are there.
+            sandboxOf(owner).takeIf { ClientService.get(cxt).isPresent(it) }?.let { out[CHKL.sandbox] = it }
+        }
     }
 
     /**
@@ -92,6 +95,7 @@ internal fun SchModuleBuilder.clientChecklistEndpoints() {
         type = SCT.kObject
         description = "A new client's checklist (issue #1639): the steps that make it useful, each checked off from its state."
         property(CLD.client, "The client -- the sandbox's parent, from inside it.", required = true)
+        property(CHKL.sandbox, "The client's sandbox, where its workflow steps are done; absent when it has none (issue #1824).")
         property(CHKL.steps, "The steps, in the order to take them.", required = true) {
             type = SCT.array
             items { ref(CHKL.stepTypeName) }

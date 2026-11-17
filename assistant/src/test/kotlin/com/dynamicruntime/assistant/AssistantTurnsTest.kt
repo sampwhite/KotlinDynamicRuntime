@@ -51,6 +51,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
@@ -205,16 +206,32 @@ class AssistantTurnsTest : StringSpec({
         }
     }
 
-    /** Sends [text] as [admin] and waits for its turn to end; the conversation id. */
+    /**
+     * Runs [body] with [admin] signed in to its client's sandbox, where the assistant is used (issue #1824), and back to
+     * where the session was: a test outside the sandbox stays outside it.
+     */
+    fun <T> fromSandbox(admin: TestUser, body: () -> T): T {
+        val outside = sandboxParentOf(admin.selfClient().orEmpty()) == null
+        if (outside) admin.postData(AEP.openSandbox, emptyMap())
+        try {
+            return body()
+        } finally {
+            if (outside) admin.postData(AEP.leaveSandbox, mapOf(AFLD.userId to admin.userId))
+        }
+    }
+
+    /** Sends [text] as [admin], from its client's sandbox, and waits for its turn to end; the conversation id. */
     fun send(admin: TestUser, text: String, conversationId: String? = null, on: KdrCxt = cxt): String {
-        val started = admin.postData(
-            ACNV.messagePath,
-            buildMap {
-                put(ACNV.clientMessageId, "m${++messageIds}")
-                put(ACNV.text, text)
-                conversationId?.let { put(ACNV.conversationId, it) }
-            },
-        )
+        val started = fromSandbox(admin) {
+            admin.postData(
+                ACNV.messagePath,
+                buildMap {
+                    put(ACNV.clientMessageId, "m${++messageIds}")
+                    put(ACNV.text, text)
+                    conversationId?.let { put(ACNV.conversationId, it) }
+                },
+            )
+        }
         AssistantService.get(on).awaitTurn(started[ACNV.turnId].toString())
         return started[ACNV.conversationId].toString()
     }
@@ -269,17 +286,19 @@ class AssistantTurnsTest : StringSpec({
         conversation(admin, conversationId)[ACNV.conversation].toJsonMapOrEmpty()[ACNV.running] shouldBe false
 
         // The same message sent again -- a retry after a lost answer -- is the same turn, not a second one.
-        val again = admin.postData(ACNV.messagePath, message("m$messageIds", "What workflows do I have?"))
+        val again = fromSandbox(admin) { admin.postData(ACNV.messagePath, message("m$messageIds", "What workflows do I have?")) }
         again[ACNV.conversationId] shouldBe conversationId
         again[ACNV.turnId] shouldBe turn[ACNV.turnId]
         // The same message id sent into another conversation is the page's mistake, not that turn.
         model.add({ ScriptedModel.textResponse("Hello.") })
         val other = send(admin, "Another conversation.")
-        admin.expectError(EXC.conflict, ACNV.messagePath, message("m$messageIds", "Again?", conversationId)).toString() shouldContain
-            "another conversation"
+        fromSandbox(admin) { admin.expectError(EXC.conflict, ACNV.messagePath, message("m$messageIds", "Again?", conversationId)) }
+            .toString() shouldContain "another conversation"
         // The first message's id sent again with other text: a new message given an old id, refused rather than answered
         // with the old message's turn.
-        val reused = admin.expectError(EXC.conflict, ACNV.messagePath, message(firstId, "Something new.", conversationId))
+        val reused = fromSandbox(admin) {
+            admin.expectError(EXC.conflict, ACNV.messagePath, message(firstId, "Something new.", conversationId))
+        }
         reused[EP.errorCode] shouldBe ACNV.messageIdUsedCode
         reused[EP.errorMessage].toString() shouldContain "another message"
         other shouldNotBe conversationId
@@ -445,8 +464,9 @@ class AssistantTurnsTest : StringSpec({
         model.add({ ScriptedModel.response(listOf(mapOf(MSG.type to MSG.text, MSG.text to "I can't help with that.")), MSG.refusal) })
         val declined = send(admin, "Something else again.", conversationId = declinedEmpty)
         conversation(admin, declined)[ACNV.conversation].toJsonMapOrEmpty()[ACNV.readOnly] shouldBe true
-        admin.expectError(EXC.conflict, ACNV.messagePath, message("declined2", "Try again.", declined))[EP.errorCode] shouldBe
-            ACNV.readOnlyCode
+        fromSandbox(admin) { admin.expectError(EXC.conflict, ACNV.messagePath, message("declined2", "Try again.", declined)) }[
+            EP.errorCode,
+        ] shouldBe ACNV.readOnlyCode
 
         // A stop this code does not know, with a call in it: the call is answered, and the conversation goes on.
         model.add(
@@ -478,12 +498,14 @@ class AssistantTurnsTest : StringSpec({
             release.await(20, TimeUnit.SECONDS)
             ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap(), ATOOL.listTraits to emptyMap())
         })
-        val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "cancel1", ACNV.text to "Look around."))
+        val started = fromSandbox(admin) { admin.postData(ACNV.messagePath, message("cancel1", "Look around.")) }
         val conversationId = started[ACNV.conversationId].toString()
         @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true
         // A second message while the first runs is refused.
-        admin.expectError(EXC.conflict, ACNV.messagePath, message("cancel2", "And?", conversationId))[EP.errorCode] shouldBe ACNV.busyCode
+        fromSandbox(admin) { admin.expectError(EXC.conflict, ACNV.messagePath, message("cancel2", "And?", conversationId)) }[
+            EP.errorCode,
+        ] shouldBe ACNV.busyCode
         admin.postData(ACNV.cancelPath, mapOf(ACNV.conversationId to conversationId))[ACNV.canceled] shouldBe true
         release.countDown()
         service.awaitTurn(started[ACNV.turnId].toString())
@@ -527,7 +549,7 @@ class AssistantTurnsTest : StringSpec({
             release.await(20, TimeUnit.SECONDS)
             ScriptedModel.textResponse("Done looking.")
         })
-        val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "delrun1", ACNV.text to "Look around."))
+        val started = fromSandbox(admin) { admin.postData(ACNV.messagePath, message("delrun1", "Look around.")) }
         val conversationId = started[ACNV.conversationId].toString()
         @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true
@@ -549,7 +571,7 @@ class AssistantTurnsTest : StringSpec({
             it[ACNV.status] shouldBe ACNV.statusStopped
             it[ACNV.note].toString() shouldContain "allowance"
         }
-        admin.expectError(EXC.tooManyRequests, ACNV.messagePath, mapOf(ACNV.clientMessageId to "budget2", ACNV.text to "More."))[
+        fromSandbox(admin) { admin.expectError(EXC.tooManyRequests, ACNV.messagePath, message("budget2", "More.")) }[
             EP.errorCode,
         ] shouldBe ACNV.budgetSpentCode
     }
@@ -565,6 +587,8 @@ class AssistantTurnsTest : StringSpec({
         admin.expectError(EXC.notAuthorized, ACNV.messagePath, message("x2", "Hi."))[EP.errorCode] shouldBe
             ACNV.notOnCode
         service.setClient(cxt, client, enabled = true, monthlyBudget = null, useDefaultBudget = false, acknowledgedNotice = true)
+        // Issue #1824: from the client itself, while it has a sandbox -- the assistant is used there.
+        admin.expectError(EXC.conflict, ACNV.messagePath, message("x2b", "Hi."))[EP.errorCode] shouldBe ACNV.outsideSandboxCode
 
         // A conversation begun under another version of the prompt and tools cannot go on.
         AssistantStore.insertConversation(
@@ -575,16 +599,18 @@ class AssistantTurnsTest : StringSpec({
             ),
         )
         admin.getItems(ACNV.conversationsPath).single { it[ACNV.conversationId] == "old1526" }[ACNV.readOnly] shouldBe true
-        admin.expectError(
-            EXC.conflict, ACNV.messagePath, mapOf(ACNV.clientMessageId to "x3", ACNV.text to "Hi.", ACNV.conversationId to "old1526"),
-        )[EP.errorCode] shouldBe ACNV.readOnlyCode
+        fromSandbox(admin) {
+            admin.expectError(
+                EXC.conflict, ACNV.messagePath, mapOf(ACNV.clientMessageId to "x3", ACNV.text to "Hi.", ACNV.conversationId to "old1526"),
+            )
+        }[EP.errorCode] shouldBe ACNV.readOnlyCode
 
         // Six turns an hour on this instance.
         repeat(6) {
             model.add({ ScriptedModel.textResponse("Hello.") })
             send(admin, "Hello $it.")
         }
-        admin.expectError(EXC.tooManyRequests, ACNV.messagePath, message("x4", "Hi."))[EP.errorCode] shouldBe
+        fromSandbox(admin) { admin.expectError(EXC.tooManyRequests, ACNV.messagePath, message("x4", "Hi.")) }[EP.errorCode] shouldBe
             ACNV.turnLimitCode
         // Another administrator's conversation is not this one's to read.
         val other = TestUser.create(cxt, "deputy@$client.test", level = ROLE.admin, userClient = client)
@@ -1100,7 +1126,10 @@ class AssistantTurnsTest : StringSpec({
         // A client whose only workflow was made from a template: the copy is written whole, not as the template's overlay.
         val fromTemplate = clientWithAssistant(demo, "asstdemotpl", workflows = 0)
         val slots = WfTemplateSlots(null, WFT.collect, "Collect memos", listOf(WfTaskSlot("collect", "Memo", listOf(WfTraitRef("memo")))))
+        // Saved in the sandbox, where a client with one is changed (issue #1824); the conversation is had from the client.
+        fromTemplate.postData(AEP.openSandbox, emptyMap())
         fromTemplate.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))
+        fromTemplate.postData(AEP.leaveSandbox, mapOf(AFLD.userId to fromTemplate.userId))
         val copied = send(fromTemplate, "Draft one like it.", on = demo)
         messagesOf(fromTemplate, copied).last()[MSG.content].toJsonListOfMaps().single()[MSG.text].toString() shouldContain
             "Drafted the workflow"
@@ -1127,7 +1156,7 @@ class AssistantTurnsTest : StringSpec({
             release.await(20, TimeUnit.SECONDS)
             ScriptedModel.toolResponse(ATOOL.listConfigs to emptyMap())
         })
-        val started = admin.postData(ACNV.messagePath, mapOf(ACNV.clientMessageId to "lease1", ACNV.text to "Look."))
+        val started = fromSandbox(admin) { admin.postData(ACNV.messagePath, message("lease1", "Look.")) }
         val conversationId = started[ACNV.conversationId].toString()
         @Suppress("BlockingMethodInNonBlockingContext")
         entered.await(20, TimeUnit.SECONDS) shouldBe true

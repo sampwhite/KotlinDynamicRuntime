@@ -182,6 +182,8 @@ class ConfigImpactTest : StringSpec({
         result[IMP.scanned] shouldBe 1
         result[IMP.tooLarge] shouldBe false
         findings(result).shouldBeEmpty()
+        // Published from the sandbox, where a client with one is changed (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
         onlyConfig(admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("traits"))))[CFEP.published] shouldBe true
     }
 
@@ -191,6 +193,8 @@ class ConfigImpactTest : StringSpec({
         val user = TestUser.create(cxt, "u@$client.test", userClient = client)
         form(user, entry("extra", "note" to "n"))
         write(client, "traits") { traits(withExtra = false) }
+        // Published from the sandbox, where a client with one is changed (issue #1824).
+        admin.postData(AEP.openSandbox, emptyMap())
 
         val refused = admin.expectError(EXC.badInput, CFEP.bundlePublish, data = mapOf(CFEP.names to listOf("traits")))
         refused[EP.errorCode] shouldBe IMP.refusedCode

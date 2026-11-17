@@ -42,7 +42,10 @@ class VisitorLockTest {
         val draft = ConfigSummaryView("base", 2, false, null, null, 0)
         assertEquals(BundleAction(false, why).note, bundleAction(locked, draft).note)
         assertFalse(bundleAction(locked, draft).publish)
-        assertEquals("$why Its configuration is shown here, and not changed.", clientSaveEffectLine(locked, savesDraft = false))
+        assertEquals(
+            "$why Its configuration is shown here, and not changed.",
+            clientSaveEffectLine(locked, pageEditing(locked.clientId, locked, defSandbox = false)),
+        )
     }
 
     @Test

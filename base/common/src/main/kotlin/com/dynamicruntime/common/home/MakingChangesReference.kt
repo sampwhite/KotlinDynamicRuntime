@@ -256,9 +256,10 @@ each kind of change, which to use.
 
 ## How a change takes effect
 
-- **In a client with a sandbox**, every change is a **draft**: the sandbox runs it at once, so it can be tried on a real
-  form, and the client's people see it once it is published, from the Clients page's **Sandbox and publishing**. In a
-  client without one, a change is published as it is saved.
+- **In a client with a sandbox**, every change is made in the sandbox, as a **draft**: the sandbox runs it at once, so it
+  can be tried on a real form, and the client's people see it once it is published, from the sandbox's **Sandbox and
+  publishing** on the Clients page. The client's own page shows its configuration and leads to the sandbox, and a change
+  made from the client itself is refused. In a client without one, a change is published as it is saved.
 - **A workflow's parameters** (its time windows, who sees it, and whether it is on) are the exception: they are in force
   at once and never drafted. Set in the sandbox, they are the sandbox's own, and the client's are set in the client.
 - **A dry run** checks a change as its save would, and stores nothing. Each endpoint below marked "yes" takes one

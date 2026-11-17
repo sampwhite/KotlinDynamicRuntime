@@ -32,6 +32,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -205,10 +206,14 @@ class ClientTraitsEditTest : StringSpec({
         supported(client) shouldNotContain GT.name
     }
 
-    "for a client with a sandbox a change is a draft its sandbox runs, from the client's page or the sandbox's" {
+    "for a client with a sandbox a change is a draft its sandbox runs, made in the sandbox and never from the client's page" {
         val client = "traitsbx1117"
         defineClient(client, sandbox = true)
         val chief = admin(client)
+        // A client with a sandbox is changed there alone (issue #1824): its own page's save is refused.
+        chief.expectError(EXC.conflict, UADEP.clientTraitsSet, mapOf(CLD.includedTraits to listOf(GT.name)))[EP.errorMessage]
+            .toString() shouldContain "so its configuration is changed in the sandbox"
+        chief.postData(AEP.openSandbox, emptyMap())
         val saved = include(chief, GT.name)
         saved[CPY.mode] shouldBe EDM.draft
         // The client runs what it published; its sandbox runs the draft.

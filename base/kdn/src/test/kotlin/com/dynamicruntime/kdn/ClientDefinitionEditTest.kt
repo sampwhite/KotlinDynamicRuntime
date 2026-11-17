@@ -24,6 +24,7 @@ import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -296,21 +297,24 @@ class ClientDefinitionEditTest : StringSpec({
         val client = "defeditdraft"
         defineClient(client, sandbox = true)
         val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        // The same person in a second session, in the sandbox, where a client with one is changed (issue #1824).
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", userClient = client)
+        inSandbox.postData(AEP.openSandbox, emptyMap())
 
-        val saved = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Draft Name"))
+        val saved = inSandbox.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Draft Name"))
         saved[CPY.mode] shouldBe EDM.draft
         saved[CLD.definition].toJsonMapOrEmpty()[CLD.name] shouldBe "Draft Name"
         // The client runs what it published; its sandbox, derived from the latest, carries the new name.
         present(client).name shouldBe "Client $client"
         present(sandboxOf(client)).name shouldBe "Draft Name (sandbox)"
         mainPublished(client) shouldBe false
-        // The retrieve shows both: what the client runs, and the stored draft an edit starts from.
+        // The retrieve, on the client's page, shows both: what the client runs, and the stored draft an edit starts from.
         val read = admin.getItem(UADEP.clientDefinition)
         read[CLD.client].toJsonMapOrEmpty()[CLD.name] shouldBe "Client $client"
         read[CLD.storedDefinition].toJsonMapOrEmpty()[CLD.name] shouldBe "Draft Name"
 
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("main")))
-        admin.postData(CFEP.reload, emptyMap())
+        inSandbox.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("main")))
+        inSandbox.postData(CFEP.reload, emptyMap())
         present(client).name shouldBe "Draft Name"
     }
 })

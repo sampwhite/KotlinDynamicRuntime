@@ -79,7 +79,7 @@ client's own has none, since a header is only drawn over the items naming it in 
 
 An overlay is checked when its configuration is written, and refused for a block nobody registered, a fact that is not
 declared, a call to a function the application does not have, or nesting that is not one level under a header with no
-action. In a client with a sandbox, the write is a draft until it is published.
+action. In a client with a sandbox, the write is made from the sandbox, and is a draft until it is published.
 
 ## Changing an item with the menu editor
 
@@ -87,7 +87,7 @@ The client's **Menu** panel changes one item at a time without any JSON, and the
 `POST /clientAdmin/client/menu/set` renames an item, hides it (`#never`), or shows it to an audience, and
 `POST /clientAdmin/client/menu/reset` takes the client's changes to it back. Each writes the same overlay a
 hand-written one is, into the client's stored configuration: live at once, or, for a client with a sandbox, a draft its
-sandbox shows until it is published.
+sandbox shows until it is published, made from the sandbox's **Menu** panel.
 
 The editor shows an item to an audience chosen by name, never to a condition written by hand. These are the audiences
 it offers, and an item may also be put back to the one it shipped with:

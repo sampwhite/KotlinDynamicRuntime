@@ -192,14 +192,16 @@ class FileRefCopyTest : StringSpec({
 
     "a sandbox is handed its draft image, and the client's people what is published" {
         val client = "refcopysbx"
-        val admin = defineClient(client, sandbox = true)
+        // Its administrator, made here, is who the same address in the sandbox acts as an administrator for.
+        defineClient(client, sandbox = true)
         val member = TestUser.create(cxt, "member@$client.test", userClient = client)
         val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
         val shipped = served(client)
 
-        // Both drafts of the parent's configuration: the image, and the copy naming it.
-        upload(admin, "hero", png)[EP.results].toJsonMapOrEmpty()[FREF.mode] shouldBe EDM.draft
-        writeIntro(admin, "![Hero](ref:hero)")[EP.results].toJsonMapOrEmpty()[CPY.mode] shouldBe EDM.draft
+        // Both drafts of the parent's configuration, made in the sandbox, where a client with one is changed (issue
+        // #1824): the image, and the copy naming it.
+        upload(inSandbox, "hero", png)[EP.results].toJsonMapOrEmpty()[FREF.mode] shouldBe EDM.draft
+        writeIntro(inSandbox, "![Hero](ref:hero)")[EP.results].toJsonMapOrEmpty()[CPY.mode] shouldBe EDM.draft
 
         shellRefs(inSandbox) shouldBe mapOf("hero" to FREF.versionedName("hero", png.sha256Hex()))
         served(sandboxOf(client)) shouldBe "![Hero](ref:hero)"

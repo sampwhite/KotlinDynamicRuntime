@@ -42,6 +42,7 @@ import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -251,6 +252,8 @@ class ClientTraitNarrowTest : StringSpec({
         val chief = admin(client)
         val user = TestUser.create(cxt, "u@$client.test", userClient = client)
         val held = form(user, mapOf("name" to "x", "topic" to "a"))
+        // Narrowed in the sandbox, where a client with one is changed (issue #1824).
+        chief.postData(AEP.openSandbox, emptyMap())
         val saved = narrow(chief, TraitNarrowing(survey, required = setOf("notes")))
         saved[CPY.mode] shouldBe EDM.draft
         val impact = saved[CIT.draftImpact].toJsonMapOrEmpty()

@@ -299,8 +299,12 @@ private fun newTraitInWorkflowCatalogTests() = stringSpec {
     "a draft trait is offered to a new workflow at once, and a workflow collecting it saves as a draft" {
         val person = TestUser.create(cxt, "maker@newtrait1425.test")
         val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Trait Shop"))[CLD.client].toOptStr()!!
+        // Made in a second session, in the sandbox, where a client with one is changed (issue #1824); the client's
+        // page, where the first session is, offers it.
+        val inSandbox = TestUser.create(cxt, "maker@newtrait1425.test", userClient = client)
+        inSandbox.postData(AEP.openSandbox, emptyMap())
         val design = TraitDesign(null, "Site safety", "How a site is kept safe.", listOf(TraitFieldDesign(null, "Notes", TraitFieldKind.text)))
-        val made = person.postData(UADEP.clientTraitDesign, mapOf(CIT.design to design.toInfo()))
+        val made = inSandbox.postData(UADEP.clientTraitDesign, mapOf(CIT.design to design.toInfo()))
         made[CPY.mode] shouldBe EDM.draft
         val traitId = made[CIT.design].toJsonMapOrEmpty()[CIT.traitId].toOptStr()!!
 
@@ -310,13 +314,16 @@ private fun newTraitInWorkflowCatalogTests() = stringSpec {
         offered.single { it[CCT.traitId] == traitId }[CWF.name] shouldBe "Site safety"
 
         val slots = WfTemplateSlots(null, WFT.collect, "Safety check", listOf(WfTaskSlot("collect", "Safety", listOf(WfTraitRef(traitId)))))
-        person.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))[CPY.mode] shouldBe EDM.draft
+        inSandbox.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))[CPY.mode] shouldBe EDM.draft
     }
 
     "a user label just added to the definition is offered to a new workflow's visibility at once" {
         val person = TestUser.create(cxt, "labels@newtrait1425.test")
         val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Label Shop"))[CLD.client].toOptStr()!!
-        person.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabels to listOf("siteLead")))[CPY.mode] shouldBe EDM.draft
+        // Added in a second session, in the sandbox, where a client with one is changed (issue #1824).
+        val inSandbox = TestUser.create(cxt, "labels@newtrait1425.test", userClient = client)
+        inSandbox.postData(AEP.openSandbox, emptyMap())
+        inSandbox.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabels to listOf("siteLead")))[CPY.mode] shouldBe EDM.draft
         person.getItem(UADEP.clientWorkflows, mapOf(CLD.client to client))[CWF.userLabels].toJsonListOfStrings() shouldContain "siteLead"
     }
 

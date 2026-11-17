@@ -18,6 +18,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -34,11 +35,12 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Editing a client's copy (issue #918): a key set for acme lands in a stored `copy` config as a draft its sandbox
- * serves (acme has one, issue #994), and once published acme serves it under a new build id, keeping the file's
- * other keys and leaving globex alone; a second key of the same file lands in the same config; a reset restores what
- * the source config says; a change the trial refuses is not stored; the keys listing offers the backend files too;
- * and the scoping is the client overview's. globex, which has no sandbox, publishes an edit at once.
+ * Editing a client's copy (issue #918): a key set for acme, in its sandbox, lands in a stored `copy` config as a draft
+ * the sandbox serves (acme has one, issue #994, so it is changed there alone, issue #1824), and once published acme
+ * serves it under a new build id, keeping the file's other keys and leaving globex alone; a second key of the same
+ * file lands in the same config; a reset restores what the source config says; a change the trial refuses is not
+ * stored; the keys listing offers the backend files too; and the scoping is the client overview's. globex, which has
+ * no sandbox, publishes an edit at once.
  */
 class ClientCopyEditEndpointTest : StringSpec({
     // An instance of its own (issue #1736): it publishes copy edits to acme and globex, which every test on a shared instance would then be served.
@@ -48,6 +50,8 @@ class ClientCopyEditEndpointTest : StringSpec({
     )
     val admin = TestUser.createFullAdmin(cxt, "copy-admin@example.com")
     val fragments = MarkdownFragmentService.get(cxt)
+    // Where acme's copy is changed (issue #1824): acme has a sandbox, and a change made from acme itself is refused.
+    val acmeSandbox = sandboxOf(SC.acme)
 
     fun served(client: String, fileId: String = HFRAG.home, ns: String = "home", key: String = "brand"): Pair<String?, String?> {
         val effective = fragments.effectiveFragmentsFor(cxt, fileId, client)
@@ -90,7 +94,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         before shouldBe "ACME KDR"
         val (_, globexBefore) = served(SC.globex)
 
-        val result = admin.postData(CPY.setPath, address(SC.acme, "home", "brand") + mapOf(COV.value to "Acme Co"))
+        val result = admin.postData(CPY.setPath, address(acmeSandbox, "home", "brand") + mapOf(COV.value to "Acme Co"))
         result[COV.configName] shouldBe CPY.copyConfigName
         result[COV.value] shouldBe "Acme Co"
         result[CPY.stored] shouldBe true
@@ -124,10 +128,11 @@ class ClientCopyEditEndpointTest : StringSpec({
     }
 
     "a second key of the same file joins the same config; a key of another file, too, when nothing else overlays it" {
-        admin.postData(CPY.setPath, address(SC.acme, HFRAG.formsNs, HFRAG.noWorkflows) + mapOf(COV.value to "Nothing yet."))[COV.configName] shouldBe CPY.copyConfigName
+        val noWorkflows = address(acmeSandbox, HFRAG.formsNs, HFRAG.noWorkflows) + mapOf(COV.value to "Nothing yet.")
+        admin.postData(CPY.setPath, noWorkflows)[COV.configName] shouldBe CPY.copyConfigName
         // A key the client's source config never set: now overridden from the same config.
-        admin.postData(CPY.setPath, address(SC.acme, HFRAG.siteNs, HFRAG.title) + mapOf(COV.value to "Hello, Acme"))[COV.configName] shouldBe
-            CPY.copyConfigName
+        val siteTitle = address(acmeSandbox, HFRAG.siteNs, HFRAG.title) + mapOf(COV.value to "Hello, Acme")
+        admin.postData(CPY.setPath, siteTitle)[COV.configName] shouldBe CPY.copyConfigName
         served(sandboxOf(SC.acme), ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "Hello, Acme"
         served(SC.acme, ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "KotlinDynamicRuntime"
         publishAcme(admin)
@@ -143,7 +148,7 @@ class ClientCopyEditEndpointTest : StringSpec({
     }
 
     "a reset removes the stored value, so the source value shows again; nothing stored is refused" {
-        val result = admin.postData(CPY.resetPath, address(SC.acme, "home", "brand"))
+        val result = admin.postData(CPY.resetPath, address(acmeSandbox, "home", "brand"))
         result[COV.value] shouldBe "ACME KDR"
         result[CPY.stored] shouldBe false
         result[CPY.mode] shouldBe EDM.draft
@@ -154,7 +159,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         // The other stored keys survived the reset.
         served(SC.acme, ns = HFRAG.siteNs, key = HFRAG.title).first shouldBe "Hello, Acme"
         // Now the source alone sets it: a second reset has nothing to remove.
-        val refused = admin.expectError(EXC.badInput, CPY.resetPath, data = address(SC.acme, "home", "brand"))
+        val refused = admin.expectError(EXC.badInput, CPY.resetPath, data = address(acmeSandbox, "home", "brand"))
         refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "code or the shipped copy"
         // A key the client never overrides at all, likewise.
         admin.expectError(EXC.badInput, CPY.resetPath, data = address(SC.globex, "home", "title"))
@@ -164,7 +169,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         val before = served(SC.acme, fileId = AFRAG.mail, ns = MCOPY.common, key = MCOPY.footer)
         val refused = admin.expectError(
             EXC.badInput, CPY.setPath,
-            data = address(SC.acme, MCOPY.common, MCOPY.footer, fileId = AFRAG.mail) + mapOf(COV.value to "See %{@t(\"nope.x.y\")}."),
+            data = address(acmeSandbox, MCOPY.common, MCOPY.footer, fileId = AFRAG.mail) + mapOf(COV.value to "See %{@t(\"nope.x.y\")}."),
         )
         refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "problem"
         served(SC.acme, fileId = AFRAG.mail, ns = MCOPY.common, key = MCOPY.footer) shouldBe before
@@ -172,7 +177,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         val slots = admin.getItem(ACEP.bundle, mapOf(CFEP.client to SC.acme, CFEP.name to CPY.copyConfigName))[CFEP.slots].toJsonMapOrEmpty()
         slots[CCT.fragmentDef].toJsonListOrEmpty().map { it.toJsonMapOrEmpty()[CCT.fileId] } shouldBe listOf(HFRAG.home)
         // A key no shipped file declares would be stored and never read, so it is refused before any write.
-        admin.expectError(EXC.notFound, CPY.setPath, data = address(SC.acme, "home", "noSuchKey") + mapOf(COV.value to "x"))
+        admin.expectError(EXC.notFound, CPY.setPath, data = address(acmeSandbox, "home", "noSuchKey") + mapOf(COV.value to "x"))
     }
 
     "a page of the client's own is set and reset as any key is, its fences held to their rules" {
@@ -230,6 +235,8 @@ class ClientCopyEditEndpointTest : StringSpec({
         val scoped = TestUser.create(cxt, "copy-scoped@acme.test", level = ROLE.admin, userClient = SC.acme)
         scoped.getItems(CPY.keysPath).map { "${it[COV.fileId]}:${it[COV.key]}" } shouldContain "${HFRAG.home}:brand"
         val own = address(SC.acme, "home", "brand") - COV.client
+        // acme is changed in its sandbox (issue #1824): from here on the session is there, and edits acme's draft.
+        scoped.postData(AEP.openSandbox, emptyMap())
         scoped.postData(CPY.setPath, own + mapOf(COV.value to "Acme, by Acme"))[COV.value] shouldBe "Acme, by Acme"
         served(sandboxOf(SC.acme)).first shouldBe "Acme, by Acme"
         publishAcme(scoped, acrossClients = false)
