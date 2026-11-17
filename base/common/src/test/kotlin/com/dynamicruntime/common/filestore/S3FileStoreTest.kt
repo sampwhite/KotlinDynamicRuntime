@@ -193,4 +193,47 @@ class S3FileStoreTest : StringSpec({
         FNAME.bucketPrefixProblem("acme_prod").shouldNotBeNull()
         shouldThrow<KdrException> { S3FileStore(FakeS3Api(), "Acme-") }.message shouldContain "Not a bucket-name prefix"
     }
+
+    // Issue #1835: S3 refuses a part smaller than its smallest unless it is the last -- when the upload completes, after
+    // every part was taken. The service holds every plan to that rule before a store is asked (FSTAGE).
+    "S3 refuses a small part but the last only at the completion, which is why the plan is checked before it" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        val token = store.beginStaged(cxt, bucket, "staging/s1", "video/mp4")
+        val small = store.putPart(cxt, bucket, "staging/s1", token, 1, "small".toByteArray())
+        val last = store.putPart(cxt, bucket, "staging/s1", token, 2, "last".toByteArray())
+
+        shouldThrow<KdrException> { store.completeStaged(cxt, bucket, "staging/s1", token, listOf(small, last), meta(ByteArray(9))) }
+            .message shouldContain "EntityTooSmall"
+        FileStoreService.partPlanProblem(listOf(small, last)).shouldNotBeNull() shouldContain "at least ${FSTAGE.minPartSize}"
+        // Its metadata was never written, so there is no file -- and the upload is still there to abort.
+        store.meta(cxt, bucket, "staging/s1").shouldBeNull()
+        store.abortStaged(cxt, bucket, "staging/s1", token) shouldBe true
+    }
+
+    "a range is fetched as that range alone, once the file is known to be there by its metadata" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        store.put(cxt, bucket, "files/v", ByteArray(1000), meta(ByteArray(1000)))
+        api.calls.clear()
+
+        store.openRange(cxt, bucket, "files/v", 10, 20).shouldNotBeNull().use { it.readAllBytes() }.size shouldBe 20
+        api.calls shouldContainExactly listOf("head $bucket/files/v.meta.json", "getRange $bucket/files/v 10+20")
+    }
+
+    "a move copies the content, then the metadata, and only then removes the key moved from" {
+        val api = FakeS3Api(bucket)
+        val store = S3FileStore(api)
+        store.put(cxt, bucket, "staging/s1", "abc".toByteArray(), meta("abc".toByteArray()))
+        api.calls.clear()
+
+        store.move(cxt, bucket, "staging/s1", "files/h") shouldBe true
+        api.calls shouldContainExactly listOf(
+            "head $bucket/staging/s1.meta.json",
+            "copy $bucket/staging/s1 files/h",
+            "copy $bucket/staging/s1.meta.json files/h.meta.json",
+            "delete $bucket/staging/s1.meta.json",
+            "delete $bucket/staging/s1",
+        )
+    }
 })

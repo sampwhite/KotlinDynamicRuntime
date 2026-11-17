@@ -5,8 +5,9 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FMETA
+import com.dynamicruntime.common.filestore.FSTAGE
+import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.fileMetaEndpoint
 import com.dynamicruntime.common.gedra.CLD
@@ -19,12 +20,14 @@ import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.util.Sha256
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 /**
@@ -230,6 +233,38 @@ class EndpointSkillExamplesTest : StringSpec({
         // "delete(...) says whether there was one."
         files.delete(cxt, "client-files", "clients/acme/logo") shouldBe true
         files.delete(cxt, "client-files", "clients/acme/logo") shouldBe false
+    }
+
+    // Transcribed from the skill's large-file example (issue #1835): two parts, the hash handed in, a move to the key
+    // the hash names, and a range read back.
+    "a large file arrives in parts, is named by its hash, and is read in ranges" {
+        val collector = SchemaCollector()
+        collector.addFileBucket(FileBucketDef("client-files", "Files a client's people upload."))
+        val config = KdrInstanceConfig("endpointSkillLargeFiles", ENV.unit, ENV.liveSource)
+        config.put(SchemaCollector.key, collector)
+        val cxt = KdrCxt("endpointSkillLargeFiles", config)
+        config.put(FileStoreService.serviceName, FileStoreService().apply { onCreate(cxt); checkInit(cxt) })
+        val files = FileStoreService.get(cxt).forOwner(cxt, "acme")
+        val upload = object { val id = "u1" }
+        val firstChunk = ByteArray(FSTAGE.minPartSize.toInt()) { (it % 13).toByte() }
+        val lastChunk = ByteArray(100) { 7 }
+        val runningHash = Sha256().update(firstChunk).update(lastChunk)
+
+        val key = "clients/acme/staging/${upload.id}"
+        val token = files.beginStaged(cxt, "client-files", key, "video/mp4")
+        val parts = listOf(
+            files.putPart(cxt, "client-files", key, token, 1, firstChunk), // at least 5 MiB: not the last
+            files.putPart(cxt, "client-files", key, token, 2, lastChunk),
+        )
+        val stored = files.completeStaged(cxt, "client-files", key, token, parts, "video/mp4", hash = runningHash.hexDigest())
+        files.move(cxt, "client-files", key, "clients/acme/files/${stored.hash}")
+
+        val range = files.openRange(cxt, "client-files", "clients/acme/files/${stored.hash}", offset = 1_000, length = 64)?.stream?.use { it.readAllBytes() }
+
+        range?.toList() shouldBe firstChunk.copyOfRange(1_000, 1_064).toList()
+        stored.size shouldBe firstChunk.size.toLong() + 100
+        // The hash handed in is the content's: a whole read, which checks it, agrees.
+        files.get(cxt, "client-files", "clients/acme/files/${stored.hash}").shouldNotBeNull().meta.hash shouldBe stored.hash
     }
 
     // Transcribed from the skill's meta-only read, in the Files section: beside a download, by its inputs.

@@ -29,6 +29,12 @@ object FLEFT {
      */
     const val mismatch = "mismatch"
 
+    /**
+     * An upload begun and never completed or aborted (issue #1835): parts a store holds -- on S3 an incomplete multipart
+     * upload, which S3 charges for and lists nowhere else -- that no file is made of. Its name is the store's token for it.
+     */
+    const val staged = "staged"
+
     /** In [FileMeta.extra] of metadata a repair rewrote: when it did. */
     const val metaRewrittenAt = "metaRewrittenAt"
 
@@ -58,6 +64,7 @@ class FileLeftover(
         FLEFT.contentOnly -> "'$key' has content and no metadata: a write that stopped between the two. It is no file."
         FLEFT.metaOnly -> "'$key' has metadata and no content: its metadata answers for a file that cannot be read."
         FLEFT.unreadableMeta -> "'$key' has content beside metadata that cannot be read. It is no file."
+        FLEFT.staged -> "'$key' has an upload begun and never finished, whose parts the store still holds."
         FLEFT.mismatch ->
             "'$key' does not match its metadata: its content hashes to $contentHash, its metadata records " +
                 "${meta?.hash}. Every read of it is refused."
@@ -70,6 +77,7 @@ class FileLeftover(
             "rewrite its metadata from the content there -- the size and hash recomputed, the type, name and who " +
                 "stored it carried over -- so it can be read again"
         FLEFT.unreadableMeta -> "remove it, content and metadata"
+        FLEFT.staged -> "abort the upload, dropping its parts"
         else -> "remove '$name'"
     }
 }
@@ -87,6 +95,9 @@ class FileLeftover(
  * repaired ([FileStore.clearLeftover], [FileStore.rewriteMeta]) -- on a directory store under the key's lock, which a
  * write holds throughout, so there what is found there belongs to nobody. A file whose content its metadata does not
  * match keeps its content: the old content is gone, and the caller did ask for this one to be stored.
+ *
+ * **An upload under way is a leftover too, once it is old enough** ([FLEFT.staged], issue #1835): a slow upload is
+ * told from an abandoned one only by its age, so the cutoff a repair is given must be longer than an upload is let run.
  */
 object FileStoreCheck {
     /**
@@ -107,6 +118,10 @@ object FileStoreCheck {
                 obj.name.endsWith(FileMeta.metaSuffix) -> obj.name.removeSuffix(FileMeta.metaSuffix).takeIf { FNAME.keyProblem(it) == null }?.let { keys.add(it) }
                 FNAME.keyProblem(obj.name) == null -> keys.add(obj.name)
             }
+        }
+        // An upload's parts are no object: a store holds them apart, and lists them apart.
+        for (upload in store.stagedUploads(cxt, bucket)) {
+            out.add(FileLeftover(bucket, upload.key, upload.token, FLEFT.staged, upload.startedAt))
         }
         for (key in keys) {
             val content = objects[key]

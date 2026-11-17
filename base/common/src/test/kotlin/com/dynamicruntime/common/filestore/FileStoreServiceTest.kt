@@ -422,4 +422,95 @@ class FileStoreServiceTest : StringSpec({
         // The prefix every client key is built from.
         FNAME.clientKeyPrefix("acme") shouldBe "clients/acme/"
     }
+
+    // Issue #1835: a large file arrives in parts and is read in ranges.
+    "an upload in parts becomes a file whose metadata is the parts' size, the hash its caller worked out, and who stored it" {
+        val cxt = memoryCxt()
+        val service = started(cxt)
+        cxt.userProfile = UserProfile(authId = "pat", userId = 77, client = "acme")
+        cxt.client = "acme"
+        val acme = service.forOwner(cxt, "acme")
+        val first = ByteArray(FSTAGE.minPartSize.toInt()) { (it % 7).toByte() }
+        val last = "the end".toByteArray()
+        val whole = first + last
+
+        val token = acme.beginStaged(cxt, bucket, "clients/acme/staging/s1", "video/mp4")
+        val parts = listOf(
+            acme.putPart(cxt, bucket, "clients/acme/staging/s1", token, 1, first),
+            acme.putPart(cxt, bucket, "clients/acme/staging/s1", token, 2, last),
+        )
+        val meta = acme.completeStaged(
+            cxt, bucket, "clients/acme/staging/s1", token, parts, "video/mp4", whole.sha256Hex(), fileName = "../Visit.mp4",
+        )
+
+        meta.size shouldBe whole.size.toLong()
+        meta.hash shouldBe whole.sha256Hex()
+        meta.fileName shouldBe "Visit.mp4"
+        meta.uploadedBy shouldBe 77
+        meta.client shouldBe "acme"
+        // Moved to the key its hash names, and read back whole -- which checks the hash it was given.
+        acme.move(cxt, bucket, "clients/acme/staging/s1", "clients/acme/files/${meta.hash}") shouldBe true
+        acme.get(cxt, bucket, "clients/acme/files/${meta.hash}").shouldNotBeNull().bytes.toList() shouldBe whole.toList()
+        acme.meta(cxt, bucket, "clients/acme/staging/s1").shouldBeNull()
+    }
+
+    "a part plan every store would take is the only one completed, whichever the store" {
+        val cxt = memoryCxt()
+        val acme = started(cxt).forOwner(cxt, "acme")
+        val key = "clients/acme/staging/plan"
+        val token = acme.beginStaged(cxt, bucket, key, "video/mp4")
+        val small = acme.putPart(cxt, bucket, key, token, 1, "small".toByteArray())
+        val big = acme.putPart(cxt, bucket, key, token, 2, ByteArray(FSTAGE.minPartSize.toInt()))
+        val hash = "0".repeat(64)
+
+        fun refusal(parts: List<StagedPart>, withHash: String = hash): String =
+            shouldThrow<KdrException> { acme.completeStaged(cxt, bucket, key, token, parts, "video/mp4", withHash) }
+                .also { it.code shouldBe EXC.badInput }.message.orEmpty()
+
+        // Only the last part may be smaller than S3's smallest -- the memory store would take it, S3 would not.
+        refusal(listOf(small, big)) shouldContain "every part but the last must be at least ${FSTAGE.minPartSize}"
+        refusal(listOf(big, big)) shouldContain "not in rising order"
+        refusal(emptyList()) shouldContain "names no part"
+        refusal(listOf(big), "ABC") shouldContain "64 lower-case hex digits"
+        acme.meta(cxt, bucket, key).shouldBeNull()
+
+        // A part is 1 byte to the most one request carries, and numbered as S3 numbers them.
+        shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, 0, "x".toByteArray()) }.code shouldBe EXC.badInput
+        shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, FSTAGE.maxParts + 1, "x".toByteArray()) }
+        shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, token, 3, ByteArray(0)) }.message shouldContain "1 to"
+        shouldThrow<KdrException> { acme.putPart(cxt, bucket, key, "", 3, "x".toByteArray()) }.message shouldContain "Not an upload token"
+
+        acme.abortStaged(cxt, bucket, key, token) shouldBe true
+    }
+
+    "a range is read within the file its metadata describes, and an empty one asks nothing of the store" {
+        val cxt = memoryCxt()
+        val acme = started(cxt).forOwner(cxt, "acme")
+        val bytes = ByteArray(100) { it.toByte() }
+        acme.put(cxt, bucket, "clients/acme/files/v", ContentData(bytes, "video/mp4"))
+
+        val read = acme.openRange(cxt, bucket, "clients/acme/files/v", 90, 10).shouldNotBeNull()
+        read.meta.size shouldBe 100
+        read.stream.use { it.readAllBytes() }.toList() shouldBe bytes.copyOfRange(90, 100).toList()
+        acme.openRange(cxt, bucket, "clients/acme/files/v", 100, 0).shouldNotBeNull().stream.use { it.readAllBytes() }.size shouldBe 0
+
+        for ((offset, length) in listOf(95L to 10L, -1L to 5L, 0L to -1L)) {
+            shouldThrow<KdrException> { acme.openRange(cxt, bucket, "clients/acme/files/v", offset, length) }.code shouldBe EXC.badInput
+        }
+        acme.openRange(cxt, bucket, "clients/acme/files/none", 0, 1).shouldBeNull()
+    }
+
+    "an upload and a move take only the keys the view does" {
+        val cxt = memoryCxt()
+        val service = started(cxt)
+        val acme = service.forOwner(cxt, "acme")
+        service.forOwner(cxt, "globex").put(cxt, bucket, "clients/globex/files/g", ContentData("g", "text/plain"))
+        acme.put(cxt, bucket, "clients/acme/files/a", ContentData("a", "text/plain"))
+
+        shouldThrow<KdrException> { acme.beginStaged(cxt, bucket, "clients/globex/staging/x", "video/mp4") }
+        shouldThrow<KdrException> { acme.move(cxt, bucket, "clients/acme/files/a", "clients/globex/files/g") }
+        shouldThrow<KdrException> { acme.move(cxt, bucket, "clients/globex/files/g", "clients/acme/files/b") }
+        shouldThrow<KdrException> { acme.openRange(cxt, bucket, "clients/globex/files/g", 0, 1) }
+        service.forOwner(cxt, "globex").get(cxt, bucket, "clients/globex/files/g").shouldNotBeNull()
+    }
 })

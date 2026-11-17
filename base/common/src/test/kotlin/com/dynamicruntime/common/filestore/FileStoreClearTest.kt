@@ -60,6 +60,20 @@ class FileStoreClearTest : StringSpec({
             store.objects(cxt, bucket).map { it.name }.none { it.startsWith("clients/visitor") || it.startsWith(fileRef) } shouldBe true
             store.ensureBucket(cxt, bucket).shouldBeEmpty()
         }
+
+        // Issue #1835: an upload under way holds no object, and is counted by its key all the same.
+        "$name: an upload never finished goes with the files, unless its key is kept" {
+            val store = create().also { it.ensureBucket(cxt, bucket).shouldBeEmpty() }
+            val dropped = store.beginStaged(cxt, bucket, "clients/visitor/staging/s1", "video/mp4")
+            store.putPart(cxt, bucket, "clients/visitor/staging/s1", dropped, 1, "x".toByteArray())
+            store.beginStaged(cxt, bucket, "clients/acme/web/staging", "video/mp4")
+
+            val plan = FileStoreClear.plan(cxt, store, bucket, keep)
+            plan.remove shouldBe listOf("clients/visitor/staging/s1")
+            plan.keep shouldBe listOf("clients/acme/web/staging")
+            FileStoreClear.clear(cxt, store, plan, Clock.System.now())
+            store.stagedUploads(cxt, bucket).map { it.key } shouldBe listOf("clients/acme/web/staging")
+        }
     }
 
     "a local store's leftovers of a removed file go too" {

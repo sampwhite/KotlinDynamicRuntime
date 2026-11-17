@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentData
+import java.io.InputStream
 import kotlin.time.Instant
 
 /** The kinds of file store a deployment can run on; a `KDR_FILE_STORE_TYPE` value. */
@@ -180,6 +181,40 @@ class StoredFile(val bytes: ByteArray, val meta: FileMeta) {
 }
 
 /**
+ * The rules a file put together from staged parts is held to (issue #1835), the same on every provider so that a
+ * part plan one store takes is one they all take: S3's, which is the strictest.
+ */
+@Suppress("ConstPropertyName")
+object FSTAGE {
+    /** The smallest a part may be, except the last: S3 refuses a smaller one when the upload completes. */
+    const val minPartSize = 5L * 1024 * 1024
+
+    /** The largest a part may be: what one request is trusted to carry, and what a node holds in memory at once. */
+    const val maxPartSize = 64L * 1024 * 1024
+
+    /** The most parts a file may be made of: S3's limit. */
+    const val maxParts = 10_000
+
+    /** The longest a staged upload's token may be: S3's upload ids are long, and nothing else is longer. */
+    const val maxTokenLength = 1024
+}
+
+/**
+ * One part of a staged upload as a store took it (issue #1835): its [number] (1 and up), its [size], and the [tag] the
+ * store gave it -- S3's ETag, which completing the upload must name -- so a part written again is told from the one
+ * it replaced.
+ */
+class StagedPart(val number: Int, val size: Long, val tag: String) {
+    override fun toString(): String = "$number:$size:$tag"
+}
+
+/**
+ * An upload a store holds parts of and that was never completed or aborted (issue #1835): the [key] it is for, the
+ * store's [token] for it, and when it began. What [FileStoreCheck] reports, and its repair aborts.
+ */
+class StagedUpload(val key: String, val token: String, val startedAt: Instant)
+
+/**
  * A place files are kept: one of the providers behind [FileStoreService] (issue #1129), which is what the rest
  * of the code calls. A provider is handed names the service has already checked ([FNAME]) and buckets a
  * component declared, and does nothing but keep and return what it is given.
@@ -272,4 +307,46 @@ interface FileStore {
      * it did. The repair of content its metadata does not match ([FLEFT.mismatch]).
      */
     fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean
+
+    /**
+     * The bytes of the file at [key] from [offset], [length] of them, as a stream the caller closes; null when there is
+     * no such file (issue #1835). The range is within the file -- the service holds it to the metadata's size -- and
+     * the bytes are **not checked against the metadata's hash**: a file read in ranges is one whose key names its
+     * content ([FileStoreService.FileStoreView.openRange]), never rewritten, and checked once, when it was finished.
+     */
+    fun openRange(cxt: KdrCxt, bucket: String, key: String, offset: Long, length: Long): InputStream?
+
+    /**
+     * Begins an upload of the file at [key], to be put together from parts ([putPart]) and finished by
+     * [completeStaged]; answers the store's token for it. Nothing is at [key] until it completes, and a file already
+     * there is untouched until then. [mimeType] is the content's, which S3 records when the upload begins.
+     */
+    fun beginStaged(cxt: KdrCxt, bucket: String, key: String, mimeType: String): String
+
+    /**
+     * Stores [bytes] as part [number] of the upload [token] of [key], replacing a part of that number written before;
+     * answers the part as the store took it. Parts may arrive in any order.
+     */
+    fun putPart(cxt: KdrCxt, bucket: String, key: String, token: String, number: Int, bytes: ByteArray): StagedPart
+
+    /**
+     * Puts [parts], in order, together as the file at [key], with [meta] beside it, and ends the upload [token]: the
+     * content, then the metadata, as [put] writes a file, replacing one already there. Each part named must be one
+     * [putPart] answered, as it answered it; the service checks the plan ([FSTAGE]) and that [meta]'s size is theirs.
+     */
+    fun completeStaged(cxt: KdrCxt, bucket: String, key: String, token: String, parts: List<StagedPart>, meta: FileMeta)
+
+    /** Ends the upload [token] of [key] without a file, dropping its parts; whether there was such an upload. */
+    fun abortStaged(cxt: KdrCxt, bucket: String, key: String, token: String): Boolean
+
+    /** The uploads begun in [bucket] and neither completed nor aborted, in key order (issue #1835). */
+    fun stagedUploads(cxt: KdrCxt, bucket: String): List<StagedUpload>
+
+    /**
+     * Moves the file at [from] to [to], content and metadata, replacing a file at [to]; whether there was one at
+     * [from] (issue #1835). What a file put together under a key of its own is moved by, once its name is known.
+     * Never a moment when [to] has [from]'s metadata without its content: a stop part-way leaves at most what a put
+     * that stopped leaves.
+     */
+    fun move(cxt: KdrCxt, bucket: String, from: String, to: String): Boolean
 }

@@ -10,7 +10,10 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
+import software.amazon.awssdk.services.s3.model.CompletedPart
 import software.amazon.awssdk.services.s3.model.S3Exception
+import java.io.InputStream
 import java.net.URI
 import kotlin.time.Instant
 
@@ -47,6 +50,33 @@ interface S3Api {
 
     /** Every object beginning with [prefix], in key order, with when it was last written (issue #1147). */
     fun listObjects(bucket: String, prefix: String): List<StoredObject>
+
+    /**
+     * [length] bytes of the object at [key] from [offset], as a stream the caller closes; null when there is no such
+     * object (issue #1835). [length] is at least 1: an empty range is not one S3 can be asked for.
+     */
+    fun getRange(bucket: String, key: String, offset: Long, length: Long): InputStream?
+
+    /** Copies the object at [from] to [to] in [bucket], replacing one there; false when there is nothing at [from]. */
+    fun copy(bucket: String, from: String, to: String): Boolean
+
+    /** Begins a multipart upload of [key]; S3's upload id for it. */
+    fun createMultipart(bucket: String, key: String, contentType: String): String
+
+    /** Uploads [bytes] as part [number] of [uploadId]; the part's ETag, or null when there is no such upload. */
+    fun uploadPart(bucket: String, key: String, uploadId: String, number: Int, bytes: ByteArray): String?
+
+    /**
+     * Completes [uploadId] from [parts] (number to ETag, in order), which makes the object at [key]; false when there is
+     * no such upload.
+     */
+    fun completeMultipart(bucket: String, key: String, uploadId: String, parts: List<Pair<Int, String>>): Boolean
+
+    /** Aborts [uploadId], dropping its parts; false when there is no such upload. */
+    fun abortMultipart(bucket: String, key: String, uploadId: String): Boolean
+
+    /** The multipart uploads under way in [bucket], in key order. */
+    fun listMultipart(bucket: String): List<StagedUpload>
 }
 
 /**
@@ -122,6 +152,53 @@ class SdkS3Api(val region: String, val endpoint: String? = null) : S3Api, AutoCl
         call("list the bucket '$bucket'") {
             client.listObjectsV2Paginator { it.bucket(bucket).prefix(prefix) }.contents()
                 .map { StoredObject(it.key(), Instant.fromEpochMilliseconds(it.lastModified().toEpochMilli())) }
+        }
+
+    override fun getRange(bucket: String, key: String, offset: Long, length: Long): InputStream? =
+        call<InputStream?>("read '$key' in the bucket '$bucket'", absent = null) {
+            // An HTTP range names its last byte, not one past it.
+            client.getObject { it.bucket(bucket).key(key).range("bytes=$offset-${offset + length - 1}") }
+        }
+
+    override fun copy(bucket: String, from: String, to: String): Boolean =
+        call("copy '$from' to '$to' in the bucket '$bucket'", absent = false) {
+            client.copyObject { it.sourceBucket(bucket).sourceKey(from).destinationBucket(bucket).destinationKey(to) }
+            true
+        }
+
+    override fun createMultipart(bucket: String, key: String, contentType: String): String =
+        call("begin an upload of '$key' in the bucket '$bucket'") {
+            client.createMultipartUpload { it.bucket(bucket).key(key).contentType(contentType) }.uploadId()
+        }
+
+    override fun uploadPart(bucket: String, key: String, uploadId: String, number: Int, bytes: ByteArray): String? =
+        call<String?>("store part $number of the upload of '$key' in the bucket '$bucket'", absent = null) {
+            client.uploadPart(
+                { it.bucket(bucket).key(key).uploadId(uploadId).partNumber(number).contentLength(bytes.size.toLong()) },
+                RequestBody.fromBytes(bytes),
+            ).eTag()
+        }
+
+    override fun completeMultipart(bucket: String, key: String, uploadId: String, parts: List<Pair<Int, String>>): Boolean =
+        call("complete the upload of '$key' in the bucket '$bucket'", absent = false) {
+            val completed = parts.map { (number, tag) -> CompletedPart.builder().partNumber(number).eTag(tag).build() }
+            client.completeMultipartUpload {
+                it.bucket(bucket).key(key).uploadId(uploadId).multipartUpload(CompletedMultipartUpload.builder().parts(completed).build())
+            }
+            true
+        }
+
+    override fun abortMultipart(bucket: String, key: String, uploadId: String): Boolean =
+        call("abort the upload of '$key' in the bucket '$bucket'", absent = false) {
+            client.abortMultipartUpload { it.bucket(bucket).key(key).uploadId(uploadId) }
+            true
+        }
+
+    override fun listMultipart(bucket: String): List<StagedUpload> =
+        call("list the uploads under way in the bucket '$bucket'") {
+            client.listMultipartUploadsPaginator { it.bucket(bucket) }.uploads()
+                .map { StagedUpload(it.key(), it.uploadId(), Instant.fromEpochMilliseconds(it.initiated().toEpochMilli())) }
+                .sortedBy { it.key }
         }
 
     override fun close() = client.close()

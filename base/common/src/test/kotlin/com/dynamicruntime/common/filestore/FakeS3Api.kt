@@ -4,6 +4,9 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.TreeMap
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -11,8 +14,11 @@ import kotlin.time.Instant
 /**
  * S3 as a map, for running [S3FileStore] without a network: the buckets that exist, the objects in each, and a
  * record of every call made, so a test can say what was fetched as well as what came back.
+ *
+ * Multipart uploads are held to S3's rule that every part but the last is at least [minPartSize], which a test may
+ * lower to work with small parts; S3's own is [FSTAGE.minPartSize].
  */
-class FakeS3Api(vararg existingBuckets: String) : S3Api {
+class FakeS3Api(vararg existingBuckets: String, val minPartSize: Long = FSTAGE.minPartSize) : S3Api {
     override val location: String = "fake S3"
 
     /** The buckets that exist; an object call against any other fails, as S3's would. */
@@ -93,4 +99,80 @@ class FakeS3Api(vararg existingBuckets: String) : S3Api {
         listSizes.add(maxKeys)
         return objects.keys.filter { it.startsWith("$bucket/$prefix") }.map { it.removePrefix("$bucket/") }.take(maxKeys)
     }
+
+    /** An upload under way: its bucket and key, when it began, and its parts by number. */
+    class Multipart(val bucket: String, val key: String, val startedAt: Instant) {
+        val parts = TreeMap<Int, ByteArray>()
+    }
+
+    /** The uploads under way, by upload id. */
+    val multiparts = LinkedHashMap<String, Multipart>()
+
+    private var nextUpload = 0
+
+    override fun getRange(bucket: String, key: String, offset: Long, length: Long): InputStream? {
+        reached("getRange $bucket/$key $offset+$length", bucket)
+        require(length >= 1) { "An empty range is not one S3 can be asked for." }
+        val bytes = objects["$bucket/$key"] ?: return null
+        // S3 answers a range past the end with what there is of it, as here.
+        val end = minOf(bytes.size.toLong(), offset + length).toInt()
+        return ByteArrayInputStream(bytes.copyOfRange(minOf(offset.toInt(), end), end))
+    }
+
+    override fun copy(bucket: String, from: String, to: String): Boolean {
+        reached("copy $bucket/$from $to", bucket)
+        val bytes = objects["$bucket/$from"] ?: return false
+        objects["$bucket/$to"] = bytes.copyOf()
+        contentTypes["$bucket/$from"]?.let { contentTypes["$bucket/$to"] = it }
+        modified["$bucket/$to"] = clock()
+        return true
+    }
+
+    override fun createMultipart(bucket: String, key: String, contentType: String): String {
+        reached("createMultipart $bucket/$key", bucket)
+        val id = "upload${++nextUpload}"
+        multiparts[id] = Multipart(bucket, key, clock())
+        contentTypes["$bucket/$key"] = contentType
+        return id
+    }
+
+    override fun uploadPart(bucket: String, key: String, uploadId: String, number: Int, bytes: ByteArray): String? {
+        reached("uploadPart $bucket/$key $number", bucket)
+        val upload = multiparts[uploadId]?.takeIf { it.bucket == bucket && it.key == key } ?: return null
+        upload.parts[number] = bytes.copyOf()
+        return etagOf(bytes)
+    }
+
+    override fun completeMultipart(bucket: String, key: String, uploadId: String, parts: List<Pair<Int, String>>): Boolean {
+        reached("completeMultipart $bucket/$key", bucket)
+        val upload = multiparts[uploadId]?.takeIf { it.bucket == bucket && it.key == key } ?: return false
+        val out = ByteArrayOutputStream()
+        parts.forEachIndexed { i, (number, tag) ->
+            val bytes = upload.parts[number]
+            if (bytes == null || etagOf(bytes) != tag) {
+                throw KdrException("S3 could not complete: InvalidPart $number.", null, EXC.notAvailable, SRC.network, ACT.io)
+            }
+            if (i < parts.size - 1 && bytes.size < minPartSize) {
+                throw KdrException("S3 could not complete: EntityTooSmall, part $number.", null, EXC.notAvailable, SRC.network, ACT.io)
+            }
+            out.write(bytes)
+        }
+        objects["$bucket/$key"] = out.toByteArray()
+        modified["$bucket/$key"] = clock()
+        multiparts.remove(uploadId)
+        return true
+    }
+
+    override fun abortMultipart(bucket: String, key: String, uploadId: String): Boolean {
+        reached("abortMultipart $bucket/$key", bucket)
+        return multiparts[uploadId]?.takeIf { it.bucket == bucket && it.key == key }?.let { multiparts.remove(uploadId) } != null
+    }
+
+    override fun listMultipart(bucket: String): List<StagedUpload> {
+        reached("listMultipart $bucket", bucket)
+        return multiparts.filterValues { it.bucket == bucket }.map { (id, u) -> StagedUpload(u.key, id, u.startedAt) }.sortedBy { it.key }
+    }
+
+    /** What S3 tags a part with: here, its length and a checksum, which differ for different bytes. */
+    private fun etagOf(bytes: ByteArray): String = "\"${bytes.size}-${bytes.contentHashCode()}\""
 }

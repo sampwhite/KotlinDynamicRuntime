@@ -184,4 +184,23 @@ class LocalFileStoreTest : StringSpec({
         shouldThrow<KdrException> { store.get(cxt, "../$bucket", "doc") }
         filesUnder(root.parentFile).filter { it.endsWith("escape") }.shouldBeEmpty()
     }
+
+    // Issue #1835: an upload's parts are kept apart from the bucket, under a name no bucket or key can take.
+    "an upload's parts are kept outside the bucket, and a token that is not the store's names no directory" {
+        val root = tempDir()
+        val store = LocalFileStore(root).also { it.ensureBucket(cxt, bucket).shouldBeEmpty() }
+        val token = store.beginStaged(cxt, bucket, "clients/acme/staging/s1", "video/mp4")
+        store.putPart(cxt, bucket, "clients/acme/staging/s1", token, 1, "part".toByteArray())
+
+        File(root, "${LocalFileStore.stagingDirName}/$bucket/$token/1").readText() shouldBe "part"
+        store.objects(cxt, bucket).shouldBeEmpty()
+        FileStoreCheck.find(cxt, store, listOf(bucket)).map { it.kind } shouldBe listOf(FLEFT.staged)
+
+        for (bad in listOf("../../$bucket", "../x", token.uppercase(), "")) {
+            shouldThrow<KdrException> { store.putPart(cxt, bucket, "clients/acme/staging/s1", bad, 1, "x".toByteArray()) }
+            shouldThrow<KdrException> { store.abortStaged(cxt, bucket, "clients/acme/staging/s1", bad) }
+        }
+        // A token of the store's shape that names no upload is an answer.
+        store.abortStaged(cxt, bucket, "clients/acme/staging/s1", "0".repeat(32)) shouldBe false
+    }
 })

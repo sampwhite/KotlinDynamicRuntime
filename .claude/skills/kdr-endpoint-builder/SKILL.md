@@ -235,6 +235,40 @@ files.list(cxt, "client-files", limit = 100)
 files.delete(cxt, "client-files", "clients/acme/logo")
 ```
 
+**A large file -- a video -- never sits whole in memory** (issue #1835). It arrives **in parts** and is read **in
+ranges**, on every store alike:
+
+- `beginStaged(cxt, bucket, key, mimeType)` answers a token; `putPart(cxt, bucket, key, token, number, bytes)` stores
+  one part (any order, and a part sent again replaces the one before) and answers a `StagedPart` you hand back;
+  `completeStaged(cxt, bucket, key, token, parts, mimeType, hash)` puts them together as the file at `key`, with its
+  metadata. `abortStaged(...)` drops the parts.
+- **The plan is S3's on every store** (`FSTAGE`): every part but the last at least 5 MiB, numbers rising from 1, at most
+  64 MiB a part. A plan the memory store would take and S3 would not is refused before any store is asked.
+- **You hand in the hash**, the SHA-256 of the whole content, worked out from the bytes as they arrived (the kernel's
+  resumable `Sha256`), since the store is never made to read a 2 GB file back to hash it. So name the file **by its
+  hash**: complete it under a key of its own and `move(cxt, bucket, from, to)` it to one built from the hash. A key that
+  names its content is never rewritten, which is what lets it be read in ranges unchecked.
+- `openRange(cxt, bucket, key, offset, length)` answers a `RangedRead` -- the file's `FileMeta` and a stream of the
+  range, which you close -- or null. The range must lie within the file. **No hash check**, unlike `get`: for a file
+  whose key names its content only. A file that may be replaced in place is read whole, by `get`.
+- An upload neither completed nor aborted holds its parts (on S3, an incomplete multipart upload, which S3 charges
+  for): the operator's `CheckFileStore` finds it, and its repair aborts it once it is older than the cutoff.
+
+```kotlin
+// A video in two parts, named by its hash once whole.
+val key = "clients/acme/staging/${upload.id}"
+val token = files.beginStaged(cxt, "client-files", key, "video/mp4")
+val parts = listOf(
+    files.putPart(cxt, "client-files", key, token, 1, firstChunk), // at least 5 MiB: not the last
+    files.putPart(cxt, "client-files", key, token, 2, lastChunk),
+)
+val stored = files.completeStaged(cxt, "client-files", key, token, parts, "video/mp4", hash = runningHash.hexDigest())
+files.move(cxt, "client-files", key, "clients/acme/files/${stored.hash}")
+
+// A range of it, as a player seeks.
+files.openRange(cxt, "client-files", "clients/acme/files/${stored.hash}", offset = 1_000, length = 64)?.stream?.use { it.readAllBytes() }
+```
+
 **Beside a download, offer its meta-only read** (issue #1131): `fileMetaEndpoint`, from
 `com.dynamicruntime.common.filestore`, at the download's path with `/meta` after it, with the same inputs and in the
 same section -- who may read what a file is, is who may download it. It answers the file's `FileMeta` under
