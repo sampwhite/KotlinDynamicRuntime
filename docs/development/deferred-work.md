@@ -767,6 +767,17 @@ clone to another client id in this one.
   import. Left out because no client holds file refs yet, so no import meets the refusal; the first clone or restore
   of one that does is the trigger, and the refusal says exactly what is missing.
 
+## When something must ask about a streamed file with HEAD
+
+A file sent a range at a time (`StreamedContent`, issue #1836) answers GET only: a request is matched to its endpoint
+by method, and a video player seeks with ranged GETs, never HEAD.
+
+- **Answer HEAD for a streamed download** *(#1836, deferred here 2026-11-17).* Match a HEAD to the GET endpoint of the
+  same path when that endpoint returns a `StreamedContent`, run it, and send the headers the GET would (length,
+  `ETag`, `Accept-Ranges`) without opening the content. To decide: whether a section's rules treat it as the GET they
+  stand in for (`isDirectRead` reads the method), and whether any other endpoint answers HEAD. Trigger: a client that
+  needs it -- a download manager sizing a file before it fetches, a CDN revalidating.
+
 ## When a deployment keeps its files on S3
 
 The `s3` file store (issue #1129) has been run against Linode's S3-compatible Object Storage (issue #1271), and never

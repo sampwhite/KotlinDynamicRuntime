@@ -162,6 +162,25 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
         return handler
     }
 
+    /**
+     * Sends [body] as the request's raw bytes (issue #1836), as `application/octet-stream` unless [contentType] says
+     * otherwise, with [args] in the query string: a part of a large upload, to an endpoint that takes its body raw.
+     */
+    fun sendRawBodyRequest(
+        endpoint: String,
+        args: Map<String, Any?>?,
+        body: ByteArray,
+        contentType: String = RequestHandler.octetStream,
+        method: HttpMethod = HttpMethod.POST,
+    ): RequestHandler {
+        val headers = LinkedHashMap(curHeaders).apply { put("content-type", mutableListOf(contentType)) }
+        val handler = RequestHandler(instanceConfig, method.name, routed(endpoint), headers, cookies)
+        handler.queryStr = if (args != null) HttpUtil.encodeArgs(args) else ""
+        handler.testRawBody = body
+        execute(handler)
+        return handler
+    }
+
     fun sendJsonPostRequest(endpoint: String, data: Map<String, Any?>): Map<String, Any?> =
         sendEditRequest(endpoint, null, data, HttpMethod.POST).rptResponseData?.jsonMap() ?: emptyMap()
 

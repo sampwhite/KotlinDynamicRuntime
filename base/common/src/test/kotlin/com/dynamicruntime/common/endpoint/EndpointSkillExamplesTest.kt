@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.namableClients
 import com.dynamicruntime.common.http.request.ContentData
+import com.dynamicruntime.common.http.request.StreamedContent
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
@@ -29,6 +30,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
  * Holds `.claude/skills/kdr-endpoint-builder` to the code, by building its worked examples and checking the
@@ -98,6 +100,52 @@ class EndpointSkillExamplesTest : StringSpec({
     }
 
     fun endpoint(module: SchModule, path: String): KdrEndpoint = module.endpoints.first { it.path == path }
+
+    // Transcribed from the skill's ranges-and-parts example (issue #1836).
+    fun streamedExample(files: FileStoreService.FileStoreView): SchModule = schemaModule(cxt, "file") {
+        type("FileInfo") { type = SCT.kObject; property("id", "Id of the stored file.") }
+
+        // A video, a range at a time: the file store's ranged read behind the response's own.
+        fileDownloadEndpoint("/video", "A video.", inputFields = { field("key", "Which one.", required = true) }) { c, request ->
+            val key = "clients/acme/files/${request["key"]}"
+            val meta = files.meta(c, "client-files", key) ?: throw KdrException("No such video.", code = EXC.notFound)
+            StreamedContent(meta.mimeType, meta.size, meta.hash) { offset, length ->
+                files.openRange(c, "client-files", key, offset, length)?.stream ?: throw KdrException("No such video.", code = EXC.notFound)
+            }
+        }
+
+        // One part of an upload, its bytes the raw body.
+        fileChunkEndpoint("/upload/chunk", "Store one part.", outputRef = "FileInfo", maxBodyBytes = 8 * 1024 * 1024,
+            inputFields = { field("number", "Which part.", required = true) }) { _, request ->
+            val part = request[EP.rawBody] as ContentData
+            mapOf("id" to "${part.contentBytes().size}")
+        }
+    }
+
+    "a streamed download and a chunk endpoint are what the skill says" {
+        val collector = SchemaCollector()
+        collector.addFileBucket(FileBucketDef("client-files", "Files a client's people upload."))
+        val config = KdrInstanceConfig("endpointSkillStreamed", ENV.unit, ENV.liveSource)
+        config.put(SchemaCollector.key, collector)
+        val fileCxt = KdrCxt("endpointSkillStreamed", config)
+        config.put(FileStoreService.serviceName, FileStoreService().apply { onCreate(fileCxt); checkInit(fileCxt) })
+        val files = FileStoreService.get(fileCxt).forOwner(fileCxt, "acme")
+        files.put(fileCxt, "client-files", "clients/acme/files/v1", ContentData(ByteArray(100) { it.toByte() }, "video/mp4"))
+        val m = streamedExample(files)
+
+        // "A download returns a StreamedContent ... and an open(offset, length) the response asks for the one range".
+        val video = endpoint(m, "/video")
+        video.kind shouldBe EndpointKind.file
+        val streamed = video.handler(fileCxt, mapOf("key" to "v1")).shouldBeInstanceOf<StreamedContent>()
+        streamed.size shouldBe 100
+        streamed.open(10, 5).use { it.readAllBytes() }.toList() shouldBe (10..14).map { it.toByte() }
+
+        // "the request is application/octet-stream ... its body ... is the ContentData under EP.rawBody".
+        val chunk = endpoint(m, "/upload/chunk")
+        chunk.kind shouldBe EndpointKind.file
+        chunk.rawBodyMaxBytes shouldBe 8 * 1024 * 1024
+        chunk.inputFields.orEmpty().map { it.name } shouldContain EP.rawBody
+    }
 
     "the skill's example builds the endpoints it says it does" {
         example().endpoints.map { it.path } shouldContainExactlyInAnyOrder

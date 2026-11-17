@@ -269,6 +269,40 @@ files.move(cxt, "client-files", key, "clients/acme/files/${stored.hash}")
 files.openRange(cxt, "client-files", "clients/acme/files/${stored.hash}", offset = 1_000, length = 64)?.stream?.use { it.readAllBytes() }
 ```
 
+**Over HTTP, a large file is served in ranges and received in parts** (issue #1836):
+
+- **A download returns a `StreamedContent`** in place of a `ContentData`: its type, size, hash, name and
+  inline-or-download, and an `open(offset, length)` the response asks for the one range it sends. The response honors
+  `Range` (one range, a suffix, an open end; several ranges, another unit, or a range it cannot read get the whole
+  file), answers `If-None-Match` with a 304 and a range past the end with a 416, and always says `Accept-Ranges: bytes`.
+  The hash is the strong `ETag`, checked by `If-Range`. It is cached `private, no-cache`, never sniffed, and sandboxed
+  (`Content-Security-Policy: sandbox`) unless it is media a browser plays or draws. The bytes go out 64 KB at a time,
+  each write waited on, so a slow reader holds back the reading. A `ContentData` with a `hash` gets the `ETag` and the
+  304 too.
+- **A part arrives as a raw body**, through `fileChunkEndpoint(path, description, outputRef, maxBodyBytes, inputFields)`:
+  the request is `application/octet-stream` (a page elsewhere cannot send that without asking first, so nothing else is
+  read), its body -- at most `maxBodyBytes`, a 413 past it -- is the `ContentData` under `EP.rawBody`, and its other
+  input rides in the query string.
+- **No HEAD.** A request is matched by method, and a player seeks with ranged GETs.
+
+```kotlin
+// A video, a range at a time: the file store's ranged read behind the response's own.
+fileDownloadEndpoint("/video", "A video.", inputFields = { field("key", "Which one.", required = true) }) { c, request ->
+    val key = "clients/acme/files/${request["key"]}"
+    val meta = files.meta(c, "client-files", key) ?: throw KdrException("No such video.", code = EXC.notFound)
+    StreamedContent(meta.mimeType, meta.size, meta.hash) { offset, length ->
+        files.openRange(c, "client-files", key, offset, length)?.stream ?: throw KdrException("No such video.", code = EXC.notFound)
+    }
+}
+
+// One part of an upload, its bytes the raw body.
+fileChunkEndpoint("/upload/chunk", "Store one part.", outputRef = "FileInfo", maxBodyBytes = 8 * 1024 * 1024,
+    inputFields = { field("number", "Which part.", required = true) }) { _, request ->
+    val part = request[EP.rawBody] as ContentData
+    mapOf("id" to "${part.contentBytes().size}")
+}
+```
+
 **Beside a download, offer its meta-only read** (issue #1131): `fileMetaEndpoint`, from
 `com.dynamicruntime.common.filestore`, at the download's path with `/meta` after it, with the same inputs and in the
 same section -- who may read what a file is, is who may download it. It answers the file's `FileMeta` under

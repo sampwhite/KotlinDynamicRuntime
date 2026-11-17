@@ -183,6 +183,12 @@ enum class EndpointKind { general, item, list, file }
  */
 @Suppress("ConstPropertyName", "unused")
 object EP {
+    /**
+     * The input field holding a raw request body (issue #1836): a part of a large upload, on an endpoint that takes
+     * its body as bytes (`fileChunkEndpoint`), whose other input travels in the query string.
+     */
+    const val rawBody = "rawBody"
+
     // Output metadata (present on every endpoint).
     const val requestUri = "requestUri"
     const val duration = "duration"

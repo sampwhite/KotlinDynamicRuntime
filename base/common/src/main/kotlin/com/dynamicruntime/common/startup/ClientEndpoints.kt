@@ -144,5 +144,7 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         // answer's is the result's own type, and a form body is read only where the endpoint says so.
         bareResponse = endpoint.bareResponse,
         formBody = endpoint.formBody,
+        // And a raw body (issue #1836): the copy declares the same input, the bytes among it.
+        rawBodyMaxBytes = endpoint.rawBodyMaxBytes,
     )
 }

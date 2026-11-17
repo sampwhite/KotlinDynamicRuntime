@@ -110,6 +110,8 @@ class RequestBodyLimitTest : StringSpec({
         readout["defaultMaxBytes"] shouldBe BODY.defaultMaxBytes.toLong()
         readout["largeMaxBytes"] shouldBe largeMax.toLong()
         val root = RequestService.get(cxt).apiContextRoot
+        // Each with the most it takes: the large-body maximum, for these.
+        readout["endpoints"].toJsonListOfMaps().map { it["maxBytes"] }.toSet() shouldBe setOf(largeMax.toLong())
         readout["endpoints"].toJsonListOfMaps().map { it["method"] to it["path"] } shouldContainExactlyInAnyOrder listOf(
             "POST" to "/$root${CFEP.bundleWrite}",
             "POST" to "/$root${CFEP.bundlePatch}",

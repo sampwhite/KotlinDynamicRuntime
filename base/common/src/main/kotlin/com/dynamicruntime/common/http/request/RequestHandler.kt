@@ -31,6 +31,7 @@ import org.eclipse.jetty.http.MultiPartFormData
 import org.eclipse.jetty.io.Content
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.Response
+import org.eclipse.jetty.util.Blocker
 import org.eclipse.jetty.util.BufferUtil
 import org.eclipse.jetty.util.Callback
 import java.nio.ByteBuffer
@@ -134,6 +135,12 @@ class RequestHandler : WebRequest {
 
     private var sentResponse: Boolean = false
 
+    /**
+     * Whether Jetty's callback for this exchange has been completed already -- by a streamed response that failed
+     * after its status went out ([sendStreamedResponse]), which ends the connection. Completing it twice is an error.
+     */
+    private var callbackDone: Boolean = false
+
     // Test-mode input body + captured response.
     var testPostData: String? = null
 
@@ -143,6 +150,9 @@ class RequestHandler : WebRequest {
      * produces from a real request, so a test exercises the same handler code an upload does.
      */
     var testParts: Map<String, Any?>? = null
+
+    /** Test-mode raw body, standing in for the bytes of an `application/octet-stream` request ([readRawBody]). */
+    var testRawBody: ByteArray? = null
 
     /**
      * Set by the in-process test client to have the request keep its log lines (issue #1173) whoever the caller is,
@@ -404,6 +414,33 @@ class RequestHandler : WebRequest {
     }
 
     /**
+     * The request's body as raw bytes (issue #1836), for an endpoint that takes one
+     * ([com.dynamicruntime.common.endpoint.KdrEndpoint.rawBodyMaxBytes]): a part of a large upload, sent as
+     * [octetStream] and nothing else. That type is what keeps a page elsewhere from sending one: a browser posts a form
+     * cross-site without asking first, but never under this type. Refused (413) past [max] bytes -- on its
+     * `Content-Length` before anything is read, and otherwise one byte past [max].
+     */
+    fun readRawBody(max: Int): ByteArray {
+        if (!contentType.substringBefore(';').trim().equals(octetStream, ignoreCase = true)) {
+            throw KdrException.mkInput("This endpoint takes its body as raw bytes, sent as '$octetStream', not as '$contentType'.")
+        }
+        getRequestHeader("Content-Length")?.trim()?.toLongOrNull()?.let { declared ->
+            if (declared > max) throw rawBodyTooLarge(declared, max)
+        }
+        val req = jettyRequest
+        val bytes = if (req != null) {
+            Content.Source.asInputStream(req).use { it.readNBytes(max + 1) }
+        } else {
+            testRawBody ?: ByteArray(0)
+        }
+        if (bytes.size > max) throw rawBodyTooLarge(if (req == null) bytes.size.toLong() else null, max)
+        return bytes
+    }
+
+    private fun rawBodyTooLarge(size: Long?, max: Int): KdrException =
+        KdrException("The body${size?.let { " of $it bytes" }.orEmpty()} is larger than the $max bytes this endpoint takes.", code = EXC.payloadTooLarge)
+
+    /**
      * Reads a `multipart/form-data` body into input fields: a part with a filename becomes a [ContentData]
      * (the upload), any other part its text value. Jetty does the parsing -- it is transport infrastructure,
      * which the code guide admits libraries for, and a multipart parser is precisely the sort of fiddly,
@@ -487,11 +524,11 @@ class RequestHandler : WebRequest {
                 sendJsonResponse(
                     errorEnvelope(code, rendered.text, rendered.fromFragment, logRequestUri, extraData, meta), code,
                 )
-            } else {
+            } else if (!callbackDone) {
                 jettyCallback?.succeeded()
             }
         } catch (inner: Throwable) {
-            jettyCallback?.failed(inner)
+            if (!callbackDone) jettyCallback?.failed(inner)
         }
     }
 
@@ -615,6 +652,16 @@ class RequestHandler : WebRequest {
      */
     fun sendContentResponse(content: ContentData, code: Int) {
         requireNotSent("send a second response")
+        // Content that names its bytes by their hash carries it as its strong ETag (issue #1836), and a caller already
+        // holding them, who says so, is answered with no body.
+        val etag = content.hash?.takeIf { code == EXC.ok }?.let { ByteRanges.etagOf(it) }
+        if (etag != null) {
+            setResponseHeader(ByteRanges.etagHeader, etag)
+            if (ByteRanges.resolve(null, null, getRequestHeader(ByteRanges.ifNoneMatchHeader), etag, 0) == RangeAnswer.NotModified) {
+                sendNoBody(notModified)
+                return
+            }
+        }
         setStatusCode(code)
         setResponseContentType(content.mimeType)
         setReferrerPolicy()
@@ -646,6 +693,114 @@ class RequestHandler : WebRequest {
      */
     fun sendBytesResponse(body: ByteArray, code: Int, mimeType: String) =
         sendContentResponse(ContentData(body, mimeType), code)
+
+    /** Sends [code] with no body, the headers already set staying. */
+    private fun sendNoBody(code: Int) {
+        setStatusCode(code)
+        setReferrerPolicy()
+        sentResponse = true
+        rptResponseBytes = ByteArray(0)
+        jettyResponse?.write(true, BufferUtil.EMPTY_BUFFER, jettyCallback)
+    }
+
+    /**
+     * Sends [content] a range at a time (issue #1836): the whole of it with a 200, the one range the request asks for
+     * with a 206 ([ByteRanges]), a 304 when the caller's copy is current, or a 416 for a range past its end. Every
+     * answer says the content takes ranges (`Accept-Ranges`), carries its strong `ETag` when it has a hash, is cached
+     * privately and revalidated (`private, no-cache`: the content is a caller's, whose access is checked on every
+     * request), is never sniffed as another type, and -- unless it is media a browser plays or draws -- is sandboxed,
+     * so a document of the app's own origin can run nothing.
+     *
+     * The bytes are read from [StreamedContent.open] and written [streamBufferSize] at a time, each write waited on
+     * before the next is read, so a slow reader holds back the reading rather than filling memory. The stream is
+     * opened before anything is sent, so a failure to open is an ordinary error response. Once the status is out, a
+     * failure can only end the connection: a reader that went away -- a player seeking elsewhere -- is logged quietly,
+     * and a failure to read the content as the error it is.
+     *
+     * In test mode the range is captured in [rptResponseBytes].
+     */
+    fun sendStreamedResponse(cxt: KdrCxt, content: StreamedContent) {
+        requireNotSent("send a second response")
+        val etag = content.hash?.let { ByteRanges.etagOf(it) }
+        val answer = ByteRanges.resolve(
+            getRequestHeader(ByteRanges.rangeHeader), getRequestHeader(ByteRanges.ifRangeHeader),
+            getRequestHeader(ByteRanges.ifNoneMatchHeader), etag, content.size,
+        )
+        val (offset, length) = when (answer) {
+            is RangeAnswer.Partial -> answer.start to answer.length
+            RangeAnswer.Full -> 0L to content.size
+            else -> 0L to 0L
+        }
+        // Opened first: until a byte is sent, a failure is an ordinary error.
+        val stream = if (length > 0) content.open(offset, length) else null
+        stream.use {
+            setResponseHeader(ByteRanges.acceptRangesHeader, ByteRanges.bytesUnit)
+            etag?.let { setResponseHeader(ByteRanges.etagHeader, it) }
+            setResponseHeader(cacheControlHeader, privateRevalidate)
+            setResponseHeader(noSniffHeader, noSniff)
+            if (!content.isMedia()) setResponseHeader(contentSecurityPolicyHeader, sandboxPolicy)
+            when (answer) {
+                RangeAnswer.NotModified -> return sendNoBody(notModified)
+                RangeAnswer.Unsatisfiable -> {
+                    setResponseHeader(ByteRanges.contentRangeHeader, ByteRanges.unsatisfiedRange(content.size))
+                    setResponseHeader(contentLengthHeader, "0")
+                    return sendNoBody(rangeNotSatisfiable)
+                }
+                is RangeAnswer.Partial -> {
+                    setStatusCode(partialContent)
+                    setResponseHeader(ByteRanges.contentRangeHeader, ByteRanges.contentRange(answer, content.size))
+                }
+                RangeAnswer.Full -> setStatusCode(EXC.ok)
+            }
+            setResponseContentType(content.mimeType)
+            setResponseHeader(contentLengthHeader, length.toString())
+            content.contentDispositionHeader()?.let { setResponseHeader(ContentData.contentDispositionKey, it) }
+            setReferrerPolicy()
+            sentResponse = true
+            writeStream(cxt, stream, length)
+        }
+    }
+
+    /** Writes [length] bytes of [stream] as the body, ending the exchange; see [sendStreamedResponse]. */
+    private fun writeStream(cxt: KdrCxt, stream: java.io.InputStream?, length: Long) {
+        val resp = jettyResponse
+        if (resp == null) {
+            rptResponseBytes = stream?.readNBytes(length.toInt()) ?: ByteArray(0)
+            return
+        }
+        val buffer = ByteArray(streamBufferSize)
+        var sent = 0L
+        try {
+            while (stream != null && sent < length) {
+                val n = try {
+                    stream.read(buffer, 0, minOf(buffer.size.toLong(), length - sent).toInt())
+                } catch (e: java.io.IOException) {
+                    throw KdrException.mkFileIo("Could not read the content being sent for $method:$uri: ${e.message}", e, EXC.internalError)
+                }
+                if (n < 0) {
+                    throw KdrException.mkFileIo("The content being sent for $method:$uri ended after $sent of $length bytes.", null, EXC.internalError)
+                }
+                try {
+                    Blocker.callback().use { cb ->
+                        resp.write(false, ByteBuffer.wrap(buffer, 0, n), cb)
+                        cb.block()
+                    }
+                } catch (e: java.io.IOException) {
+                    // The reader went away, as a player does when it seeks elsewhere: nothing is wrong here.
+                    LogRequest.debug(cxt) { "The reader of $method:$uri stopped after $sent of $length bytes (${e.message})." }
+                    callbackDone = true
+                    jettyCallback?.failed(e)
+                    return
+                }
+                sent += n
+            }
+        } catch (e: Throwable) {
+            callbackDone = true
+            jettyCallback?.failed(e)
+            throw e
+        }
+        resp.write(true, BufferUtil.EMPTY_BUFFER, jettyCallback)
+    }
 
     /**
      * Sets [referrerPolicy] on the response (issue #1370), on every response this node sends -- a page, an asset, an
@@ -753,6 +908,26 @@ class RequestHandler : WebRequest {
 
         /** What [setReferrerPolicy] sends: a cross-site request is told the origin, never the path or query. */
         const val referrerPolicy = "strict-origin-when-cross-origin"
+
+        // A streamed response's statuses and headers (issue #1836).
+        const val partialContent = 206
+        const val notModified = 304
+        const val rangeNotSatisfiable = 416
+        const val contentLengthHeader = "Content-Length"
+        const val cacheControlHeader = "Cache-Control"
+        const val noSniffHeader = "X-Content-Type-Options"
+        const val noSniff = "nosniff"
+        const val contentSecurityPolicyHeader = "Content-Security-Policy"
+        const val sandboxPolicy = "sandbox"
+
+        /** Cached by the caller alone, and asked about again before each use: whose access is checked every time. */
+        const val privateRevalidate = "private, no-cache"
+
+        /** How many bytes a streamed response reads and writes at a time. */
+        const val streamBufferSize = 64 * 1024
+
+        /** The content type of a raw body ([readRawBody]): bytes, and nothing a browser's form can send. */
+        const val octetStream = "application/octet-stream"
 
         val explainError = DebugTagDef(
             "explainError",

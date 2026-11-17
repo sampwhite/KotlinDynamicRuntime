@@ -683,6 +683,13 @@ the in-process pipeline. It **carries cookies across calls**, so a login on one 
   wire to encode onto, so the parts reach the handler already decoded -- this exercises the endpoint, its
   validation and its handler, **not** Jetty's multipart parsing, which only a real request does (a browser or
   `curl -F` against your own server).
+- `sendRawBodyRequest(path, args, body)` → the `RequestHandler` of an `application/octet-stream` request whose body
+  is `body` (issue #1836): a part of an upload to a `fileChunkEndpoint`, `args` in the query string. A `contentType`
+  other than octet-stream is how a test shows it refused.
+- **Range requests** are headers on the client: `setHeader("Range", "bytes=0-99")` (and `If-Range`, `If-None-Match`)
+  before a GET of a download returning `StreamedContent`, then `rptStatusCode` (206, 304, 416), `rptResponseBytes`, and
+  `rptResponseHeaders["content-range"]`. Take the header off again (`curHeaders.remove("range")`): it rides on every
+  later request. Over a real socket, `TestHttpServer` with the JDK's `HttpClient` (`StreamedRangeEndpointTest`).
 - `sendGetRequestRaw("/st/…")` → the `RequestHandler` for a path **outside the API root** -- a content server's
   address. Read `rptStatusCode`, `rptResponseBytes` (a binary body; `rptResponseData` is a text one),
   `rptResponseMimeType` and `rptResponseHeaders` (keyed lower-case) from it.
