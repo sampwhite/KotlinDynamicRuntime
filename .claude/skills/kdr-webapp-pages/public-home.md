@@ -244,7 +244,8 @@ none of its own.
   validates and would refuse the username sign-in also takes. A code is six digits, and its field shows a phone's
   number pad (`AC.inputModeNumeric`) and keeps `autocomplete="one-time-code"`, so a phone offers a code it finds in a
   mail; the mail puts the code on a line of its own, where a phone looks for it, and never in the subject, which a
-  locked phone shows. The server ignores
+  locked phone shows. An iPhone (Apple's Mail app with Safari) was seen offering the six-digit code on
+  dynamicruntime.org in November 2026, so the code stays digits; Android (Gmail) has not been tried. The server ignores
   a space or a hyphen typed in it. **Chrome fills the remembered username into
   the code field** when it fills a password beside it (Register, sign-in's "Email me a code and set a password",
   Profile's password change), whatever the code field says, and on other sites too. A hidden username field, a
