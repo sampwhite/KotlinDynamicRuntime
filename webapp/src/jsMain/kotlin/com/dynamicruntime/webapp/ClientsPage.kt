@@ -219,8 +219,10 @@ val ClientsPage = FC<Props> {
     // A panel the address names (issue #1527): the assistant page's "Check impact and publish" leads to the publishing
     // panel. The sections above it fill in as their reads answer, moving it down, so it is followed for five seconds --
     // scrolled to again whenever it moves -- unless the reader scrolls the page themselves, which ends it at once.
+    // Keyed on the client too: from one client's publishing panel to its sandbox's, the section is the same and only the
+    // client changes.
     val section = routeParams()[HP.section]
-    useEffect(section) {
+    useEffect(section, openId) {
         if (section == null) return@useEffect
         var lastTop: Double? = null
         var scrolledTo: Double? = null
@@ -981,7 +983,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
         p {
             className = ClassName("subtitle")
             +("Labels are comma-separated; each is matched exactly as written. Label notes are one per line, " +
-                "the label, a colon, then who should carry it; a note on a label no longer suggested is dropped. " +
+                "the label, a colon, then who should have it; a note on a label no longer suggested is dropped. " +
                 "$timeZoneEditNote $numberFieldsEditNote " +
                 saveEffectText(props.savesDraft))
         }
@@ -1167,15 +1169,16 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                     }
                 }
             } else {
-                // "Publish from its sandbox": the word leads to the sandbox's own page, where this table publishes. An
-                // administrator who may open another client's detail goes straight there; a client-scoped one first
-                // opens the sandbox (#929) -- a fresh session as their user in it -- and lands on that page (#1001).
+                // "Publish from its sandbox": the word leads to the sandbox's own page, where this table publishes, at
+                // its publishing panel, where this link is. An administrator who may open another client's detail goes
+                // straight there; a client-scoped one first opens the sandbox (#929) -- a fresh session as their user in
+                // it -- and lands on that page (#1001).
                 span {
                     className = ClassName("type-hint")
                     +"Publish from its "
                     a {
                         className = ClassName("wf-cell-link")
-                        href = clientDetailHref(sandbox)
+                        href = clientDetailHref(sandbox, panelPublishing)
                         if (!props.acrossClients) {
                             title = "Open the sandbox and show this configuration there."
                             onClick = { e ->
@@ -1183,7 +1186,7 @@ val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                                 clientsScope.launch {
                                     try {
                                         AuthApi.openSandbox()
-                                        afterSessionChange(bump, listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
+                                        afterSessionChange(bump, clientDetailRoute(sandbox, panelPublishing))
                                     } catch (e: Throwable) {
                                         error = userFacingError(e)
                                     }
@@ -1431,7 +1434,8 @@ private val SandboxSection = FC<SandboxSectionProps> { props ->
             +"What is published here reaches $parentName's people. "
             a {
                 className = ClassName("wf-cell-link")
-                href = clientDetailHref(parent)
+                // At the parent's publishing panel, as the way in lands on the sandbox's.
+                href = clientDetailHref(parent, panelPublishing)
                 shellFacts.sandboxWayBackUserId?.takeIf { shellFacts.inSandbox }?.let { userId ->
                     title = "Leave the sandbox, and show $parentName's own page."
                     onClick = { e ->
@@ -1440,7 +1444,7 @@ private val SandboxSection = FC<SandboxSectionProps> { props ->
                         clientsScope.launch {
                             try {
                                 AuthApi.leaveSandbox(userId)
-                                afterSessionChange(bump, listOf(HP.page to HMENU.pageClients, HP.client to parent))
+                                afterSessionChange(bump, clientDetailRoute(parent, panelPublishing))
                             } catch (e: Throwable) {
                                 error = userFacingError(e)
                             }

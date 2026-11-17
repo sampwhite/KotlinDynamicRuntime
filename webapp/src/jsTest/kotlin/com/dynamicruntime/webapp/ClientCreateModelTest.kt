@@ -120,7 +120,7 @@ class ClientCreateModelTest {
             mapOf(CLD.client to "acme_east", CLD.present to false, CLD.loadFailure to "Not enabled in dev.", CLD.userFailure to "No identity."),
         )
         assertEquals(
-            "Created acme_east. This node does not carry it: Not enabled in dev. Your administrator user there could not be made: No identity.",
+            "Created acme_east. This node is not running it: Not enabled in dev. Your administrator user there could not be made: No identity.",
             clientCreatedText(absent),
         )
         assertFalse(clientCreatedSwitchable(absent))

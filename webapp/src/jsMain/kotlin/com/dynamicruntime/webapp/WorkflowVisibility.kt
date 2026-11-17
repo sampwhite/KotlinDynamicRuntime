@@ -96,7 +96,7 @@ fun visibilityFallbackLabel(params: WorkflowParamsView): String? = if (!params.o
 /** How a visibility save takes effect, said beside Save: at once, in the client or sandbox [clientId] names. */
 fun visibilityEffectText(clientId: String): String =
     if (isSandboxClient(clientId)) {
-        "Saving takes effect at once in this sandbox, and never reaches its client: a publish carries no visibility."
+        "Saving takes effect at once in this sandbox, and never reaches its client: publishing does not include visibility."
     } else {
         "Saving takes effect at once for this client's people, with no draft and no publish."
     }

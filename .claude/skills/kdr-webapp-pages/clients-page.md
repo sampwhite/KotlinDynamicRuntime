@@ -132,7 +132,10 @@ drafts. A visitor still opens and publishes from a sandbox that is there, where 
 A sandbox's own detail says whose it is. It also offers the way back (issue #1422), in the same panel as the publishing
 bar's "Publish from its sandbox" and whatever is published (`sandboxWayBackTarget`): **Back to <client>**, which in a
 sandbox session leaves it as the app bar's **Back to** does (`ShellFacts.sandboxWayBackUserId`, the same user) and
-lands on the client's page, and for an `allClients` administrator looking from outside is a plain link. It is in this
+lands on the client's page, and for an `allClients` administrator looking from outside is a plain link. The two links
+land on the other page's publishing panel (`clientDetailRoute` with `panelPublishing`), since each is in that panel,
+and the page follows the panel when only the client changes. The app bar's **Open sandbox** and **Back to** still go
+Home. It is in this
 section rather than beside the publishing bar because the bar is not drawn for a sandbox whose client holds no
 configuration made in the app (one defined in code, as the sample's acme is). In the listing each sandbox follows its
 parent (`withSandboxesBesideParents`) with a "sandbox of <name>" note (`sandboxRowNote`); the overview rows carry

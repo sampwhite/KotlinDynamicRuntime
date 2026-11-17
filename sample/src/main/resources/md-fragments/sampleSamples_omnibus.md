@@ -5,7 +5,7 @@
 # @home
 # +title Welcome to the samples
 # +intro
-This instance carries the **sample clients**, Acme and Globex: forms, workflows and their copy, built from
+This instance runs the **sample clients**, Acme and Globex: forms, workflows and their copy, built from
 configuration alone. Acme narrows what it takes and adds a trait of its own; Globex takes everything offered.
 
 On a test instance, **Become a user…** under Account signs you in as one of their people. Open **Documents**,

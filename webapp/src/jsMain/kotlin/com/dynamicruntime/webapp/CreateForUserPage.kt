@@ -129,7 +129,7 @@ val CreateForUserPage = FC<Props> {
                 p {
                     className = ClassName("subtitle")
                     +("Creating a form for ${userPickLabel(user.name, user.username, user.primaryId)} in " +
-                        "${user.client}. Add a section for each trait it should carry, then create it.")
+                        "${user.client}. Add a section for each trait it should have, then create it.")
                 }
 
                 SchemaForm {

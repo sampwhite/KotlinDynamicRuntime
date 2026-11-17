@@ -152,7 +152,7 @@ fun createOwnClientFailureText(result: CreateOwnClientResult): String? = when {
     result.userFailure != null ->
         "Your client '${result.client}' was created, but your administrator user there could not be: ${result.userFailure}"
     !result.present ->
-        "Your client '${result.client}' was created, but this site does not carry it" +
+        "Your client '${result.client}' was created, but this site is not running it" +
             (result.loadFailure?.let { ": $it" } ?: ".")
     else -> "Your client '${result.client}' was created, but the session could not move to it."
 }
@@ -328,7 +328,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
             }
             OwnClientCardMode.unavailable -> {
                 h2 { +"Your client" }
-                p { +"You created your own client, $label, but this site no longer carries it. A person creates one, so there is no other to make." }
+                p { +"You created your own client, $label, but this site is no longer running it. A person creates one, so there is no other to make." }
             }
             OwnClientCardMode.create -> {
                 // Made and moved to, but an image did not upload: the client exists, so nothing here is to be created

@@ -273,7 +273,7 @@ val DebugFragment = FC<Props> {
         h1 { +"Fragment pull" }
         p {
             className = ClassName("subtitle")
-            +("A content element from the server carries a fileId and a template string. Its backend %{@t(...)} " +
+            +("A content element from the server holds a fileId and a template string. Its backend %{@t(...)} " +
                 "pull is already resolved server-side; the frontend fetches that file's copy and resolves the " +
                 "remaining \${@t(...)} pull here.")
         }

@@ -1884,8 +1884,8 @@ private fun accessLevelOptions(operatorSelectable: Boolean): Array<dynamic> =
 
 /** Says why the choice is offered here and nowhere else. */
 private const val clientHint =
-    "Which client the new user belongs to. It cannot be changed afterward: their content carries the " +
-        "client, so moving them would leave it behind."
+    "Which client the new user belongs to. It cannot be changed afterward: their content is stored " +
+        "under the client, so moving them would leave it behind."
 
 /**
  * Says what the capability does, and that it is a different axis from the level -- the distinction the whole
@@ -1914,10 +1914,18 @@ private const val labelsHint =
     "Labels grant no access by themselves; the client's workflows give them meaning, as each suggested label says. " +
         "Labels are matched exactly as written."
 
-/** Beside the free-entry box under the suggested labels. */
-private const val otherLabelsHint =
-    "Any other label, typed; the labels the client's users already carry are offered. A workflow tests only for the " +
-        "client's suggested labels."
+/**
+ * Beside the free-entry box under the suggested labels: what such a label is for -- grouping users and finding them in
+ * a search of the Users page, which matches labels -- and that no workflow uses it, since a workflow may name only a
+ * suggested label. With no suggested labels the box is all there is ([hasSuggested] false), and says so.
+ */
+private fun otherLabelsHint(hasSuggested: Boolean): String = if (hasSuggested) {
+    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one already given " +
+        "to some of this client's users. Workflows do not use these; they use only the suggested labels above."
+} else {
+    "Labels of your own, for grouping users and finding them in a search. Type a new one, or pick one already given " +
+        "to some of this client's users. This client suggests no labels, so its workflows use none."
+}
 
 /**
  * The Users editor's Labels group (issue #1659), in plain view in the User panel: a checkbox per label the client
@@ -1985,7 +1993,7 @@ private fun react.ChildrenBuilder.userLabelsGroup(
         }
         p {
             className = ClassName("type-hint")
-            +otherLabelsHint
+            +otherLabelsHint(suggested.isNotEmpty())
         }
         val prompt = missingLabelsPrompt(suggestions.details, draft)
         if (prompt.isNotEmpty()) {
@@ -2032,17 +2040,17 @@ private const val nameHint =
 
 /**
  * Says what the levels are for. Two readings, because since #464 the operator rung is only offered to a caller
- * who can grant it ([operatorShown]): explaining a level that is not on screen would puzzle a scoped
- * administrator, and the operator rung no longer "includes the ones below it" in the way the old copy implied
- * -- reaching the operator endpoints takes the deployment-wide `allClients`, not merely ranking above `user`.
+ * who can grant it ([operatorShown]): the operator rung no longer "includes the ones below it" in the way the old copy
+ * implied -- reaching the operator endpoints takes the deployment-wide `allClients`, not merely ranking above `user`.
+ * A caller not shown it is not told of it either: only an `allClients` administrator can grant it, and the rest have no
+ * use for knowing why it is absent. That rule is in the roles field's description and the roles reference instead.
  */
 private fun accessLevelHint(operatorShown: Boolean): String =
     if (operatorShown) {
         "An administrator manages users. The Operator level reaches the deployment diagnostics -- a " +
             "deployment-wide surface, so it takes All clients as well as the level."
     } else {
-        "An administrator manages users in this client. The deployment-operator level is offered only to a " +
-            "full-scope administrator, since its surface spans every client."
+        "An administrator manages users in this client."
     }
 
 /**

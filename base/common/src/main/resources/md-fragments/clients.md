@@ -20,8 +20,8 @@ How the client behaves for its people.
 
 - **Time zone** is the zone its dates and times are shown and entered in. Changing it moves no stored moment.
 - **User labels** are words an administrator puts on this client's users, such as `reviewer` or `siteLead`. A
-  label grants nothing by itself, but workflows rely on them. A workflow can be **seen** only by users carrying a
-  label, so a workflow for site leads is shown to site leads alone. And an approval step is taken by a user carrying
+  label grants nothing by itself, but workflows rely on them. A workflow can be **seen** only by users given a
+  label, so a workflow for site leads is shown to site leads alone. And an approval step is taken by a user given
   the label it names, such as `reviewer`, so a review workflow has nobody to approve its forms until some user is
   given that label.
 - **Session hours** is how long a sign-in lasts before the person must sign in again.
@@ -76,7 +76,7 @@ What the client's forms hold, and the steps people take to fill them in.
 - **Workflows** are what people do with a form: create it, fill it in, approve it. Each is made from one of the
   deployment's templates. The template fixes the steps and their rules, and the client names each step and chooses
   the traits it collects.
-- **Who and when.** A workflow can be limited to the users carrying one of the **user labels** above, so that only
+- **Who and when.** A workflow can be limited to the users given one of the **user labels** above, so that only
   they see it. Its **time windows** say when it is available at all, and when new forms may join it.
 
 

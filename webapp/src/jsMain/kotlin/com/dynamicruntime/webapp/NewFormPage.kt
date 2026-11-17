@@ -114,7 +114,7 @@ val NewFormPage = FC<Props> {
                 val inputType = cat.inputType(ep)
                 p {
                     className = ClassName("subtitle")
-                    +("Add a section for each trait this form should carry, fill it in, and create the form." +
+                    +("Add a section for each trait this form should have, fill it in, and create the form." +
                         if (createsForOthers) " Leave the user blank to create it for yourself." else "")
                 }
 
