@@ -1023,9 +1023,9 @@ fun entryLabelProblems(where: String, layout: SchLayout, type: SchType): List<Pr
 /** Whether [type] is a list a form draws entry by entry (issue #1714): a list, but not one of closed choices. */
 fun isListOfEntries(type: SchType): Boolean = type.jsonType == SCT.array && type.itemType?.options.isNullOrEmpty()
 
-/** Whether [type] is plain text: a string with no choices and no date or binary format -- what a text area can enter. */
+/** Whether [type] is plain text: a string with no choices and no date, binary, or file format -- what a text area can enter. */
 fun isPlainText(type: SchType): Boolean =
-    type.jsonType == SCT.string && type.options == null && !isDateFormat(type.format) && !isBinaryFormat(type.format)
+    type.jsonType == SCT.string && type.options == null && !isNonTextFormat(type.format)
 
 /**
  * The problems with [layout]'s **form requirements** against [type] (issue #1022):

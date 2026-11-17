@@ -4,6 +4,7 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import com.dynamicruntime.common.filekind.FileKindSniff
 import org.xml.sax.Attributes
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
@@ -47,29 +48,17 @@ object WebAssetCheck {
     /** The content types a file picker should offer: each kind's own and the others it is declared under. */
     val acceptedMimeTypes: List<String> = WebAssetKinds.acceptedMimeTypes
 
-    private val pngStart = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A)
-    private val jpegStart = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())
-    private val icoStart = byteArrayOf(0, 0, 1, 0)
-    private val riff = "RIFF".toByteArray(Charsets.US_ASCII)
-    private val webpMark = "WEBP".toByteArray(Charsets.US_ASCII)
-
-    /** Where a WebP's own mark sits: after `RIFF` and the four bytes of its length. */
-    private const val webpMarkAt = 8
-
-    private fun ByteArray.holds(mark: ByteArray, at: Int = 0): Boolean =
-        size >= at + mark.size && mark.indices.all { this[at + it] == mark[it] }
+    /**
+     * The raster kinds, in the order their marks are tried: the ICO's four common bytes last. Told by the kernel's
+     * sniffer (issue #1834), the one rule a trait's file field is held to as well.
+     */
+    private val rasterKinds = listOf(png, jpeg, webp, ico)
 
     /** The kind [mimeType] declares -- its parameters and case aside -- or null when it is none of ours. */
     fun declaredKind(mimeType: String): WebImageKind? = WebAssetKinds.declaredKind(mimeType)
 
     /** The raster kind [bytes] begin as, or null: not a raster image we take (an SVG has no such beginning). */
-    fun rasterKind(bytes: ByteArray): WebImageKind? = when {
-        bytes.holds(pngStart) -> png
-        bytes.holds(jpegStart) -> jpeg
-        bytes.holds(riff) && bytes.holds(webpMark, webpMarkAt) -> webp
-        bytes.holds(icoStart) -> ico
-        else -> null
-    }
+    fun rasterKind(bytes: ByteArray): WebImageKind? = FileKindSniff.sniff(bytes, rasterKinds)
 
     /**
      * The kind of image [bytes] are, going by the bytes alone, or null when they are none we take: a raster by how

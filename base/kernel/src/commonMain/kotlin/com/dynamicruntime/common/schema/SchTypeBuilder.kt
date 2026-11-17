@@ -567,6 +567,20 @@ open class SchTypeBuilder(
     }
 
     /**
+     * Marks this schema as a **file in a form's data** (issue #1834): a string naming a data file record, holding a
+     * file of one of [kinds] (ids from `FKIND`), no larger than [maxSize] bytes when given -- else each kind's own
+     * largest. See [SFMT.dataFile].
+     *
+     * Theme: #DFILE.
+     */
+    fun dataFile(vararg kinds: String, maxSize: Long? = null) {
+        type = SCT.string
+        format = SFMT.dataFile
+        data[SCH.fileKinds] = kinds.toList()
+        if (maxSize != null) data[SCH.fileMaxSize] = maxSize
+    }
+
+    /**
      * Declares this property's value to be a **JSON Schema type body** (issue #316), validated by *parsing* it
      * -- see `validateSchemaDocument` -- after its shape is checked against the generated schema for schema
      * (issue #1056), which reports every keyword at fault by path. An open object on the wire; the parser is the

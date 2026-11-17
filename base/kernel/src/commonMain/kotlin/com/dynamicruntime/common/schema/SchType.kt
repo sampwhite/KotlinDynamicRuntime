@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.filekind.FileKind
+
 /**
  * A parsed, resolved JSON Schema type — the consumption form used for validation,
  * as opposed to the Map-backed builders. Everything the validator needs is a
@@ -54,6 +56,16 @@ class SchType(
      * text area. See [SCH.longText]. Off unless declared, and only ever true on a plain string with no choices.
      */
     val longText: Boolean = false,
+    /**
+     * Custom `g-fileKinds` keyword (resolved, issue #1834): the kinds of file a [SFMT.dataFile] field may hold, in the
+     * order declared. Empty on every other type; never empty on such a field, which the parser refuses without them.
+     */
+    val fileKinds: List<FileKind> = emptyList(),
+    /**
+     * Custom `g-fileMaxSize` keyword (resolved, issue #1834): the largest file a [SFMT.dataFile] field may hold, in
+     * bytes, or null when each kind's own largest applies. See [fileSizeLimit].
+     */
+    val fileMaxSize: Long? = null,
     /**
      * JSON Schema `pattern`, compiled to mean the same on the JVM and in the browser (issue #823) -- see
      * [SchPattern]. Null unless declared, and only ever set on a plain string type; the parser refuses it
@@ -234,6 +246,20 @@ class SchType(
  * write -- so that a shape one of them learns to walk is one they all do.
  */
 fun SchType.holdsFields(): Boolean = properties.isNotEmpty() || additionalValueType != null
+
+/** Whether this is a file in a form's data ([SFMT.dataFile]): a string naming a data file record. */
+fun SchType.isDataFile(): Boolean = isDataFileFormat(format)
+
+/**
+ * The largest file of [kind] this [SFMT.dataFile] field may hold (issue #1834): the smaller of its own
+ * [SchType.fileMaxSize] and the kind's. Null when the field does not take [kind] at all.
+ *
+ * Theme: #DFILE.
+ */
+fun SchType.fileSizeLimit(kind: FileKind): Long? {
+    if (fileKinds.none { it.id == kind.id }) return null
+    return fileMaxSize?.let { minOf(it, kind.maxSize) } ?: kind.maxSize
+}
 
 /**
  * The modes of the `g-outerWhitespace` keyword (issues #541, #765), resolved from its [SOWS] wire values. An

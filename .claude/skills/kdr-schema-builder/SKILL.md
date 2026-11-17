@@ -84,13 +84,14 @@ Use constants, never string literals, from `SchemaConstants.kt`:
   of ours whose value has the wrong shape (`g-allowCoerce: "yes"`, a `g-presentation` outside `PRES`), fails the
   parse by name. A key of your own without the prefix is left alone.
 - `SCT` — `type` values (`SCT.string`, `SCT.integer`, `SCT.kObject`, `SCT.kNull`, …).
-- `SFMT` — `format` values (`SFMT.date`, `SFMT.dateTime`, `SFMT.binary`).
+- `SFMT` — `format` values (`SFMT.date`, `SFMT.dateTime`, `SFMT.binary`, `SFMT.dataFile`).
 
 ## Formats: dates and files
 
 A string field's `format` is how this layer says "this is not merely text". Each case is declared with a
 builder helper rather than by setting `type`/`format` by hand, and asked about with a kernel predicate
-(`isDateFormat` / `isBinaryFormat`) that the parser, the validator **and the frontend** all consult. Adding a
+(`isDateFormat` / `isBinaryFormat` / `isDataFileFormat`, and `isNonTextFormat` for "any of them") that the parser,
+the validator **and the frontend** all consult. Adding a
 format means adding a helper and a predicate — not special-casing at each call site.
 
 - **Dates** — `dayOnlyDate()` (`format = SFMT.date`, `yyyy-MM-dd`) or `dateTime()`
@@ -103,6 +104,20 @@ format means adding a helper and a predicate — not special-casing at each call
   would reject it, coercion would mean `toString()` on a file, and there is nothing to check anyway (the
   content's shape is the MIME type's business, not JSON Schema's). See `kdr-endpoint-builder` for the file
   endpoints built on it.
+
+- **Files in a form's data** — `dataFile(FKIND.mp4, FKIND.webm, maxSize = …)` →
+  `{"type": "string", "format": "gedra-file", "g-fileKinds": ["mp4", "webm"], "g-fileMaxSize": …}` (issue #1834).
+  The value is a **data file record's id**, never the bytes: the file is uploaded apart from the form, and a trait
+  field holds only its id. `g-fileKinds` is required and names ids of the kernel's data kinds (`FileKinds.kinds`:
+  png, jpeg, webp, gif, mp4, webm, pdf -- never SVG, HTML, or script); `g-fileMaxSize` is optional, and a file is held
+  to the smaller of it and its kind's own largest (`fileSizeLimit(kind)`). A file's kind is told by its **bytes**
+  (`FileKindSniff`), never by its declared type or name. The parser refuses the field without kinds, an unknown or
+  repeated kind, a size above every kind's own, either keyword off such a field, and the free-text keywords
+  (`pattern`, `options`, `const`, `g-longText`, …) on it. A client's alteration may take fewer kinds or smaller
+  files, never more, judged per kind by the limit in force: narrowing `[png, mp4]` at 100 MB to `[png]` needs no size,
+  since a PNG's own 20 MB is lower. `DataFileFields.collect(type, value)` finds every file a value names, by its type,
+  however deep; only a string names a file.
+  <!-- Theme: #DFILE -->
 
 ## Character rules: `visibleOnly`
 
@@ -276,7 +291,7 @@ so declare a secret whose name the list would not catch. It takes no part in val
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects
 anything else with `invalidOption`. In a raw document each entry is a `{"value", "label"}` object or a bare value
 (labeled by itself), mixed as you like; an entry that is neither fails the parse (issue #816). A choice is text, so a list belongs on a plain string (or an untyped field,
-which the list makes text); the parser refuses one on any other declared type or on a date or binary format
+which the list makes text); the parser refuses one on any other declared type or on a date, binary, or file format
 (issue #815). A value coerced to the field's type -- `7` sent to a coercing string field -- is held to the list
 exactly as one that arrived as a string, and likewise to a `const`.
 
