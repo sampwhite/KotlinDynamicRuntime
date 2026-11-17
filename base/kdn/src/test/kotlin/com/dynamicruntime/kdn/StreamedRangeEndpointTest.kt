@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.http.request.BODY
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
@@ -23,11 +24,14 @@ import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import java.io.IOException
+import java.io.InputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -158,6 +162,48 @@ class StreamedRangeEndpointTest : StringSpec({
             .single { it["path"] == "/$root${RangeFixtureComponent.chunk}" }["maxBytes"] shouldBe 1000L
     }
 
+    "a call in this process is never sent a large range whole: it is refused, and a range of it is not" {
+        val whole = http.sendGetRequest(RangeFixtureComponent.huge)
+        whole.rptStatusCode shouldBe EXC.notSupported
+        whole.rptResponseBytes.shouldBeNull()
+        http.setHeader("Range", "bytes=0-99")
+        val part = try {
+            http.sendGetRequest(RangeFixtureComponent.huge)
+        } finally {
+            http.curHeaders.remove("range")
+        }
+        part.rptStatusCode shouldBe 206
+        part.rptResponseBytes!!.size shouldBe 100
+    }
+
+    "a node refuses to start over a count of raw bodies that is not one" {
+        shouldThrow<Exception> {
+            Startup.mkTestBootCxt("rawBodyPermits1836", "rawBodyPermits1836", mapOf(BODY.rawBodyPermits.name to "0"))
+        }.message.orEmpty() shouldContain BODY.rawBodyPermits.name
+    }
+
+    "over the wire, a request runs on a virtual thread, and a failure part-way ends that response alone" {
+        TestHttpServer(cxt.instanceConfig).use { server ->
+            val client = HttpClient.newHttpClient()
+            fun request(path: String) = HttpRequest.newBuilder(URI.create(server.url("/kda$path"))).build()
+
+            client.send(request(RangeFixtureComponent.thread), HttpResponse.BodyHandlers.ofString()).body() shouldBe "virtual"
+
+            // The content fails after its status is out: the connection ends short of the length it promised.
+            shouldThrow<IOException> { client.send(request(RangeFixtureComponent.broken), HttpResponse.BodyHandlers.ofByteArray()) }
+
+            // A reader that goes away part-way, as a player does when it seeks.
+            val reading = client.send(request(RangeFixtureComponent.huge), HttpResponse.BodyHandlers.ofInputStream())
+            reading.statusCode() shouldBe 200
+            reading.body().use { it.readNBytes(1024 * 1024).size shouldBe 1024 * 1024 }
+
+            // Neither touched the next request.
+            val after = client.send(request("${RangeFixtureComponent.stream}?key=clients/acme/clip"), HttpResponse.BodyHandlers.ofByteArray())
+            after.statusCode() shouldBe 200
+            after.body().toList() shouldBe video.toList()
+        }
+    }
+
     // Over a real socket: Jetty writes the body in pieces, and a length that disagrees with them fails the exchange.
     "over the wire, the whole file and a range arrive byte for byte, and a part goes up as raw bytes" {
         TestHttpServer(cxt.instanceConfig).use { server ->
@@ -214,12 +260,21 @@ class RangeFixtureComponent : ComponentDefinition {
                 type("Stored") { type = SCT.kObject; property("hash", "The stored part's hash.", required = true) }
                 fileDownloadEndpoint(stream, "The file at a key, a range at a time.", inputFields = { field("key", "Which file.", required = true) }) { c, request ->
                     val key = request["key"].toOptStr().orEmpty()
-                    val files = FileStoreService.get(c).forOwner(c, "acme")
-                    val meta = files.meta(c, bucket, key) ?: throw KdrException("No such file.", code = EXC.notFound)
-                    StreamedContent(
-                        meta.mimeType, meta.size, meta.hash, saveAsFilename = "${key.substringAfterLast('/')}.pdf",
-                        inLine = meta.mimeType.startsWith("video/"),
-                    ) { offset, length -> files.openRange(c, bucket, key, offset, length).shouldNotBeNull().stream }
+                    val video = key.endsWith("clip")
+                    FileStoreService.get(c).forOwner(c, "acme")
+                        .streamed(c, bucket, key, inLine = video, saveAsFilename = "${key.substringAfterLast('/')}.pdf")
+                        ?: throw KdrException("No such file.", code = EXC.notFound)
+                }
+                // A gigabyte of nothing, made as it is read: what a call in this process may not be sent whole.
+                fileDownloadEndpoint(huge, "A very large file.") { _, _ ->
+                    StreamedContent("video/mp4", hugeSize, "0".repeat(64)) { _, length -> ZeroStream(length) }
+                }
+                // Content that fails to read part-way, once its status is sent.
+                fileDownloadEndpoint(broken, "A file that breaks while it is sent.") { _, _ ->
+                    StreamedContent("video/mp4", brokenSize) { _, _ -> BreakingStream(brokenAfter) }
+                }
+                fileDownloadEndpoint(thread, "Which kind of thread runs the request.") { _, _ ->
+                    ContentData(if (Thread.currentThread().isVirtual) "virtual" else "platform", "text/plain")
                 }
                 fileDownloadEndpoint(whole, "The file at a key, whole.", inputFields = { field("key", "Which file.", required = true) }) { c, request ->
                     FileStoreService.get(c).forOwner(c, "acme").get(c, bucket, request["key"].toOptStr().orEmpty())?.toContentData()
@@ -242,5 +297,39 @@ class RangeFixtureComponent : ComponentDefinition {
         const val stream = "/fixture/ranges/stream"
         const val whole = "/fixture/ranges/whole"
         const val chunk = "/fixture/ranges/chunk"
+        const val huge = "/fixture/ranges/huge"
+        const val broken = "/fixture/ranges/broken"
+        const val thread = "/fixture/ranges/thread"
+        const val hugeSize = 1024L * 1024 * 1024
+        const val brokenSize = 600_000L
+        const val brokenAfter = 200_000L
+    }
+}
+
+/** [length] zero bytes, made as they are read. */
+class ZeroStream(private var left: Long) : InputStream() {
+    override fun read(): Int = if (left-- > 0) 0 else -1
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (left <= 0) return -1
+        val n = minOf(len.toLong(), left).toInt()
+        b.fill(0, off, off + n)
+        left -= n
+        return n
+    }
+}
+
+/** Bytes that fail to read after [after] of them, as content going missing under a response would. */
+class BreakingStream(private val after: Long) : InputStream() {
+    private var read = 0L
+
+    override fun read(): Int = if (read++ < after) 1 else throw IOException("The content went away.")
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (read >= after) throw IOException("The content went away.")
+        val n = minOf(len.toLong(), after - read).toInt()
+        b.fill(1, off, off + n)
+        read += n
+        return n
     }
 }

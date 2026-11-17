@@ -33,7 +33,8 @@ import org.eclipse.jetty.util.Callback
  * ```
  */
 class TestHttpServer(val instanceConfig: KdrInstanceConfig) : AutoCloseable {
-    private val server = Server()
+    // The same threads a node runs its requests on (HttpServer.requestThreads), so what the wire does here is what it does there.
+    private val server = Server(HttpServer.requestThreads())
     private val connector = ServerConnector(server)
 
     /** The ephemeral port the server bound to. Assigned once started, so read it rather than assuming one. */

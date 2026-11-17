@@ -14,6 +14,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -334,6 +335,15 @@ class CatalogModelTest {
         val catalog = parseCatalog(results() - EI.fieldLayouts)
         assertTrue(catalog.fieldLayouts.isEmpty())
         assertTrue(catalog.defTypes.containsKey(questionnaire))
+    }
+
+    @Test
+    fun anEndpointTakingARawBodySaysSoAndOthersDoNot() {
+        // Issue #1836: the catalog sends such an endpoint's file as the whole body, never as multipart, which it refuses.
+        val endpoint = results()[EI.endpoints].toJsonListOfMaps().single()
+        assertEquals(false, parseCatalog(results()).endpoints.single().rawBody)
+        val raw = results() + (EI.endpoints to listOf(endpoint + (EI.rawBody to true)))
+        assertEquals(true, parseCatalog(raw).endpoints.single().rawBody)
     }
 
     @Test

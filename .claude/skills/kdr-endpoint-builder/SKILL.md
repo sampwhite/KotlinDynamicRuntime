@@ -283,16 +283,19 @@ files.openRange(cxt, "client-files", "clients/acme/files/${stored.hash}", offset
   the request is `application/octet-stream` (a page elsewhere cannot send that without asking first, so nothing else is
   read), its body -- at most `maxBodyBytes`, a 413 past it -- is the `ContentData` under `EP.rawBody`, and its other
   input rides in the query string.
+- **A file in the file store** is `files.streamed(cxt, bucket, key, inLine, saveAsFilename)`: a `StreamedContent` from
+  one read of its metadata, each range then read straight from the store -- one S3 request a range.
+- **A call made in this process** (a test, the workflow assistant) holds what it is sent, so a range over 32 MiB is
+  refused there, never read. Request handlers run on virtual threads (`HttpServer.requestThreads`), so a response
+  waiting on a slow reader holds no pool thread. A raw body takes one of the node's `KDR_RAW_BODY_PERMITS` (8) while it
+  is read and handled, and waits up to 10 seconds for one before a 429.
 - **No HEAD.** A request is matched by method, and a player seeks with ranged GETs.
 
 ```kotlin
-// A video, a range at a time: the file store's ranged read behind the response's own.
+// A video, a range at a time: the file store's own StreamedContent, its metadata read once.
 fileDownloadEndpoint("/video", "A video.", inputFields = { field("key", "Which one.", required = true) }) { c, request ->
-    val key = "clients/acme/files/${request["key"]}"
-    val meta = files.meta(c, "client-files", key) ?: throw KdrException("No such video.", code = EXC.notFound)
-    StreamedContent(meta.mimeType, meta.size, meta.hash) { offset, length ->
-        files.openRange(c, "client-files", key, offset, length)?.stream ?: throw KdrException("No such video.", code = EXC.notFound)
-    }
+    files.streamed(c, "client-files", "clients/acme/files/${request["key"]}")
+        ?: throw KdrException("No such video.", code = EXC.notFound)
 }
 
 // One part of an upload, its bytes the raw body.

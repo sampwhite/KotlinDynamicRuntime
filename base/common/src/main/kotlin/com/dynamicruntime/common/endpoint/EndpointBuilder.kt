@@ -362,6 +362,14 @@ class KdrEndpoint(
                 ) {
                     type = SCT.boolean
                 }
+                property(
+                    EI.rawBody,
+                    "Whether the endpoint takes its body as raw bytes: its file field is sent as the whole body, as " +
+                        "application/octet-stream, and its other fields in the query string -- never as multipart.",
+                    required = true,
+                ) {
+                    type = SCT.boolean
+                }
             }
         }
     }
@@ -1007,6 +1015,7 @@ fun renderEndpoint(endpoint: KdrEndpoint, defs: Map<String, Any?>): Map<String, 
     // Sorted so a catalog rendering is stable between boots; a Set has no order of its own to promise.
     EI.tags to endpoint.tags.sorted(),
     EI.bareResponse to endpoint.bareResponse,
+    EI.rawBody to (endpoint.rawBodyMaxBytes > 0),
 )
 
 /**

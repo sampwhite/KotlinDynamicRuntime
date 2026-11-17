@@ -96,6 +96,13 @@ object EI {
      * standard a caller already speaks expects, such as an OAuth token answer or a JSON Web Key Set.
      */
     const val bareResponse = "bareResponse"
+
+    /**
+     * Whether the endpoint takes its body as raw bytes (issue #1836): a part of a large upload, the one binary field
+     * ([EP.rawBody]) sent as the whole body under `application/octet-stream`, and its other fields in the query
+     * string. Never multipart, which such an endpoint refuses.
+     */
+    const val rawBody = "rawBody"
     const val inputSchema = "inputSchema"
     const val outputSchema = "outputSchema"
 

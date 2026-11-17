@@ -731,6 +731,15 @@ class RequestHandler : WebRequest {
             RangeAnswer.Full -> 0L to content.size
             else -> 0L to 0L
         }
+        // A call made in this process has no wire to stream to, so what it is sent is held whole: refused past a bound
+        // rather than read into memory, since an in-process caller -- the workflow assistant -- may ask for any file.
+        if (jettyResponse == null && length > maxCapturedStreamBytes) {
+            throw KdrException(
+                "$length bytes of $method:$uri cannot be sent to a call made in this process, which holds what it is " +
+                    "sent; at most $maxCapturedStreamBytes can be. Ask for a range.",
+                code = EXC.notSupported,
+            )
+        }
         // Opened first: until a byte is sent, a failure is an ordinary error.
         val stream = if (length > 0) content.open(offset, length) else null
         stream.use {
@@ -769,6 +778,8 @@ class RequestHandler : WebRequest {
             return
         }
         val buffer = ByteArray(streamBufferSize)
+        // One blocker for the response, taken again for each write: a write is waited on before the next is read.
+        val blocker = Blocker.Shared()
         var sent = 0L
         try {
             while (stream != null && sent < length) {
@@ -781,7 +792,7 @@ class RequestHandler : WebRequest {
                     throw KdrException.mkFileIo("The content being sent for $method:$uri ended after $sent of $length bytes.", null, EXC.internalError)
                 }
                 try {
-                    Blocker.callback().use { cb ->
+                    blocker.callback().use { cb ->
                         resp.write(false, ByteBuffer.wrap(buffer, 0, n), cb)
                         cb.block()
                     }
@@ -925,6 +936,12 @@ class RequestHandler : WebRequest {
 
         /** How many bytes a streamed response reads and writes at a time. */
         const val streamBufferSize = 64 * 1024
+
+        /**
+         * The most bytes of a streamed response a call made in this process is sent (issue #1836), which it holds
+         * whole: a test's, or the workflow assistant's ([InProcessCaller]). A larger range is refused, never read.
+         */
+        const val maxCapturedStreamBytes = 32 * 1024 * 1024
 
         /** The content type of a raw body ([readRawBody]): bytes, and nothing a browser's form can send. */
         const val octetStream = "application/octet-stream"

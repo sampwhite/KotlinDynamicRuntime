@@ -105,13 +105,10 @@ class EndpointSkillExamplesTest : StringSpec({
     fun streamedExample(files: FileStoreService.FileStoreView): SchModule = schemaModule(cxt, "file") {
         type("FileInfo") { type = SCT.kObject; property("id", "Id of the stored file.") }
 
-        // A video, a range at a time: the file store's ranged read behind the response's own.
+        // A video, a range at a time: the file store's own StreamedContent, its metadata read once.
         fileDownloadEndpoint("/video", "A video.", inputFields = { field("key", "Which one.", required = true) }) { c, request ->
-            val key = "clients/acme/files/${request["key"]}"
-            val meta = files.meta(c, "client-files", key) ?: throw KdrException("No such video.", code = EXC.notFound)
-            StreamedContent(meta.mimeType, meta.size, meta.hash) { offset, length ->
-                files.openRange(c, "client-files", key, offset, length)?.stream ?: throw KdrException("No such video.", code = EXC.notFound)
-            }
+            files.streamed(c, "client-files", "clients/acme/files/${request["key"]}")
+                ?: throw KdrException("No such video.", code = EXC.notFound)
         }
 
         // One part of an upload, its bytes the raw body.
