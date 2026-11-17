@@ -3,7 +3,7 @@
 
 The menu along the top of every page and the cards on Home are each a **UI block**: a list of items, each with an id,
 its words, what it does when chosen, and a condition deciding who is offered it. The platform ships both, a component
-may add to them (the workflow assistant adds cards of its own), and a client changes them for itself. Every layer
+may add to them (the configuration assistant adds cards of its own), and a client changes them for itself. Every layer
 names an item by its id, so a client's change says only what it changes, and the rest of the item stays as shipped.
 
 This page says how to see a client's menu as it stands, how to change an item, and what the platform ships. The lists
@@ -22,7 +22,7 @@ client's own:
   the audience each condition is called, the item it sits under, and the audiences it may be shown to. An item marked
   `deploymentOnly` is the deployment's own, shown only to its operators, to a test instance's sessions, or to a
   debug session, which a client's people are never among.
-- **The workflow assistant** reads it with its `read_menu` tool.
+- **The configuration assistant** reads it with its `read_menu` tool.
 
 Who sees an item is decided by its condition, a test written in [facts](facts.md): `kdr:loggedIn,kdr:app` is offered to
 anyone signed in to the application, `#never` to nobody. A condition changes what is offered, never what anyone may
@@ -168,7 +168,7 @@ session, never to a client's people.
 ## The core home cards
 
 Every card the platform ships to a client's people, in the order it is drawn, leaving out the deployment's own as the
-menu above does. A component's cards, such as the workflow assistant's, are not among them.
+menu above does. A component's cards, such as the configuration assistant's, are not among them.
 
 | Id | Title | Shown to |
 |---|---|---|

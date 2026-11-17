@@ -24,7 +24,7 @@ import kotlin.time.Instant
 private val operatorAssistantScope = MainScope()
 
 /**
- * The operator's page of the workflow assistant (issue #1527): whether this node can reach the model, and every client
+ * The operator's page of the configuration assistant (issue #1527): whether this node can reach the model, and every client
  * with its switch, monthly budget, and this month's use -- what was spent, the calls made, the last turn, and how much
  * of the input the prompt cache served. Each client's switch and budget are set in its row, at once. Switching one on
  * asks first, showing what is sent to Anthropic, since the switch acknowledges it.
@@ -52,10 +52,10 @@ val OperatorAssistantPage = FC<Props> {
     div {
         className = ClassName("card wide")
         backToListing(HMENU.pageOperator)
-        h1 { +"Workflow assistant" }
+        h1 { +"Configuration assistant" }
         p {
             className = ClassName("subtitle")
-            +"Which clients may use the workflow assistant, what each may spend in a month, and what each has spent this month."
+            +"Which clients may use the configuration assistant, what each may spend in a month, and what each has spent this month."
         }
         val current = read
         when {

@@ -104,7 +104,7 @@ val PageScreen = FC<PageScreenProps> { props ->
     }
     val current = config
     val layout = current?.layout
-    // What the page reads for its live cards (issues #1636-#1639): the workflow assistant's status, what waits on the
+    // What the page reads for its live cards (issues #1636-#1639): the configuration assistant's status, what waits on the
     // caller, the client's unpublished drafts, and a new client's checklist -- read here, once, so a card and its link
     // under the title say the same thing, and a card whose read finds nothing is not drawn. What waits is confined to the
     // caller's own client when they see across clients, so Home never reads the whole deployment. Only for the cards the
@@ -116,7 +116,7 @@ val PageScreen = FC<PageScreenProps> { props ->
         allCards,
         decidedAt = configAt,
         waitingClient = current?.takeIf { it.canSeeAllClients }?.user?.client,
-        // The checklist's step for the workflow assistant (issue #1639), only where the menu offers it.
+        // The checklist's step for the configuration assistant (issue #1639), only where the menu offers it.
         assistantOffered = current?.menu.orEmpty().any { it.id == ASST.menuItem },
         ownClient = current?.user?.client,
     )

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 160" width="960" height="160" role="img">
-  <title>Part 3 of the walk-through: a workflow as JSON, written by the workflow assistant or by hand, tried, given an approval step, and published; then an API key, a change from a program, and the key revoked.</title>
+  <title>Part 3 of the walk-through: a workflow as JSON, written by the configuration assistant or by hand, tried, given an approval step, and published; then an API key, a change from a program, and the key revoked.</title>
   <!-- A banner opening a part of the walk-through (docs/walk-through.md, issue #1429): the part's steps in order.
        Drawn on its own dark ground so it reads on GitHub's light and dark pages as in the app. Generated with the
        other parts' banners from one layout; edit the three together. -->

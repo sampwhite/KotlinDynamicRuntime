@@ -86,7 +86,7 @@ fun checklistStepOf(id: String, done: Boolean, client: String, sandbox: String? 
 }
 
 /**
- * The steps the card lists (issue #1639): the backend's ([read]), led by switching on the workflow assistant when the
+ * The steps the card lists (issue #1639): the backend's ([read]), led by switching on the configuration assistant when the
  * menu offers it ([assistantOffered]) and its status ([assistantView]) says it is on, or off and the person may switch it
  * on -- since it helps with the steps after it. Left out where only an operator switches it on, which the person cannot
  * do, or its status could not be read. **None at all while an offered assistant's status is unread**, so the list never
@@ -95,7 +95,7 @@ fun checklistStepOf(id: String, done: Boolean, client: String, sandbox: String? 
 fun checklistSteps(read: ChecklistRead, assistantOffered: Boolean, assistantView: AssistantView?): List<ChecklistStep> {
     if (assistantOffered && (assistantView == null || assistantView == AssistantView.loading)) return emptyList()
     val assistant = if (assistantOffered && (assistantView?.isOn == true || assistantView == AssistantView.switchOn)) {
-        ChecklistStep(CHKL.assistant, "Switch on the workflow assistant", assistantView?.isOn == true, listOf(HP.page to ASST.page))
+        ChecklistStep(CHKL.assistant, "Switch on the configuration assistant", assistantView?.isOn == true, listOf(HP.page to ASST.page))
     } else {
         null
     }

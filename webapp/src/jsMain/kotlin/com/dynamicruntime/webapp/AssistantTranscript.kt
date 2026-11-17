@@ -28,7 +28,7 @@ import com.dynamicruntime.common.util.toOptLongOrNull
 import com.dynamicruntime.common.util.toOptStr
 
 /*
- * The workflow assistant page's pure logic (issue #1527), covered under `jsNodeTest`: a conversation's stored messages
+ * The configuration assistant page's pure logic (issue #1527), covered under `jsNodeTest`: a conversation's stored messages
  * read into what the transcript shows, each tool call's label, the drafts the conversation made, the allowance line,
  * and when the page polls. The messages are the Messages API's own (`ABLK`), stored exactly as sent and answered.
  */

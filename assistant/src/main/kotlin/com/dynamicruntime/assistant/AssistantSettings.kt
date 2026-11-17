@@ -41,7 +41,7 @@ object AENV {
 
     val provider = EnvVarDef(
         "KDR_ASSISTANT_PROVIDER", group = ENVGRP.assistant, defaultDoc = anthropicProvider,
-        description = "What answers the workflow assistant: `$anthropicProvider` (Claude, through the Anthropic API, when " +
+        description = "What answers the configuration assistant: `$anthropicProvider` (Claude, through the Anthropic API, when " +
             "the deployment holds a key) or `$fakeProvider` (a built-in demo that lists the client's workflows with a real " +
             "tool call and names them, for trying the page locally with no key and no spending). `$fakeProvider` is " +
             "refused at boot on a node that is not a test instance.",

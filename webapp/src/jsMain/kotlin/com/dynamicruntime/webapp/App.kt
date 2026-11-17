@@ -405,7 +405,7 @@ private const val pageCustomers = HMENU.pageCustomers
 private const val pageReports = HMENU.pageReports
 private const val pageApiKeys = HMENU.pageApiKeys
 
-// The workflow assistant (issue #1527) and the operator's page of it: offered by the assistant module's own menu entries
+// The configuration assistant (issue #1527) and the operator's page of it: offered by the assistant module's own menu entries
 // where it is loaded; the routes exist unconditionally, and each page says so when the assistant is not there.
 private const val pageAssistant = ASST.page
 private const val pageOperatorAssistant = ASST.operatorPage

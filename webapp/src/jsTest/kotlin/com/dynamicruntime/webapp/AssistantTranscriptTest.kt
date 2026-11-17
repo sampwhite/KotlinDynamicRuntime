@@ -27,7 +27,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The workflow assistant page's pure logic (issue #1527): a conversation's messages read into the transcript, each line of
+ * The configuration assistant page's pure logic (issue #1527): a conversation's messages read into the transcript, each line of
  * tool calls labeled, the drafts a conversation made, how a turn's end is told, when the page polls, and the allowance.
  */
 @Suppress("BooleanLiteralArgument")

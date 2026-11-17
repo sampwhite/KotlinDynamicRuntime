@@ -15,7 +15,7 @@ import com.dynamicruntime.common.user.UserService
 
 /**
  * A new client's checklist (issue #1639): the few steps that make a self-serve client useful, each checked off from the
- * client's state rather than remembered, so a step done anywhere -- the Clients page, the workflow assistant, Design
+ * client's state rather than remembered, so a step done anywhere -- the Clients page, the configuration assistant, Design
  * View -- is done here too. What Home's "Getting started" card lists.
  *
  * Every step is a cheap read, since Home asks on every visit until the checklist is done or hidden: the workflows the

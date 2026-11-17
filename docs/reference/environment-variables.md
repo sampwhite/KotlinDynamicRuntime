@@ -455,7 +455,7 @@ The URL of a service other than AWS that speaks the S3 API, for an `s3` file sto
 
 The region of an `s3` file store's buckets: AWS's (`us-east-1`), or with KDR_S3_ENDPOINT the service's own -- for Linode, the first part of the endpoint's hostname (`us-ord-10`). Credentials are not configured here: they come from the AWS SDK's default chain -- AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in the environment, a profile in `~/.aws/credentials` (AWS_PROFILE to pick one), or the machine's role -- so they are never in this application's configuration or its secrets file.
 
-## Workflow assistant
+## Configuration assistant
 
 ### `KDR_ASSISTANT_CONCURRENT_TURNS`
 
@@ -503,7 +503,7 @@ A client's monthly budget in weighted tokens (input 1, cache write 1.25, cache r
 
 **Default when unset:** anthropic
 
-What answers the workflow assistant: `anthropic` (Claude, through the Anthropic API, when the deployment holds a key) or `fake` (a built-in demo that lists the client's workflows with a real tool call and names them, for trying the page locally with no key and no spending). `fake` is refused at boot on a node that is not a test instance.
+What answers the configuration assistant: `anthropic` (Claude, through the Anthropic API, when the deployment holds a key) or `fake` (a built-in demo that lists the client's workflows with a real tool call and names them, for trying the page locally with no key and no spending). `fake` is refused at boot on a node that is not a test instance.
 
 ### `KDR_ASSISTANT_SELF_SERVE`
 

@@ -98,7 +98,7 @@ its forms; and the images it uploads.
 What a client's people see is put together from layers, the later winning:
 
 1. **The platform's core:** its traits, its menu and Home's cards, its pages, and its wording.
-2. **The deployment's modules:** what each adds to the core, such as the workflow assistant's cards on Home.
+2. **The deployment's modules:** what each adds to the core, such as the configuration assistant's cards on Home.
 3. **The deployment's flavor:** a variant of the deployment, such as the public reference site, which sets the
    deployment's own switches and may reword copy.
 4. **The template** a configured client is built on, whose traits, workflows, and wording it inherits.

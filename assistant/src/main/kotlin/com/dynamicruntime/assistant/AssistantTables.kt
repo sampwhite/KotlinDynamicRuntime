@@ -54,7 +54,7 @@ object ATBL {
  * any node finds the same conversation. None is cached: each is read by key, and rarely.
  */
 fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = ASST.root, topic = ATBL.topic) {
-    table(ATBL.clients, "Which clients an operator has switched the workflow assistant on for, and their budgets (#1525).") {
+    table(ATBL.clients, "Which clients an operator has switched the configuration assistant on for, and their budgets (#1525).") {
         column(ASST.client, "The client. Never a sandbox: a sandbox goes by its parent.", required = true)
         column(ASST.monthlyBudget, "The client's monthly budget in weighted tokens; absent for the deployment's default.") {
             type = SCT.integer
@@ -65,7 +65,7 @@ fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         column(ASST.noticeAcknowledgedBy, "The operator who did.") { type = SCT.integer }
         primaryKey(ASST.client)
     }
-    table(ATBL.usage, "A client's use of the workflow assistant in one calendar month (#1525).") {
+    table(ATBL.usage, "A client's use of the configuration assistant in one calendar month (#1525).") {
         column(ASST.client, "The client that pays: a sandbox's parent.", required = true)
         column(ATBL.yearMonth, "The month, as YYYY-MM in UTC.", required = true)
         column(ASST.used, "Weighted tokens used, which the budget counts.", required = true) { type = SCT.integer }
@@ -78,7 +78,7 @@ fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         primaryKey(ASST.client, ATBL.yearMonth)
         index(ATBL.yearMonth)
     }
-    table(ATBL.conversations, "A workflow-assistant conversation of one client administrator's (#1526).") {
+    table(ATBL.conversations, "A configuration-assistant conversation of one client administrator's (#1526).") {
         column(ACNV.conversationId, "The conversation's id.", required = true)
         column(ASST.client, "The client the administrator was signed in to; never a sandbox.", required = true)
         column(PF.userId, "The administrator's own user.", required = true) { type = SCT.integer }
@@ -89,7 +89,7 @@ fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         primaryKey(ACNV.conversationId)
         index(PF.userId, ASST.client)
     }
-    table(ATBL.messages, "One message of a workflow-assistant conversation, as the model's API reads it (#1526).") {
+    table(ATBL.messages, "One message of a configuration-assistant conversation, as the model's API reads it (#1526).") {
         column(ACNV.conversationId, "The conversation.", required = true)
         column(ACNV.seq, "Its place in the conversation, from 1.", required = true) { type = SCT.integer }
         column(ACNV.turnId, "The turn that wrote it.", required = true)
@@ -98,7 +98,7 @@ fun assistantTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         }
         primaryKey(ACNV.conversationId, ACNV.seq)
     }
-    table(ATBL.turns, "One turn of a workflow-assistant conversation: a message sent, and what answering it did (#1526).") {
+    table(ATBL.turns, "One turn of a configuration-assistant conversation: a message sent, and what answering it did (#1526).") {
         column(ACNV.turnId, "The turn's id.", required = true)
         column(ACNV.conversationId, "The conversation.", required = true)
         column(ASST.client, "The client the administrator was signed in to.", required = true)

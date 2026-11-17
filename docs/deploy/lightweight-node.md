@@ -229,7 +229,7 @@ anyone can read them signed out at `/wa/docs/<id>`. The `reference` flavor names
 - publish the app, and submit it for verification. Signing in asks only for the email address and name, so it needs no
   security review.
 
-**Optional: the workflow assistant.** The assistant answers through the Anthropic API, so it needs a key: put it in
+**Optional: the configuration assistant.** The assistant answers through the Anthropic API, so it needs a key: put it in
 `~/kdr/private/secrets.properties` as `anthropicApiKey`, beside the mail key (see "Mail and sign-in" below). Without it
 the assistant is unavailable. An operator switches it on per client. To let visitors try it in clients of their own,
 set `KDR_ASSISTANT_SELF_SERVE=true`: the administrator of a self-serve client (one a visitor made) may then switch it

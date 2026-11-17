@@ -72,7 +72,7 @@ object AssistantTurns {
         if (message.isEmpty()) throw KdrException.mkInput("A message needs some text.")
         if (message.length > TURN.maxTextChars) throw KdrException.mkInput("A message may be at most ${TURN.maxTextChars} characters.")
         if (!service.isOn(cxt, client)) {
-            throw refused("The workflow assistant is not on for '$client'.", EXC.notAuthorized, ACNV.notOnCode)
+            throw refused("The configuration assistant is not on for '$client'.", EXC.notAuthorized, ACNV.notOnCode)
         }
         if (!SandboxAccess.hasSandbox(cxt, client)) {
             throw refused(
@@ -378,7 +378,7 @@ class TurnRunner(@KdrPrivate val service: AssistantService, @KdrPrivate val cxt:
         )
         val toolRun = ToolRun(cxt, principal, cxt.traceId ?: turnId)
         val settings = service.settings
-        val model = service.model ?: return end(ACNV.statusFailed, "The workflow assistant is not available on this server.")
+        val model = service.model ?: return end(ACNV.statusFailed, "The configuration assistant is not available on this server.")
         // Whether the last answer was paused, so the next request continues it rather than answering it.
         var continuing = false
         while (true) {

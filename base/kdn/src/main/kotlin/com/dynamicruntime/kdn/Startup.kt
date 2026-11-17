@@ -58,7 +58,7 @@ object Startup {
     /**
      * The overlay for a test's node that is **not** a test instance -- a boot in [env] (production, development) as a
      * real deployment makes it, for a test of what such a deployment does, booted with [mkBootCxt]. Kept in memory,
-     * and given no Mailgun key (issue #1250) and no model key for the workflow assistant (issue #1525): a real
+     * and given no Mailgun key (issue #1250) and no model key for the configuration assistant (issue #1525): a real
      * deployment loads its keys, and the developer's secrets file may hold real ones.
      */
     fun realNodeOverlay(env: String): Map<String, Any?> = mapOf(
@@ -90,7 +90,7 @@ object Startup {
         // is not a test instance loads it -- so a test of such a node could otherwise send real mail. A test that
         // needs a key names its own secret.
         testOverlay.putIfAbsent(MAIL.mailgunApiKeySecretKey, noTestMailKeySecret)
-        // Nor the workflow assistant's model key (issue #1525), for the same reason: a model call spends money.
+        // Nor the configuration assistant's model key (issue #1525), for the same reason: a model call spends money.
         testOverlay.putIfAbsent(ASST.keySecretEnvVar, ASST.noKeyInUnitTests)
         return mkBootCxt(cxtName, instanceName, testOverlay, additionalComponents, stage, services)
     }

@@ -45,7 +45,7 @@ import io.kotest.matchers.string.shouldContain
  * A call made in this process for a user (issue #1524): through the whole request pipeline, as that user, held to what
  * an API key is held to and to its own scope besides -- in the dispatcher and in the catalog alike -- never env-authed,
  * and refused the moment the user is disabled, becomes another's, or loses the standing an endpoint needs. Here, as the
- * person's own sandbox user, which is what the workflow assistant acts as.
+ * person's own sandbox user, which is what the configuration assistant acts as.
  */
 class InProcessCallerTest : StringSpec({
     val cxt = TestInstances.default("inProcess1524")

@@ -96,7 +96,7 @@ request's facts among them, so the caller's facts marked Yes are the ones they c
 choice. A client's own facts are sent only where its declaration sets `toFrontend`, and are about its forms, so
 a page widget's condition may not name them.
 
-A component a deployment adds can declare facts under a name of its own, as the workflow assistant declares
+A component a deployment adds can declare facts under a name of its own, as the configuration assistant declares
 `assistant:on`. The **Client facts** page, for a client's operators and administrators, lists every fact the client
 knows, its own included, with whether each is present for them now.
 

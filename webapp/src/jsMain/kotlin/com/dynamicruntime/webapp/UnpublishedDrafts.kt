@@ -38,7 +38,7 @@ fun parseDraftsRead(item: Map<String, Any?>): DraftsRead? {
 
 /**
  * Where the drafts are published (issue #1638): the Clients page's publishing panel for the client -- the sandbox's
- * own page from inside it, where the person is, as the workflow assistant's drafts link. Pure.
+ * own page from inside it, where the person is, as the configuration assistant's drafts link. Pure.
  */
 fun draftsPublishRoute(read: DraftsRead): List<Pair<String, String>> = listOf(
     HP.page to HMENU.pageClients,

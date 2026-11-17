@@ -214,7 +214,7 @@ object AssistantTools {
 
     /** The scope the seam holds every call to: exactly the endpoints the tools name. */
     val scope: InProcessScope by lazy {
-        InProcessScope.of("the workflow assistant", all.mapNotNull { t -> t.path?.let { t.method!!.name to it } }.toSet())
+        InProcessScope.of("the configuration assistant", all.mapNotNull { t -> t.path?.let { t.method!!.name to it } }.toSet())
     }
 
     /** The tool definitions, as the model is sent them. */

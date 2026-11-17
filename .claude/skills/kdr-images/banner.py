@@ -72,7 +72,7 @@ PARTS = [
   'An application built on KotlinDynamicRuntime: configure its forms and workflows, try them in a sandbox, publish, and people fill in forms, review them, approve them, and read the report.',
   [('braces','Configure'),('sandbox','Try it'),('publish','Publish'),('checklist','Fill in'),('people','Review'),('check','Approve'),('bars','Report')]),
  ('walk-part3.svg', 'Part 3', 'For developers', 'amber', WALK_ABOUT,
-  'Part 3 of the walk-through: a workflow as JSON, written by the workflow assistant or by hand, tried, given an approval step, and published; then an API key, a change from a program, and the key revoked.',
+  'Part 3 of the walk-through: a workflow as JSON, written by the configuration assistant or by hand, tried, given an approval step, and published; then an API key, a change from a program, and the key revoked.',
   [('braces','JSON'),('spark','Assistant'),('flow','Try it'),('check','Approval'),('publish','Publish'),('key','API key'),('terminal','Program'),('revoke','Revoke')]),
 ]
 

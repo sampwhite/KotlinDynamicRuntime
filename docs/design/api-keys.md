@@ -142,7 +142,7 @@ and what it writes to configuration is a draft of the parent's, as a session's w
 ## Calls made in this process for a user (#1524)
 <!-- Theme: #APIKR -->
 
-Work a person asks for can run on after their request ends: the workflow assistant, which builds a workflow by calling
+Work a person asks for can run on after their request ends: the configuration assistant, which configures a client by calling
 this application's own endpoints. Such a call goes through the whole request pipeline (`InProcessCaller`), as a key's
 request does, and is held to everything a key is held to and less.
 
