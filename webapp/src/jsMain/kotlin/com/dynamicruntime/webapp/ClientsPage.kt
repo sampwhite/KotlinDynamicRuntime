@@ -634,6 +634,9 @@ private fun ChildrenBuilder.clientDetail(
                     sandboxOf = row.sandboxOf
                     this.onChanged = onChanged
                 }
+                // What a link to the site shows (issue #1783): the site's, not this client's, so only for a caller who sees
+                // every client -- the one administrator who could change it, and who shares the site's link.
+                if (acrossClients) SiteLinkPreviewBlock {}
                 WhatIsThis {
                     heading = "Files"
                     headingLevel = 3

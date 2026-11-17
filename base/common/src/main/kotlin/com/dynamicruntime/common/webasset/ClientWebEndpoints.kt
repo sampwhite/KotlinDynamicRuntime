@@ -177,6 +177,46 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         val named = namedSlot(c, assets, request)
         assets.meta(c, named.client, named.def.slot) ?: throw named.empty()
     }
+
+    // What a link to the site shows (issue #1783): the deployment's, the same for every client, so it is read in the
+    // `admin` section, by a deployment's administrator alone.
+    type(WAS.shellImageTypeName) {
+        type = SCT.kObject
+        description = "One image the page shell links, which an anonymous visitor and a link preview are served."
+        property(WAS.slot, "Which image.", required = true) {
+            option(WAS.shareImage, "Share image")
+            option(WAS.faviconPng, "PNG favicon")
+            option(WAS.appleTouchIcon, "Apple touch icon")
+        }
+        property(WAS.label, "What a person calls it.", required = true)
+        property(WAS.appFile, "The file it is served as, under the app root.", required = true)
+        property(WAS.source, "Where it comes from.", required = true) {
+            option(WAS.sourceDefault, "The deployment's default package")
+            option(WAS.sourceBuiltIn, "Built in")
+        }
+        property(WAS.packageId, "The deployment's default package, when the image is its; absent for a built-in one.")
+    }
+    type(WAS.linkPreviewTypeName) {
+        type = SCT.kObject
+        description = "What a link to the site shows: the images the page shell links, and the words a preview draws."
+        property(WAS.images, "The images the page shell links, each with where it comes from.", required = true) {
+            type = SCT.array
+            items { ref(WAS.shellImageTypeName) }
+        }
+        property(WAS.title, "The preview's title, as an anonymous visitor's client words it.", required = true)
+        property(WAS.description, "The preview's description, as an anonymous visitor's client words it.", required = true)
+        property(WAS.publicUrl, "The site's public address (KDR_PUBLIC_URL); absent where the deployment names none.")
+    }
+
+    generalEndpoint(
+        UADEP.siteLinkPreview,
+        "What a link to the site shows (issue #1783): the share image, the PNG favicon, and the Apple touch icon the page " +
+            "shell links, each with where it comes from -- the deployment's default web resources package, else built " +
+            "in -- and the title and description a preview draws, as an anonymous visitor reads them. The site's, the " +
+            "same for every client, and set in the deployment's code and copy rather than uploaded.",
+        HttpMethod.GET,
+        outputRef = WAS.linkPreviewTypeName,
+    ) { c, _ -> SiteLinkPreview.preview(c) }
 }
 
 /** The slot a download or its meta read names, of the client the request names -- one the node knows. */

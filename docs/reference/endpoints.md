@@ -41,6 +41,7 @@ A signed-in caller at the `admin` level or above and holding `allClients` may ca
 | POST | `/admin/formDocForUser` |  | Creates a form document owned by another user, in that user's client (issue #672). For an `allClients` admin; the shared `/gedra/formDoc/create` is unchanged. |
 | GET | `/admin/gedraState` |  | Reads one gedra's state entries (issue #600). |
 | POST | `/admin/gedraState` |  | Replaces one gedra's state entries with the supplied set (issue #600); a whole-set upsert. |
+| GET | `/admin/site/linkPreview` |  | What a link to the site shows (issue #1783): the share image, the PNG favicon, and the Apple touch icon the page shell links, each with where it comes from -- the deployment's default web resources package, else built in -- and the title and description a preview draws, as an anonymous visitor reads them. The site's, the same for every client, and set in the deployment's code and copy rather than uploaded. |
 | DELETE | `/admin/user` |  | Deletes a user: recoverable (disabled) by default, or -- when permanent -- disabled with the user's email and identity obfuscated so the deletion cannot be undone. |
 | POST | `/admin/user/create` |  | Creates a user directly, bypassing self-service email verification. |
 | GET | `/admin/user/identity` |  | The person behind a user: their identity's facts, and the users of it you administer. |

@@ -45,6 +45,9 @@ import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebResourcesDef
 import com.dynamicruntime.common.webasset.WRES
 import com.dynamicruntime.common.webasset.webResources
+import com.dynamicruntime.common.webasset.SiteLinkPreview
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.stringSpec
@@ -518,9 +521,9 @@ private fun webResourcesTests() = stringSpec {
  */
 private fun defaultPackageTests() = stringSpec {
     val defaultId = "wresfix:default"
-    // The fixture client's own package fills the brand mark alone; the default fills both slots.
+    // The fixture client's own package fills the brand mark alone; the default fills both slots, and the share image.
     val own = webResources(WebResourcesFixture.fullId, brandMark = "fixture/mark.svg")
-    val default = webResources(defaultId, favicon = "fixture/dot.png", brandMark = "fixture/dot.png")
+    val default = webResources(defaultId, favicon = "fixture/dot.png", brandMark = "fixture/dot.png", shareImage = "fixture/dot.png")
     val cxt = Startup.mkTestBootCxt(
         "wresDefault1779", "wresDefault1779", mapOf(WRES.defaultKey to defaultId), listOf(WebResourcesFixture(listOf(own, default))),
     )
@@ -543,6 +546,26 @@ private fun defaultPackageTests() = stringSpec {
         listed.getValue(WAS.brandMark)[WAS.source] shouldBe WAS.sourcePackage
         listed.getValue(WAS.favicon)[WAS.source] shouldBe WAS.sourceDefault
         listed.getValue(WAS.favicon)[WAS.packageId] shouldBe WebResourcesFixture.fullId
+    }
+
+    "a deployment's administrator reads what a link to the site shows, and a client's administrator cannot (issue #1783)" {
+        val deployment = TestUser.createFullAdmin(cxt, "deploy@wres1779.test")
+        val preview = deployment.getData(UADEP.siteLinkPreview)
+        val images = preview[WAS.images].toJsonListOfMaps().associateBy { it[WAS.slot] }
+        images.keys shouldBe setOf(WAS.shareImage, WAS.faviconPng, WAS.appleTouchIcon)
+        // The default package's share image, by the rule the shell serves by; the icons it does not ship are built in.
+        images.getValue(WAS.shareImage)[WAS.source] shouldBe WAS.sourceDefault
+        images.getValue(WAS.shareImage)[WAS.packageId] shouldBe defaultId
+        images.getValue(WAS.shareImage)[WAS.appFile] shouldBe WAS.shareImageFile
+        images.getValue(WAS.faviconPng)[WAS.source] shouldBe WAS.sourceBuiltIn
+        images.getValue(WAS.faviconPng).containsKey(WAS.packageId) shouldBe false
+        images.getValue(WAS.appleTouchIcon)[WAS.appFile] shouldBe WAS.appleTouchIconFile
+        // The words as an anonymous visitor reads them, which a preview's crawler is.
+        preview[WAS.title] shouldBe SiteLinkPreview.title(cxt, CL.public)
+        preview[WAS.description] shouldBe SiteLinkPreview.description(cxt, CL.public)
+
+        val clientAdmin = TestUser.create(cxt, "chief2@wres1779.test", level = ROLE.admin, userClient = WebResourcesFixture.client)
+        clientAdmin.expectError(EXC.notAuthorized, UADEP.siteLinkPreview)
     }
 }
 
