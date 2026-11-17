@@ -114,6 +114,12 @@ class ClientsPageTest {
         // A sandbox's id holds a colon, which an address value must carry encoded.
         assertEquals("/clients/acme:sandbox", clientDetailHref("acme:sandbox"))
         assertEquals(clientDetailHref("acme"), clientOverridesHref("acme"))
+        // At a panel: from a client's publishing panel to its sandbox's, and back.
+        assertEquals("/clients/acme:sandbox#client-publishing", clientDetailHref("acme:sandbox", panelPublishing))
+        assertEquals(
+            listOf(HP.page to HMENU.pageClients, HP.client to "acme", HP.section to panelPublishing),
+            clientDetailRoute("acme", panelPublishing),
+        )
     }
 
     @Test

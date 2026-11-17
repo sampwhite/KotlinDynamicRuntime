@@ -324,7 +324,15 @@ fun clientUsersHref(clientId: String, acrossClients: Boolean): String =
  * see the client may open it -- a client-scoped one their own, which is the only one a link of theirs can name.
  * Pure, and covered under `jsNodeTest`.
  */
-fun clientDetailHref(clientId: String): String = routeHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
+fun clientDetailHref(clientId: String, section: String? = null): String = routeHref(clientDetailRoute(clientId, section))
+
+/**
+ * The route of [clientId]'s page, opened at its panel [section] when one is given -- a panel's element id, which the page
+ * scrolls to -- so a link from one panel can land on the same panel of another client's page: a client's publishing and
+ * its sandbox's. Pure.
+ */
+fun clientDetailRoute(clientId: String, section: String? = null): List<Pair<String, String>> =
+    listOf(HP.page to HMENU.pageClients, HP.client to clientId) + listOfNotNull(section?.let { HP.section to it })
 
 /**
  * Which client the Clients page shows (issue #1082), or null for the listing.
