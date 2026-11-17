@@ -95,7 +95,8 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
   2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.
   3. **Copy**.
-  4. **Images**: Web assets, then Files.
+  4. **Images**: Web assets, then what a link to the site shows (for a caller who sees every client, issue #1783;
+     see `client-web-assets.md`), then Files.
   5. **Sandbox and publishing**: Sandbox, then Configuration. Drafts made in the panels above are published here.
      Under the table, **Open every bundle** leads to the bundle editor (below). It is offered when the client stores
      nothing too (issue #1657), since a client of code changes its code's bundles there.

@@ -294,6 +294,13 @@ object UADEP {
     const val clientWebDownload = "$clientWeb/download"
 
     /**
+     * What a link to the site shows (issue #1783): the images the page shell links, where each comes from, and the
+     * words a preview draws. The deployment's, not a client's, so in the `admin` section, for a deployment's
+     * administrator alone.
+     */
+    const val siteLinkPreview = "/${SECT.admin}/site/linkPreview"
+
+    /**
      * What the image in one slot of a client's web assets **is** -- its metadata, by the download's own inputs --
      * without the image (issue #1131): the meta-only read beside [clientWebDownload].
      */

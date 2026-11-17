@@ -33,6 +33,29 @@ object WAS {
     /** The icon iOS puts on a home screen: a 180x180 opaque PNG. */
     const val appleTouchIcon = "appleTouchIcon"
 
+    // --- The files the page shell links those slots as, under the app root (issue #1783): the shell serves each at its
+    // name, and a page that shows what a link to the site looks like draws it from there, so the two share one name.
+
+    /** The share image's file, which a link preview's `og:image` names. */
+    const val shareImageFile = "share-image.png"
+
+    /** The PNG tab icon's file. */
+    const val faviconPngFile = "favicon-32.png"
+
+    /** The iOS home-screen icon's file. */
+    const val appleTouchIconFile = "apple-touch-icon.png"
+
+    /** The file the page shell links [slot] as, or null for a slot it does not link by a fixed name. */
+    fun shellFileOf(slot: String): String? = when (slot) {
+        shareImage -> shareImageFile
+        faviconPng -> faviconPngFile
+        appleTouchIcon -> appleTouchIconFile
+        else -> null
+    }
+
+    /** The page's title, and a link preview's, where no copy gives one: the `home` file's `site.title` is empty. */
+    const val defaultSiteTitle = "KotlinDynamicRuntime"
+
     // --- Wire names: the inputs of the endpoints, and the fields of a slot as the listing answers it.
 
     /** The client whose assets these are; the caller's own when absent. */
@@ -89,6 +112,33 @@ object WAS {
 
     /** The schema type of one listed slot. */
     const val slotTypeName = "WebAssetSlot"
+
+    // --- What a link to the site shows (issue #1783), for a deployment's administrator: the images the page shell
+    // links, each with where it comes from, and the words a preview draws.
+
+    /** The site's link preview: its [images], its [title] and [description], and the site's [publicUrl]. */
+    const val linkPreviewTypeName = "SiteLinkPreview"
+
+    /** One image the page shell links, in a [linkPreviewTypeName]. */
+    const val shellImageTypeName = "ShellImage"
+
+    /** The images the page shell links, in the order a page shows them. */
+    const val images = "images"
+
+    /** The file a shell image is served as, under the app root ([shellFileOf]). */
+    const val appFile = "appFile"
+
+    /** A preview's title, the `home` file's `site.title` as a visitor reads it. */
+    const val title = "title"
+
+    /** A preview's description, the `home` file's `site.description` as a visitor reads it. */
+    const val description = "description"
+
+    /** The site's public address (`KDR_PUBLIC_URL`), absent where the deployment names none. */
+    const val publicUrl = "publicUrl"
+
+    /** A shell image's [source] when the deployment's default package has none: the runtime's own. */
+    const val sourceBuiltIn = "builtIn"
 
     /** The schema namespace of the endpoints and their types. */
     const val namespace = "kdr.clientWeb"

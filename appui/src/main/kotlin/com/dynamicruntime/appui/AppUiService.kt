@@ -1,12 +1,9 @@
 package com.dynamicruntime.appui
 
-import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.content.ContentResources
-import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.LogRequest
@@ -17,10 +14,10 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.user.INVITE
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.util.crc32Hex
-import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.filestore.StoredFile
 import com.dynamicruntime.common.webasset.WAS
+import com.dynamicruntime.common.webasset.SiteLinkPreview
 import com.dynamicruntime.common.webasset.WRES
 
 /**
@@ -68,21 +65,22 @@ object AUI {
      *  the live context root — see `brandMarkUrl` in the webapp. */
     const val brandMarkFile = "brand-mark.svg"
 
-    /** The PNG tab icon — the fallback the shells declare for browsers that do not take the SVG one. */
-    const val faviconPngFile = "favicon-32.png"
+    /**
+     * The PNG tab icon — the fallback the shells declare for browsers that do not take the SVG one. Its name is the
+     * kernel's, as the share image's and the touch icon's are, so a page can draw what the shell links (issue #1783).
+     */
+    const val faviconPngFile = WAS.faviconPngFile
 
     /** The iOS home-screen icon (180×180, opaque). */
-    const val appleTouchIconFile = "apple-touch-icon.png"
+    const val appleTouchIconFile = WAS.appleTouchIconFile
 
     /**
      * The image a link preview shows for the site (issue #1688): 1200×630, on its own ground, named by the shell's
      * `og:image`. A raster, because the previews (LinkedIn, Slack, messengers) take no SVG; its source,
      * `share-image.svg` in the webapp's resources, is not embedded.
      */
-    const val shareImageFile = "share-image.png"
+    const val shareImageFile = WAS.shareImageFile
 
-    /** The page's title where no copy gives one: the `home` file's `site` namespace is missing or its title empty. */
-    const val defaultSiteTitle = "KotlinDynamicRuntime"
 
     /**
      * The legacy ICO tab icon. Served for completeness, but note browsers request `/favicon.ico` by convention
@@ -211,13 +209,11 @@ class AppUiService : ServiceInitializer, ContentServer {
      * The image the deployment's default web resources package (issue #1779, [WRES.defaultId]) supplies for [asset],
      * or null when it names none, fills no such slot, or fills it with another kind of image than the file's name
      * says -- the built-in is served then. Looked up as it is asked for, not at init: the packages are read by
-     * [ComponentImageService] in its own init, which need not come first, and the lookup is two map reads.
+     * `ComponentImageService` in its own init, which need not come first, and the lookup is two map reads. The rule is
+     * [SiteLinkPreview]'s, which the deployment administrator's preview of these images shares (issue #1783).
      */
-    private fun packaged(cxt: KdrCxt, asset: BrandingAsset): StoredFile? {
-        val slot = asset.slot ?: return null
-        val packageId = WRES.defaultId(cxt) ?: return null
-        return ComponentImageService.getOrNull(cxt)?.packageFile(packageId, slot)?.takeIf { it.meta.mimeType == asset.mimeType }
-    }
+    private fun packaged(cxt: KdrCxt, asset: BrandingAsset): StoredFile? =
+        asset.slot?.let { SiteLinkPreview.defaultPackageImage(cxt, it, asset.mimeType) }
 
     /** The hash a package's image is addressed by: the start of its content's own hash, which a changed image changes. */
     private fun packagedHash(file: StoredFile): String = file.meta.hash.take(packagedHashLength)
@@ -431,14 +427,12 @@ class AppUiService : ServiceInitializer, ContentServer {
      * and there is no `og:url`.
      */
     private fun shellMeta(cxt: KdrCxt, appRoot: String): ShellMeta {
-        val fragments = MarkdownFragmentService.get(cxt)
-        fun copy(key: String): String? =
-            fragments.resolveFragment(cxt, HFRAG.home, HFRAG.siteNs, key)?.renderMarkdownText()?.trim()?.ifEmpty { null }
         val publicUrl = INVITE.configuredPublicUrl(cxt)
         val appUrl = "${publicUrl.orEmpty()}/$appRoot"
+        // The words as the caller's client reads them, by the rule the administrator's preview of them shares (issue #1783).
         return ShellMeta(
-            title = copy(HFRAG.title) ?: AUI.defaultSiteTitle,
-            description = copy(HFRAG.siteDescription).orEmpty(),
+            title = SiteLinkPreview.title(cxt, cxt.client),
+            description = SiteLinkPreview.description(cxt, cxt.client),
             imageUrl = "$appUrl/${versionedName(cxt, AUI.shareImageFile)}",
             url = publicUrl?.let { appUrl },
         )

@@ -696,6 +696,23 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
    prefixed class, so `.code` here stays the block well below and an inline code value never picks it up. */
 .md-value { font-weight: 600; }
 .md-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; letter-spacing: .08em; }
+/* What a link to the site shows (issue #1783): the share image as a preview card draws it, at its 1200 by 630 shape
+   with the words beneath, held to a card's width; then each shell image's row, with the small ones drawn small. */
+.link-preview-card {
+    max-width: 420px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface-page);
+    margin: 8px 0 12px;
+}
+.link-preview-image { display: block; width: 100%; aspect-ratio: 1200 / 630; object-fit: cover; }
+.link-preview-title { font-weight: 600; padding: 8px 12px; }
+.link-preview-description { color: var(--text-muted); padding: 0 12px 10px; margin-top: -4px; font-size: .92em; }
+.link-preview-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.link-preview-icon { width: 32px; height: 32px; object-fit: contain; }
+.link-preview-icon.touch { width: 40px; height: 40px; border-radius: 9px; }
+.link-preview-label { font-weight: 600; }
 /* Issue #1800: `[x]{.accent}` a phrase in the accent color, `[x]{.muted}` an aside in a quieter gray; and the fenced
    div's roles, `::: {.panel}` a box set apart from the copy around it (a step down into the page, as an inset well is,
    with an indigo edge), `::: {.center}` its blocks centered. A mail styles the same roles inline, from its own copy. */

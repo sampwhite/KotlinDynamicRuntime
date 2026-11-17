@@ -1347,6 +1347,13 @@ object ClientsApi {
         parseWebAssetSlots(Http.getApi(UADEP.clientWeb + queryString(mapOf(WAS.client to clientId)))[EP.items].toJsonListOfMaps())
 
     /**
+     * What a link to the site shows (issue #1783): the images the page shell links, where each comes from, and the
+     * words a preview draws. A deployment administrator's read, in the `admin` section.
+     */
+    suspend fun siteLinkPreview(): SiteLinkPreviewView =
+        siteLinkPreviewFrom(Http.getApi(UADEP.siteLinkPreview)[EP.results].toJsonMapOrEmpty())
+
+    /**
      * Uploads [file] -- the browser's own `File`, from a picker -- as the image of [slot] of [clientId]'s web assets
      * (issue #1130), replacing the one there. Live for everyone in the client when this returns, which answers the slot
      * as it now is; the backend refuses a file that is not the image it says it is, in its own words.

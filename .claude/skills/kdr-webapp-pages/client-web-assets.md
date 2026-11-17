@@ -35,6 +35,30 @@ same root and absent from the catalog for the same reason:
   deployment's: there is no slot for either. The shell's title and preview words follow the caller's client's `site`
   copy, which a crawler, being anonymous, reads in the default client.
 
+## What a link to the site shows (issue #1783)
+
+For a caller who sees every client, the client page's Images panel adds a read-only block under Web assets
+(`SiteLinkPreviewBlock`, `SiteLinkPreview.kt`). It is the site's, not the client's, so a client's own administrator is
+not shown it, and its endpoint is in the `admin` section. It draws:
+
+- **the share image as a preview card draws it**, at its 1200 by 630 shape, with the title and description beneath;
+- **a row for each image the page shell links** -- the share image, the PNG favicon, and the Apple touch icon, the
+  small ones drawn small -- saying where it comes from: the deployment's default package by id, or built in;
+- **Check it on LinkedIn**, Post Inspector for the site's address, where `KDR_PUBLIC_URL` names one.
+
+It says, above them, that these are the site's, the same for every client, set in the deployment's code and copy and
+not uploaded.
+
+**One rule, two readers.** `GET /admin/site/linkPreview` (`UADEP.siteLinkPreview`) answers from `SiteLinkPreview` in
+`base:common`, which the shell (`AppUiService`) serves by too:
+
+- **an image** is the default package's when it ships one of the kind the shell names, else built in;
+- **the words** are the `home` file's `site` copy reduced to text: as `public` reads them for the block (an anonymous
+  visitor, as a crawler is), and as the caller's client does for the shell.
+
+The images are drawn from the addresses the shell links, each file under the app root (`WAS.shellFileOf`, whose names
+`AUI` uses), so the block shows what is served. The parsing and the words are pure, covered by `SiteLinkPreviewTest`.
+
 ## A client's file refs (issues #1153, #1154)
 
 Beside its two web assets a client has **file refs**: named images held in its configuration -- uploaded by its
