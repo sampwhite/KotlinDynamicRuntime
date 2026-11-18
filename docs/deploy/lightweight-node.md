@@ -624,7 +624,12 @@ else will have, such as `examplesite-`:
 | Bucket | Holds |
 | --- | --- |
 | `<prefix>web-assets` | Each client's tab icon and brand mark, and its file refs |
+| `<prefix>data-files` | Files uploaded into forms' data, through a trait's file field |
 | `<prefix>sample-files` | Uploads through the sample's demo file endpoints, which a `dev` node such as this one loads |
+
+**A release can add a bucket.** When one does, make the bucket, and add it to the access key's buckets (step 2),
+before you deploy that release: the release refuses to start without it, and keeps retrying until it is there. The
+startup failure names the bucket it is missing.
 
 **2. Make an access key** under Object Storage, Access Keys. Choose **limited access** and give it read/write on
 those buckets only. Linode shows the secret once, and beside it the key's **S3 endpoint** for the region, such as
@@ -663,7 +668,7 @@ env.KDR_S3_BUCKET_PREFIX=examplesite-
 Then deploy (`kdr-deploy <target>`), which writes them into `kdr.env` and restarts the service.
 
 **5. Check it.** The startup line in the log names the store (`File store: s3 (S3 at
-https://us-ord-10.linodeobjects.com (us-ord-10), buckets named 'examplesite-...'), 2 bucket(s) declared.`), and a
+https://us-ord-10.linodeobjects.com (us-ord-10), buckets named 'examplesite-...'), 3 bucket(s) declared.`), and a
 bucket that is missing, or that the key cannot use, is named in the startup failure instead -- a `403 Forbidden` there
 is most often the key at the wrong endpoint (step 2). Then upload a client's favicon on the site and see it in the
 tab. Once the node runs this way, `~/kdr/fileStore` holds nothing the application reads, and can be removed.
