@@ -211,12 +211,13 @@ class CommonComponent : ComponentDefinition {
         collector.addSchemaFunction(ComputeValueCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the core details save) keep core details state fresh.
-        // The links between forms and the data files their fields name (issue #1838), first: the next hook rebinds the
-        // write's context to the form's owner, and a file newly linked must be one the caller may use.
+        // A counter's field holds only an id issued to the writer, stored once and never changed (issue #1849). First, so
+        // a write it refuses fails before the work below is done for nothing; it reads only who is acting.
+        collector.addWriteHook(CounterClaimHook)
+        // The links between forms and the data files their fields name (issue #1838), before the state hook: that hook
+        // rebinds the write's context to the form's owner, and a file newly linked must be one the caller may use.
         collector.addWriteHook(DataFileLinkHook)
         collector.addWriteHook(DerivedStateWriteHook)
-        // A counter's field holds only an id issued to the writer, stored once and never changed (issue #1849).
-        collector.addWriteHook(CounterClaimHook)
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
         // path, under the form's lock -- or record the override a permitted writer asked for.
         // The guards run in this order, so the broadest refusal is the one said: a form an editor may not delete, then

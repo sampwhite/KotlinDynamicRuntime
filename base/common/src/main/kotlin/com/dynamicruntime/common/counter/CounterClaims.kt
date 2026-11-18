@@ -56,15 +56,19 @@ object CounterClaimHook : GedraWriteHook {
     override fun afterWrite(cxt: KdrCxt, write: GedraWriteContext) {
         val row = write.row
         val union = SchemaService.get(cxt).storeFor(row.client).types["${GCFG.globalNamespace}.${GU.unionName(row.kind)}"] ?: return
+        // Each trait's data type and the fields of it a counter fills, worked out once a write: every write passes here.
         val dataTypes = HashMap<String, SchType?>()
         fun dataTypeOf(traitId: String): SchType? =
             dataTypes.getOrPut(traitId) { union.variants?.select(traitId)?.properties?.get(GE.data)?.valueType }
+        val countedFields = HashMap<String, Map<String, String>>()
+        fun fieldsOf(traitId: String): Map<String, String> =
+            countedFields.getOrPut(traitId) { dataTypeOf(traitId)?.let(::counterFieldsOf).orEmpty() }
         // Only the entries of traits a counter fills, by their address.
         fun counted(entries: List<Map<String, Any?>>): Map<String, Pair<String, Map<String, Any?>>> = buildMap {
             for (entry in entries) {
                 val traitId = entry[GE.traitId].toOptStr() ?: continue
+                if (fieldsOf(traitId).isEmpty()) continue
                 val type = dataTypeOf(traitId) ?: continue
-                if (counterFieldsOf(type).isEmpty()) continue
                 val data = entry[GE.data].toJsonMapOrEmpty()
                 val address = (listOf(traitId) + type.primaryKey.map { data[it].toString() }).joinToString("\u0000")
                 put(address, traitId to data)
@@ -77,8 +81,7 @@ object CounterClaimHook : GedraWriteHook {
         val claims = mutableListOf<ValueClaim>()
         for (address in before.keys + after.keys) {
             val traitId = (after[address] ?: before.getValue(address)).first
-            val fields = counterFieldsOf(dataTypeOf(traitId) ?: continue)
-            for ((field, counterId) in fields) {
+            for ((field, counterId) in fieldsOf(traitId)) {
                 val old = before[address]?.second?.get(field).toOptStr()
                 val new = after[address]?.second?.get(field).toOptStr()
                 if (old == new) continue

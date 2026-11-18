@@ -4,11 +4,16 @@ import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import react.StateSetter
+import react.useEffect
+import react.useState
 
 /** An id a counter issued (issue #1849): the [value] its field shows, and the [token] the save sends back to store it. */
 class IssuedId(val value: String, val token: String)
@@ -65,3 +70,48 @@ fun withCounterId(entries: List<Map<String, Any?>>, slot: CounterSlot, value: St
     val entry = entries[at]
     return entries.toMutableList().also { it[at] = entry + (GE.data to (entry[GE.data].toJsonMapOrEmpty() + (slot.field to value))) }
 }
+
+/** What [useCounterIds] answers: the tokens a create sends with the ids it was given, and a failure to get one. */
+class CounterIds(val tokens: List<String>, val error: DisplayError?)
+
+/**
+ * The ids of a create page's counter fields (issue #1849), for a page whose form is a create's `entries` against
+ * [inputType] -- the trait picker and the create for another user: each section of a trait a counter numbers is given
+ * its id as it is added, so the person sees it before the form is saved, and [values] are updated through
+ * [updateValues]. Asked of [client]'s copy of the endpoint when one is named. The ask runs again only when the sections
+ * still lacking an id change, not on each keystroke; a section removed while its id is on its way leaves a gap.
+ */
+fun useCounterIds(
+    inputType: SchType?,
+    values: Map<String, Any?>,
+    updateValues: StateSetter<Map<String, Any?>>,
+    client: String? = null,
+): CounterIds {
+    val tokensState = useState<List<String>>(emptyList())
+    val tokens by tokensState
+    val updateTokens = tokensState.component2()
+    var error by useState<DisplayError?>(null)
+    val variants = inputType?.properties?.get(GDF.entries)?.valueType?.itemType?.variants
+    val slots = variants?.let { v ->
+        counterSlotsInEntries(values[GDF.entries].toJsonListOfMaps()) { v.select(it)?.properties?.get(GE.data)?.valueType }
+    }.orEmpty()
+    useEffect(slots.joinToString { "${it.traitId}.${it.field}" }, client) {
+        if (slots.isEmpty()) return@useEffect
+        try {
+            // Every id asked for before any lands: one landing changes the slots, which would start the ask over and use up
+            // the ids still on their way.
+            val issued = slots.map { it to CounterApi.issue(it.counterId, client) }
+            updateValues { current ->
+                current + (GDF.entries to issued.fold(current[GDF.entries].toJsonListOfMaps()) { acc, (slot, id) -> withCounterId(acc, slot, id.value) })
+            }
+            updateTokens { it + issued.map { (_, id) -> id.token } }
+        } catch (e: Throwable) {
+            error = userFacingError(e)
+        }
+    }
+    return CounterIds(tokens, error)
+}
+
+/** [payload] with [tokens] beside it, as a create sends the tokens of the ids it stores (issue #1849). */
+fun withCounterTokens(payload: Map<String, Any?>, tokens: List<String>): Map<String, Any?> =
+    if (tokens.isEmpty()) payload else payload + (CTR.counterTokens to tokens)

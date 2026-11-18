@@ -193,21 +193,28 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val valuesState = useState(seeded)
     var valuesByTrait by valuesState
     val updateValues = valuesState.component2()
-    // The ids a counter issued for this create (issue #1849), asked for as the form opens so the person sees them before
-    // it is saved, and the tokens the save sends back to store them. Each ask uses up an id, so it is made once a form.
-    var counterTokens by useState<List<String>>(emptyList())
+    // The ids a counter issued for this form (issue #1849), asked for while the form can be saved -- as a create opens,
+    // or as an edit starts on a form whose counter field is empty -- so the person sees them before saving, and the
+    // tokens the save sends back to store them. Keyed by the fields still lacking one, so a view read again in place
+    // that adds one asks for it, and typing asks nothing. Each ask uses up an id.
+    val counterTokensState = useState<List<String>>(emptyList())
+    val counterTokens by counterTokensState
+    val updateCounterTokens = counterTokensState.component2()
     var counterError by useState<DisplayError?>(null)
-    useEffect(isEdit) {
-        if (isEdit) return@useEffect
-        val traits = wf.tasks.flatMap { it.traits }.map { it.traitId to it.type }
-        val slots = counterSlotsToFill(traits) { traitId -> seeded[traitId] ?: emptyMap() }
-        if (slots.isEmpty()) return@useEffect
+    val counterSlots = if (isEdit && !editing) {
+        emptyList()
+    } else {
+        counterSlotsToFill(wf.tasks.flatMap { it.traits }.filterNot { it.traitId in wf.lockedTraits }.map { it.traitId to it.type }) { valuesByTrait[it] ?: emptyMap() }
+    }
+    useEffect(counterSlots.joinToString { "${it.traitId}.${it.field}" }) {
+        if (counterSlots.isEmpty()) return@useEffect
         try {
-            val issued = slots.map { it to CounterApi.issue(it.counterId, props.client) }
+            // Every id asked for before any lands, so one landing does not start the ask over (see `useCounterIds`).
+            val issued = counterSlots.map { it to CounterApi.issue(it.counterId, props.client) }
             updateValues { current ->
                 issued.fold(current) { acc, (slot, id) -> acc + (slot.traitId to (acc[slot.traitId].orEmpty() + (slot.field to id.value))) }
             }
-            counterTokens = issued.map { it.second.token }
+            updateCounterTokens { it + issued.map { (_, id) -> id.token } }
         } catch (e: Throwable) {
             counterError = userFacingError(e)
         }
