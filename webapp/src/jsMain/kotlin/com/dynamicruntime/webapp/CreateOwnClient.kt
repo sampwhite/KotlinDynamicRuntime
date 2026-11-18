@@ -248,7 +248,7 @@ external interface CreateOwnClientCardProps : Props {
     /** The code-defined templates a new client may start from ([HomeConfig.selfServeTemplates]); empty for none. */
     var templates: List<SelfServeTemplate>?
     /**
-     * Whether a client made here comes with the workflow assistant (issue #1636): the deployment offers it to self-serve
+     * Whether a client made here comes with the configuration assistant (issue #1636): the deployment offers it to self-serve
      * clients, which the shell config says by sending the assistant module's card for a public administrator
      * ([ownClientAssistantOffered]).
      */
@@ -256,7 +256,7 @@ external interface CreateOwnClientCardProps : Props {
 }
 
 /**
- * Whether a client a person makes from the public home page comes with the workflow assistant (issue #1636): among
+ * Whether a client a person makes from the public home page comes with the configuration assistant (issue #1636): among
  * [cards], the assistant module's card for a public administrator, which it sends only where the deployment offers the
  * assistant to self-serve clients. Pure, and covered under `jsNodeTest`.
  */
@@ -344,7 +344,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                         li {
                             +(if (props.assistantOffered == true) {
                                 "You become its administrator, and the page moves there once it is made. Its home page " +
-                                    "starts you on the workflow assistant, to help you build its forms and workflows."
+                                    "starts you on the configuration assistant, to help you set it up: its forms, workflows, and wording."
                             } else {
                                 "You become its administrator, and the page moves there once it is made."
                             })
@@ -480,7 +480,7 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                                 }
                                 val uploadsNote = imageUploadsNote(failures)
                                 // The client's home page (issue #1723), whose Getting started list says what to do next --
-                                // switching on the workflow assistant first, where it is offered.
+                                // switching on the configuration assistant first, where it is offered.
                                 if (uploadsNote == null) {
                                     afterSessionChange(bump)
                                 } else {

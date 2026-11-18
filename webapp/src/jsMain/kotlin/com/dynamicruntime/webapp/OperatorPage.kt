@@ -379,7 +379,7 @@ val OperatorIndex = FC<Props> {
                 +" \u2014 the file store's buckets, each drilled folder by folder, every file downloadable."
             }
             li {
-                a { href = childHref(ASST.operatorPage, HMENU.pageOperator); +"Workflow assistant" }
+                a { href = childHref(ASST.operatorPage, HMENU.pageOperator); +"Configuration assistant" }
                 +(
                     " \u2014 the clients the assistant is on for, what each may spend in a month, and what each has spent, " +
                         "where the deployment includes the assistant."

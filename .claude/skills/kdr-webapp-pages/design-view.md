@@ -38,7 +38,7 @@ somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the pare
 one with a sandbox, whose own page points to the sandbox instead (`publishedOnly`). The two kinds of editor therefore
 never leave each other a draft to refuse. Like them, a save brings a small client's forms up to date at once (issue
 #1741), since a form's requirements and choices are in its layout; its result says what happened (`formStatesAuto`),
-which the page does not draw yet: the editor closes on a save and has no note to put it in. For the workflow assistant
+which the page does not draw yet: the editor closes on a save and has no note to put it in. For the configuration assistant
 (issue #1765), each edit's result also names the bundle it landed in (`configName`), a workflow's definition read gives
 the stamp its block does (`basedOn`), and the shared field and the fields shown take a `dryRun` -- judged as the save
 would be and stored nowhere, answering a draft's `draftImpact` -- which the page itself does not use. A field's summary keeps what the data requires apart from what this form

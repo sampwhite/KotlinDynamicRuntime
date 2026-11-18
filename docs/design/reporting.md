@@ -38,7 +38,7 @@ The **Reports page**'s **New report** makes a report from a few choices, with no
 It is one-way: a report made there is changed afterwards in the bundle editor, where it is an entry of the
 `kdr:reportDef` slot in the client's `reports` bundle. The page removes one, though, with **Remove this report** under
 it. In a client with a sandbox, New
-report is offered in the sandbox, where the report is a draft until it is published. The workflow assistant makes one
+report is offered in the sandbox, where the report is a draft until it is published. The configuration assistant makes one
 the same way, with its `create_report` tool.
 
 A report can also be written as JSON from the start, in the bundle editor. [The conference demo's reports

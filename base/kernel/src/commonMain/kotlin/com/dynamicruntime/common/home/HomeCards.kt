@@ -42,7 +42,7 @@ object HCARD {
     const val actionLabel = "actionLabel"
 
     /**
-     * The words on a card's primary button while what it opens is offered but not yet on -- the workflow assistant's
+     * The words on a card's primary button while what it opens is offered but not yet on -- the configuration assistant's
      * "Switch on the assistant" -- read by a card whose [kind] knows that state. In the card, beside [actionLabel], so a
      * client's overlay rewords it with the rest of the card.
      */
@@ -90,7 +90,7 @@ object HCARD {
 
     /**
      * The live body of [checklist] (issue #1639): the new client's steps, read from `/clientAdmin/client/checklist`
-     * with the webapp's own step for the workflow assistant beside them, and the card drawn only while one is left.
+     * with the webapp's own step for the configuration assistant beside them, and the card drawn only while one is left.
      */
     const val kindNewClientChecklist = "newClientChecklist"
 

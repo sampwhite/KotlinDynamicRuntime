@@ -29,10 +29,11 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptLong
 
 /**
- * The workflow assistant (issues #1524-#1527): a client administrator describes a workflow in words, and Claude, with
- * this application's own endpoints as tools, drafts it in the client's sandbox for a person to try and publish.
+ * The configuration assistant (issues #1524-#1527): a client administrator says in words what they want of
+ * their client -- its workflows, forms, wording, menu, forms list, or reports -- and Claude, with this application's own
+ * endpoints as tools, drafts it in the client's sandbox for a person to try and publish.
  * This issue (#1525) brings the model ([AssistantService.model]) and the operator's controls: which clients may use
- * it, and how much (`docs/design/workflow-assistant.md`).
+ * it, and how much (`docs/design/configuration-assistant.md`).
  *
  * Found through ServiceLoader, like the edge, and on application nodes only. It always loads -- its tables, its
  * endpoints, its cfact, and its menu entries -- so an operator can see why it is unavailable and switch clients on ahead
@@ -53,7 +54,7 @@ class AssistantComponent : ComponentDefinition {
         collector.addCFact(
             CFactDef(
                 ASST.onCFact, CFGRP.caller,
-                "True when the workflow assistant is available to the caller's client: this node can reach the model, " +
+                "True when the configuration assistant is available to the caller's client: this node can reach the model, " +
                     "and an operator has switched the client on (a sandbox goes by its parent). Not whether the " +
                     "month's budget is left.",
             ),
@@ -61,7 +62,7 @@ class AssistantComponent : ComponentDefinition {
         collector.addCFact(
             CFactDef(
                 ASST.usableCFact, CFGRP.caller,
-                "True when the caller can talk to the workflow assistant, or switch it on: it is on for their client, or " +
+                "True when the caller can talk to the configuration assistant, or switch it on: it is on for their client, or " +
                     "offered to it (a self-serve client, issue #1568) -- and, signed in to the client's sandbox, they are " +
                     "there as a user opened from one of the client's own. Not whether they administer the client, nor " +
                     "whether the month's budget is left.",
@@ -75,7 +76,7 @@ class AssistantComponent : ComponentDefinition {
         collector.addCFact(
             CFactDef(
                 ASST.selfServeOfferedCFact, CFGRP.node,
-                "True when this deployment offers the workflow assistant to the clients people create for themselves " +
+                "True when this deployment offers the configuration assistant to the clients people create for themselves " +
                     "(issue #1636): this node can reach the model, and self-serve clients may switch it on. A fact about " +
                     "the node, whoever is asking.",
             ),
@@ -94,12 +95,12 @@ class AssistantComponent : ComponentDefinition {
         uiBlockOverlay(HMENU.block, origin = providerName) {
             items(HFLD.menu) {
                 menuItem(
-                    ASST.menuItem, "Workflow assistant", UiRoute(ASST.page),
+                    ASST.menuItem, "Configuration assistant", UiRoute(ASST.page),
                     cfactExpression = "${CFACTS.administersClient},${ASST.usableCFact},${CFACTS.app}",
                     displayOrder = orderAfter(HMENU.reports),
                 )
                 menuItem(
-                    ASST.operatorMenuItem, "Workflow assistant", UiRoute(ASST.operatorPage),
+                    ASST.operatorMenuItem, "Configuration assistant", UiRoute(ASST.operatorPage),
                     cfactExpression = "${CFACTS.isDeploymentOperator},${CFACTS.app}",
                     displayOrder = orderAfter(HMENU.fileStore), parentId = HMENU.operator,
                 )
@@ -111,24 +112,25 @@ class AssistantComponent : ComponentDefinition {
         uiBlockOverlay(HCARD.block, origin = providerName) {
             items(HCARD.cards) {
                 homeCard(
-                    ASST.homeCard, "Workflow assistant",
-                    "Describe the forms and workflows you want in your own words, and the assistant drafts them in your " +
-                        "client's sandbox, for you to try there and publish when they are right.",
-                    action = UiRoute(ASST.page), actionLabel = "Open the workflow assistant",
+                    ASST.homeCard, "Configuration assistant",
+                    "Describe what you want of your client in your own words: its forms and workflows, the words its " +
+                        "pages and mails use, its menu, its forms list, or its reports. The assistant drafts it in your " +
+                        "client's sandbox, for you to try there and publish when it is right.",
+                    action = UiRoute(ASST.page), actionLabel = "Open the configuration assistant",
                     // While it is off and the person may switch it on: the page opens on that panel.
                     offerLabel = "Switch on the assistant",
                     // Named in the row under Home's title too, beside "Start here": the card may sit below a long
                     // introduction, and an assistant not yet switched on is easy to miss there.
-                    jumpLabel = "Workflow assistant",
+                    jumpLabel = "Configuration assistant",
                     kind = ASST.cardKind,
                     cfactExpression = "${CFACTS.administersClient},${ASST.usableCFact},${CFACTS.app}",
                     displayOrder = UIB.orderStep / 2,
                 )
                 homeCard(
                     ASST.createHomeCard, "Design your own forms",
-                    "[Create a client of your own](#${PGW.elementIdPrefix}${HPART.ownClient}) and the workflow assistant helps you build it: " +
-                        "describe the form you want people to fill in and the steps it goes through, and it drafts them " +
-                        "for you to try.",
+                    "[Create a client of your own](#${PGW.elementIdPrefix}${HPART.ownClient}) and the configuration assistant " +
+                        "helps you build it: describe the form you want people to fill in, the steps it goes " +
+                        "through, and the words it uses. The assistant drafts it all for you to try.",
                     // Not once the person has made their client (issue #1743): the page's own-client section opens it.
                     cfactExpression = "${CFACTS.publicMember},~${CFACTS.madeOwnClient},${ASST.selfServeOfferedCFact},${CFACTS.app}",
                     displayOrder = UIB.orderStep / 2,

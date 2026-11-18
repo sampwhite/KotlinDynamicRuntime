@@ -285,7 +285,7 @@ files.openRange(cxt, "client-files", "clients/acme/files/${stored.hash}", offset
   input rides in the query string.
 - **A file in the file store** is `files.streamed(cxt, bucket, key, inLine, saveAsFilename)`: a `StreamedContent` from
   one read of its metadata, each range then read straight from the store -- one S3 request a range.
-- **A call made in this process** (a test, the workflow assistant) holds what it is sent, so a range over 32 MiB is
+- **A call made in this process** (a test, the configuration assistant) holds what it is sent, so a range over 32 MiB is
   refused there, never read. Request handlers run on virtual threads (`HttpServer.requestThreads`), so a response
   waiting on a slow reader holds no pool thread. A raw body takes one of the node's `KDR_RAW_BODY_PERMITS` (8) while it
   is read and handled, and waits up to 10 seconds for one before a 429.

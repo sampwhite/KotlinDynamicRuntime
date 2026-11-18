@@ -59,7 +59,7 @@ hand. Every other field stays in the rows, saying who sets it. The traits it inc
 editor, and its sandbox with **Add a sandbox** or **Remove the sandbox**.
 
 A change is checked, then takes effect as any change to the client's configuration does: at once, or as a draft in a
-client with a sandbox, until it is published. A program, or the workflow assistant, makes the same change with
+client with a sandbox, until it is published. A program, or the configuration assistant, makes the same change with
 `POST /clientAdmin/client/definition/set`, sending only the fields that change, dry-run first.
 
 A **client defined in code** has its definition in code, changed with a release, and it offers no **Edit definition**.

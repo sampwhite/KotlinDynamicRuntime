@@ -88,13 +88,13 @@ For a program, or an AI assistant, given a site's address and an API key.
    common, and a recipe for each job. A site serves it to programs at `/st/api/doc/api-guide`, and its endpoint catalog
    names that address.
 2. **[API keys and access tokens](api-keys-and-tokens.md),** for how a key is made, used, and limited.
-3. **[The walk-through, part 3](walk-through.md#part-3-for-developers),** in which the site's workflow assistant
+3. **[The walk-through, part 3](walk-through.md#part-3-for-developers),** in which the site's configuration assistant
    writes a workflow's JSON and says what it does, or you save it in the bundle editor, then add an approval step to
    it; and a key lets a program, or an AI outside the site, make a change through the API.
 4. **[What a client is](reference/what-a-client-is.md),** a client as a whole, in the order to read it: what to
    know before configuring one.
 5. **[Making changes](reference/making-changes.md),** for each kind of change to a client, the editor and endpoint that
-   make it, and the site's workflow assistant's tool. Read it before writing a client's configuration as JSON.
+   make it, and the site's configuration assistant's tool. Read it before writing a client's configuration as JSON.
 6. **[The client configuration reference](reference/client-configuration.md),** for every part of a client's
    configuration.
 7. **[Validation messages](reference/validation-messages.md),** for every code a refused value is reported with, what

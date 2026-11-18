@@ -1,8 +1,8 @@
-## The workflow assistant page (issue #1527)
+## The configuration assistant page (issue #1527)
 
-A client administrator tells the **workflow assistant** what they want, and it drafts it in the client's sandbox for
+A client administrator tells the **configuration assistant** what they want, and it drafts it in the client's sandbox for
 them to try there and publish from the Clients page. The backend is the optional `assistant` module
-(`docs/design/workflow-assistant.md` at the repo root says what it is, what it sends, and what it may reach); the page
+(`docs/design/configuration-assistant.md` at the repo root says what it is, what it sends, and what it may reach); the page
 is `AssistantPage.kt` at `/wa/assistant`, its pure half `AssistantTranscript.kt` and `AssistantApi.kt` (covered by
 `AssistantTranscriptTest`). Its wire names are the kernel's: `ASST` and `ACNV` for the endpoints, `ABLK` for a stored
 message's content blocks (the Messages API's own names), and `ATOOL` for the tools, which is what a call's line is

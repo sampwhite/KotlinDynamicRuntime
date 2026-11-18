@@ -3,7 +3,7 @@ package com.dynamicruntime.common.assistant
 import com.dynamicruntime.common.http.request.SECT
 
 /**
- * The workflow assistant's wire vocabulary (issue #1525): the names the `assistant` module's endpoints use and the
+ * The configuration assistant's wire vocabulary (issue #1525): the names the `assistant` module's endpoints use and the
  * webapp's pages read, in the kernel both sides compile. The module itself is optional -- nothing compile-depends on
  * it -- so these are the only part of it core and the webapp can name. Each field-name constant matches its value.
  */

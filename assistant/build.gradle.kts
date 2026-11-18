@@ -1,5 +1,6 @@
-// `assistant` -- the workflow assistant (issues #1524-#1527): client administrators describe a workflow in words, and
-// Claude, using this application's own endpoints as tools, drafts it in their sandbox for a person to try and publish.
+// `assistant` -- the configuration assistant (issues #1524-#1527, #1828): client administrators say in words what they want
+// of their client -- its workflows, traits, forms, wording, menu, forms list, or reports -- and Claude, using this
+// application's own endpoints as tools, drafts it in their sandbox for a person to try and publish.
 //
 // **Nothing else may compile-depend on this module**, as with `edge`: `launch` takes it `runtimeOnly`, guarded so a
 // workspace that leaves the module out still configures, and it is discovered through ServiceLoader. What the webapp

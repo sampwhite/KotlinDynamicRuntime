@@ -154,7 +154,7 @@ class HomeLiveReads(
  * Everything Home reads for its live cards ([HomeLiveReads]), each read only when a card in [cards] asks for it, and
  * read once here, by Home, so a card and the link to it under the title agree. [waitingClient] confines what waits on
  * the caller to their own client, for one who sees across clients. [assistantOffered], whether the menu offers the
- * workflow assistant, adds its step to the checklist (issue #1639) -- and has its status read for that, even with no
+ * configuration assistant, adds its step to the checklist (issue #1639) -- and has its status read for that, even with no
  * card of its own. [ownClient] is the caller's client, the one whose checklist is offered: the card is never offered
  * inside a sandbox, so it is the checklist's own.
  *
@@ -272,7 +272,7 @@ fun homeCardJumpButtons(cards: List<HomeCard>): List<Pair<String, String>> =
     cards.filter { it.leadsJumpRow }.map { card -> card.jumpLabel!! to card.actionPage!! }
 
 /**
- * What the workflow assistant's status says, for its card and the link to it (issue #1636), or null while it is being
+ * What the configuration assistant's status says, for its card and the link to it (issue #1636), or null while it is being
  * read, or when no card in [cards] is the assistant's and nothing else wants it ([alsoWanted]: the new client checklist's
  * step, issue #1639) -- then nothing is read ([useCardRead], which says what [decidedAt] is). [AssistantView.failed] when
  * it cannot be read.

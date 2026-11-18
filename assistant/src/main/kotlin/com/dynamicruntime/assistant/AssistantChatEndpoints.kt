@@ -122,7 +122,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
 
     generalEndpoint(
         ACNV.statusPath,
-        "Whether the workflow assistant can be used for the caller's client -- it is on, and the client has a sandbox -- " +
+        "Whether the configuration assistant can be used for the caller's client -- it is on, and the client has a sandbox -- " +
             "how much of the month's allowance is used, and what using it sends to Anthropic.",
         HttpMethod.GET,
         outputRef = ACNV.statusType,
@@ -131,7 +131,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
 
     generalEndpoint(
         ACNV.switchOnPath,
-        "Switches the workflow assistant on for the caller's own client, where it is offered: a self-serve client, on a " +
+        "Switches the configuration assistant on for the caller's own client, where it is offered: a self-serve client, on a " +
             "deployment that offers it to them, which no operator has set. The administrator acknowledges what using it " +
             "sends to Anthropic (the status's dataNotice), as an operator does; the client starts with the self-serve " +
             "budget. Refused from inside the client's sandbox (errorCode " + ACNV.inSandboxCode + "), and where it is not " +
@@ -149,7 +149,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
         val person = AssistantTurns.personOf(c)
         if (person.sandboxUser != null) {
             throw AssistantTurns.refused(
-                "Switch the workflow assistant on from '${person.client}' itself, not from its sandbox.",
+                "Switch the configuration assistant on from '${person.client}' itself, not from its sandbox.",
                 EXC.badInput, ACNV.inSandboxCode,
             )
         }
@@ -159,7 +159,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
 
     generalEndpoint(
         ACNV.messagePath,
-        "Sends the workflow assistant a message, starting a turn, and answers at once: poll the conversation for what " +
+        "Sends the configuration assistant a message, starting a turn, and answers at once: poll the conversation for what " +
             "comes of it. A new conversation when no conversationId is given. Refused, with an errorCode, when the " +
             "assistant is not on for the client, it has no sandbox, its allowance is spent, the caller has sent as many " +
             "messages this hour as the assistant takes, or a turn is still running in the conversation.",
@@ -212,7 +212,7 @@ fun assistantChatSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "${ASST.root
 
     listEndpoint(
         ACNV.conversationsPath,
-        "The caller's conversations with the workflow assistant in the client they are signed in to -- or, signed in to its " +
+        "The caller's conversations with the configuration assistant in the client they are signed in to -- or, signed in to its " +
             "sandbox, in the client itself -- most recent first.",
         outputRef = ACNV.summaryType,
         noLimit = true,

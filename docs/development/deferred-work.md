@@ -1110,18 +1110,18 @@ The endpoints that accept a large request body are collected at boot and read fr
   them without asking every node. The Edge server needs it once it enforces body limits of its own, which it does not
   today.
 
-## When a deployment offers the workflow assistant at more than one price
+## When a deployment offers the configuration assistant at more than one price
 
 A client's assistant budget is the deployment's default (`KDR_ASSISTANT_MONTHLY_BUDGET`) unless an operator sets the
-client's own ([`workflow-assistant.md`](../design/workflow-assistant.md)). Nothing ties it to what the client pays for.
+client's own ([`configuration-assistant.md`](../design/configuration-assistant.md)). Nothing ties it to what the client pays for.
 
 - **Default budgets per plan** *(from #1525, #1527).* A budget the client's plan names, so an operator sets a plan once rather
   than each client's number. Waits for plans to exist as something the deployment records.
 
 ## When the Anthropic SDK's dependencies cost something
 
-The workflow assistant calls Claude through the official Anthropic Java SDK
-([`workflow-assistant.md`](../design/workflow-assistant.md)), which is the first thing to bring Jackson, OkHttp, and Okio
+The configuration assistant calls Claude through the official Anthropic Java SDK
+([`configuration-assistant.md`](../design/configuration-assistant.md)), which is the first thing to bring Jackson, OkHttp, and Okio
 onto the classpath, along with the victools schema generator, `swagger-annotations`, `opentelemetry-api`, and others
 (the dependency report in #1535). All of it ships in the distribution. The trigger is any of: a version conflict with a
 library we take on, a security advisory against one of its transitive jars, or the distribution's size starting to
@@ -1133,8 +1133,8 @@ matter.
 
 ## When an assistant answer needs more than one call can write
 
-The workflow assistant calls the model without streaming, each call timing out after ten minutes, so
-`KDR_ASSISTANT_MAX_TOKENS` is held to 16,000 ([`workflow-assistant.md`](../design/workflow-assistant.md)). A call that
+The configuration assistant calls the model without streaming, each call timing out after ten minutes, so
+`KDR_ASSISTANT_MAX_TOKENS` is held to 16,000 ([`configuration-assistant.md`](../design/configuration-assistant.md)). A call that
 times out is billed but returns no usage, so it is not counted against the client's budget.
 
 - **Stream the model's answers** *(from #1526, #1527).* With streaming, a long answer cannot time out part way, its
@@ -1143,8 +1143,8 @@ times out is billed but returns no usage, so it is not counted against the clien
 
 ## When an assistant conversation outgrows what the model reads
 
-A conversation with the workflow assistant is sent whole on every call, and its history is never changed
-([`workflow-assistant.md`](../design/workflow-assistant.md)). A long one -- many turns, each reading whole bundles --
+A conversation with the configuration assistant is sent whole on every call, and its history is never changed
+([`configuration-assistant.md`](../design/configuration-assistant.md)). A long one -- many turns, each reading whole bundles --
 costs more each call, and at the model's context limit it would be refused.
 
 - **Compaction** *(from #1527).* Replace the older part of a long conversation with a summary the model writes, once it
@@ -1154,7 +1154,7 @@ costs more each call, and at the model's context limit it would be refused.
 ## When clients ask the assistant for more than workflows
 
 The assistant's tools reach a client's configuration, workflows, traits, and cfacts, and write only bundles and the
-included traits ([`workflow-assistant.md`](../design/workflow-assistant.md)).
+included traits ([`configuration-assistant.md`](../design/configuration-assistant.md)).
 
 - **Tools for form data, copy, and the menu** *(from #1527).* Reading a client's forms (to answer "how many RSVPs
   are open?") reaches people's data, so it needs its own decision about what is sent to Anthropic. Copy and the menu
@@ -1172,8 +1172,8 @@ against a scripted model, not tuned against the real one.
 
 ## When the assistant's spending across clients needs a ceiling of its own
 
-Each client's use of the workflow assistant stops at its own monthly budget, and nothing limits the total: an operator
-may give any client any budget ([`workflow-assistant.md`](../design/workflow-assistant.md)). Today the bill's hard
+Each client's use of the configuration assistant stops at its own monthly budget, and nothing limits the total: an operator
+may give any client any budget ([`configuration-assistant.md`](../design/configuration-assistant.md)). Today the bill's hard
 limit is the spend limit on the deployment's Anthropic organization, outside the application.
 
 - **A deployment-wide monthly ceiling** *(from #1526).* A `KDR_ASSISTANT_MONTHLY_CEILING`, in dollars or weighted
@@ -1183,9 +1183,9 @@ limit is the spend limit on the deployment's Anthropic organization, outside the
 
 ## When a deployment keeps its assistant conversations for good
 
-A person deletes their own workflow assistant conversations (issue #1755): the transcript and what they wrote go, and
+A person deletes their own configuration assistant conversations (issue #1755): the transcript and what they wrote go, and
 the turn records stay, with what each used, since the month's allowance is reckoned from them
-([`workflow-assistant.md`](../design/workflow-assistant.md)). Nothing removes either by age. A reference deployment
+([`configuration-assistant.md`](../design/configuration-assistant.md)). Nothing removes either by age. A reference deployment
 clears all its data monthly, so this waits for a deployment that keeps its data.
 
 - **Retention by age** *(from #1755).* A daily job that deletes a conversation nobody has written in for a period a

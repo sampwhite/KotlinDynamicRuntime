@@ -102,7 +102,7 @@ For a caller **signed in** to `public` (a visitor who has not signed in acts in 
 it), Home draws `CreateOwnClientCard` (`CreateOwnClient.kt`) under its copy: a name, an optional note, and a time
 zone (`TimeZonePicker`, starting on the browser's), with what creating one means (an id made from the name, the free
 plan, the person its administrator). It posts `POST /user/self/createClient`, and a create that moved the session
-moves the page with it (`afterSessionChange`): to the workflow assistant when the new client's menu offers it -- read
+moves the page with it (`afterSessionChange`): to the configuration assistant when the new client's menu offers it -- read
 as its administrator, after the move (`landingAfterCreate`, issue #1569) -- so the person goes on to design its New form
 and a workflow, and to the client's home otherwise. One that made the client but did not move -- the person's user there
 could not be made (`userFailure`), or this node does not carry it -- says so (`createOwnClientFailureText`) and
@@ -273,7 +273,7 @@ none of its own.
   it runs, from the starter (so one changed back is not done; for a client whose base has a New form, one of its own at
   all), a workflow of its own, someone besides its
   founder, and a first form. The workflows are read as its editors change them, drafts included. The webapp leads with
-  **Switch on the workflow assistant** where the menu offers the assistant and the person may switch it on
+  **Switch on the configuration assistant** where the menu offers the assistant and the person may switch it on
   (`checklistSteps`, from the status Home already reads; core never asks the module), and links each step that is left
   to where it is done: the client page's Forms and data panel (its sandbox's, for a client with one, which the link
   opens first: `CHKL.sandbox`, `ChecklistStep.opensSandbox`, issue #1824), Users, or New form. The steps wait for the assistant's
@@ -290,7 +290,7 @@ page's file).
 - **Core's other cards** are shortcuts: **Your client** for an administrator of one client (My client, Users, Reports),
   **Clients and customers** for every client's administrator, **Your client's forms** for an editor, and
   **Operating this deployment** for a deployment operator.
-- **The assistant module's cards** (`ASST.homeCard`, `ASST.createHomeCard`): the workflow assistant, for whoever its
+- **The assistant module's cards** (`ASST.homeCard`, `ASST.createHomeCard`): the configuration assistant, for whoever its
   menu entry is offered to, and "Design your own forms" for a person signed in to `public` where the deployment offers
   the assistant to self-serve clients, until they have made their client (`kdr:madeOwnClient`, issue #1743), when the
   page's **Your own client** section opens it instead. The create card asks whether that card was sent (`ownClientAssistantOffered`)

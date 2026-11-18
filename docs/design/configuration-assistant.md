@@ -1,8 +1,9 @@
-# Workflow assistant
+# Configuration assistant
 
-The **workflow assistant** lets a client's administrator build a workflow without git. They say what they want in a
-text box. Claude, using this application's own endpoints as tools, finds out what exists (traits, cfacts, templates,
-the client's bundles) and writes the workflow **as a draft in the client's sandbox**. The administrator tries it on a
+The **configuration assistant** lets a client's administrator configure their client without git: its workflows and
+traits, how its forms read, its wording, its menu and Home, its forms list, and its reports. They say what they want in
+a text box. Claude, using this application's own endpoints as tools, finds out what exists (traits, cfacts, templates,
+the client's bundles) and writes the change **as a draft in the client's sandbox**. The administrator tries it on a
 real form there, and a person publishes it with the Publish button that already exists. The assistant never publishes.
 
 This document says how it is built and why. It grows with the issues below.
@@ -16,6 +17,10 @@ This document says how it is built and why. It grows with the issues below.
 | Conversations: tools, the turn loop, storage, and budget enforcement | #1526 | built |
 | The page: chat, try it in the sandbox, the publish link, and the allowance | #1527 | built |
 | Self-serve clients switch it on themselves, behind a deployment switch | #1568 | built |
+| Used in the client's sandbox, never from the client itself | #1824 | built |
+| Named the configuration assistant | #1828 | built |
+
+It began as the workflow assistant, and was renamed once it could configure the whole client (#1761).
 
 ## Where it lives
 
@@ -355,7 +360,7 @@ pass. They are a fair-use limit, not a fence; the budget is the fence, checked a
 
 ## The page
 
-`/wa/assistant` (`AssistantPage.kt`; what it decides is in the `kdr-webapp-pages` skill's `workflow-assistant.md`). Its
+`/wa/assistant` (`AssistantPage.kt`; what it decides is in the `kdr-webapp-pages` skill's `configuration-assistant.md`). Its
 menu entry is the module's own: an overlay on the menu (`AssistantComponent.uiBlocks`), offered to a client's
 administrator while `assistant:usable` holds -- so never to a caller every assistant endpoint would refuse -- placed
 after Reports. Core never names the cfact, which exists only while the module is loaded, and a client's menu editor can
@@ -397,4 +402,4 @@ Recorded here as proposed, to settle as the later issues are worked:
   its thinking blocks, which the page shows muted. Whether the notes the real model writes are worth showing waits for
   tuning against it.
 - **Per-plan default budgets.** Later; see
-  [`deferred-work.md`](../development/deferred-work.md#when-a-deployment-offers-the-workflow-assistant-at-more-than-one-price).
+  [`deferred-work.md`](../development/deferred-work.md#when-a-deployment-offers-the-configuration-assistant-at-more-than-one-price).

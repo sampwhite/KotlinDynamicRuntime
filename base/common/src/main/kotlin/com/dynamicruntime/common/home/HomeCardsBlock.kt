@@ -17,7 +17,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
  * The home cards, as data (issue #1636): what Home shows each caller beyond the copy everyone in the client reads.
  *
  * Decided here, from cfacts, as the menu is ([homeMenuBlock]): the backend says which cards a caller gets, and the
- * webapp draws the list it is handed. A component adds its own with an overlay -- the workflow assistant's are the
+ * webapp draws the list it is handed. A component adds its own with an overlay -- the configuration assistant's are the
  * assistant module's -- and a client hides one with `#never` or rewords it, as it does a menu item.
  *
  * **Only cheap facts decide a card.** The shell config is polled, so a card whose words depend on data (how many

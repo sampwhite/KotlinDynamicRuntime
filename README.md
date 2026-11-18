@@ -89,7 +89,7 @@ webapp           # Kotlin/JS + React (antd) front end (the browser bundle)
 appui            # JVM host that serves the webapp bundle under the /wa context root
 edge             # the KdrEdge component: the front door a node booted in the edge role serves (StartEdge)
 multiNodeTest    # the multi-node test harness and the in-backend fixtures it drives (development only)
-assistant        # the workflow assistant: Claude drafts workflows in a client's sandbox (the Anthropic SDK lives here)
+assistant        # the configuration assistant: Claude configures a client in its sandbox (the Anthropic SDK lives here)
 bin              # convenience command-line scripts (see Command-line scripts below)
 build-logic      # included build providing the kdr.kotlin-*-conventions convention plugins
 examples         # templates and guides a deployment copies into the workspace directory
