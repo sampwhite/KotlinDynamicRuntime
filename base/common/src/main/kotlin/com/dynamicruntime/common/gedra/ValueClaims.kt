@@ -14,7 +14,7 @@ import java.sql.SQLException
 /** Table and column names for value claims (issue #1849). Each name matches its value. */
 @Suppress("ConstPropertyName")
 object VCL {
-    const val formValueClaims = "FormValueClaims"
+    const val gedraValueClaims = "GedraValueClaims"
 
     /** What the claim is of: `counter:<counterId>` for a counter's id; a unique field's kind later (issue #1851). */
     const val claimKind = "claimKind"
@@ -25,10 +25,10 @@ object VCL {
     /** The claimed value as its key: a counter's period and count, or a hash of a normalized value. */
     const val valueKey = "valueKey"
 
-    /** The value as the form holds it, for a message naming it. */
+    /** The value as the gedra holds it, for a message naming it. */
     const val claimedValue = "claimedValue"
 
-    /** The form that holds the value. */
+    /** The gedra that holds the value -- a form, a file reference, or any other kind, told by its id. */
     const val gedraId = "gedraId"
 
     /** The trait whose entry holds it. */
@@ -42,18 +42,19 @@ object VCL {
 }
 
 /**
- * The value claims table (issue #1849): one row per value a form holds that no other form in the claim's scope may hold.
- * In the gedra data topic, so a claim is written in the transaction of the form that holds it, and its primary key is
- * what keeps two forms from holding one value, whatever two writes race. A counter's ids are the first kind; a field
+ * The value claims table (issue #1849): one row per value a gedra holds that no other gedra in the claim's scope may
+ * hold. In the gedra data topic, so a claim is written in the transaction of the gedra that holds it, and its primary
+ * key is what keeps two gedras from holding one value, whatever two writes race. Any kind of gedra may claim -- a form
+ * first, and a file reference or a list of terms as readily -- since the claim names the gedra by its id. A counter's ids are the first kind; a field
  * unique for each owner is to share it (issue #1851), keyed by a hash of its normalized value.
  */
-fun valueClaimTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "formValueClaims", topic = gedraDataTopic) {
-    table(VCL.formValueClaims, "Which form holds each value no other form in its scope may hold (issue #1849).") {
+fun valueClaimTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "gedraValueClaims", topic = gedraDataTopic) {
+    table(VCL.gedraValueClaims, "Which gedra holds each value no other gedra in its scope may hold (issue #1849).") {
         column(VCL.claimKind, "What the claim is of, such as 'counter:receipt'.", required = true)
         column(VCL.scopeKey, "What the value is unique within, beside the client; '-' for the client alone.", required = true)
         column(VCL.valueKey, "The claimed value as its key.", required = true)
-        column(VCL.claimedValue, "The value, as the form holds it.", required = true)
-        column(VCL.gedraId, "The form that holds it.", required = true)
+        column(VCL.claimedValue, "The value, as the gedra holds it.", required = true)
+        column(VCL.gedraId, "The gedra that holds it.", required = true)
         column(VCL.traitId, "The trait whose entry holds it.", required = true)
         column(VCL.fieldName, "The field of the entry's data that holds it.", required = true)
         forClient()
@@ -62,7 +63,7 @@ fun valueClaimTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace =
     }
 }
 
-/** One value a write claims for its form (issue #1849): the key it is held under, and where the form holds it. */
+/** One value a write claims for its gedra (issue #1849): the key it is held under, and where the gedra holds it. */
 data class ValueClaim(
     val client: String,
     val claimKind: String,
@@ -80,11 +81,11 @@ data class ValueClaim(
         mapOf(PF.client to client, VCL.claimKind to claimKind, VCL.scopeKey to scopeKey, VCL.valueKey to valueKey)
 }
 
-/** Claims values for a form, inside the form's write transaction (issue #1849). */
+/** Claims values for a gedra, inside its write transaction (issue #1849). */
 object ValueClaims {
     /**
      * Inserts [claims], in key order, on [sqlCxt]'s transaction. A value already held is refused with
-     * [refusal]'s words, given the claim and the form holding it (null when a write racing this one holds it, not yet
+     * [refusal]'s words, given the claim and the gedra holding it (null when a write racing this one holds it, not yet
      * committed): a 400 the caller can act on, never a database error.
      *
      * In key order, so that two writes claiming the same values -- the same tokens sent twice, in another order -- take
@@ -117,6 +118,6 @@ object ValueClaims {
     private fun isIntegrityViolation(e: Throwable): Boolean =
         generateSequence(e) { it.cause }.take(10).any { (it as? SQLException)?.sqlState?.startsWith(VCL.integrityViolationClass) == true }
 
-    private fun table(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[VCL.formValueClaims]
-        ?: throw KdrException("The ${VCL.formValueClaims} table is not registered in the schema store.")
+    private fun table(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[VCL.gedraValueClaims]
+        ?: throw KdrException("The ${VCL.gedraValueClaims} table is not registered in the schema store.")
 }

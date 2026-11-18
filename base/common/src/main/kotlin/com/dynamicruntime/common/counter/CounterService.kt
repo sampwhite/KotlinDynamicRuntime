@@ -142,7 +142,7 @@ class CounterService : ServiceInitializer {
      * decides the day.
      *
      * **Never inside another transaction.** The count's row is locked until the transaction issuing from it commits, so
-     * an id issued inside a form's write would hold every other issue of that counter until the form was stored. A write
+     * an id issued inside a gedra's write would hold every other issue of that counter until the form was stored. A write
      * that assigns an id itself -- an API create leaving a counter's field out -- issues it before its transaction opens,
      * as a page does before its save, and hands the token to the claim as a page's arrives ([CounterTokens]). Refused
      * here, so a caller that forgets finds out at once rather than under load.
@@ -170,11 +170,11 @@ class CounterService : ServiceInitializer {
 
     /** One more than the row's last count, written back under its lock: the row is made, at 1, the first time. */
     private fun increment(cxt: KdrCxt, client: String, counterId: String, scopeKey: String, periodKey: String): Long {
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, formCounterTopic)
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraCounterTopic)
         var count = 0L
         val key = mapOf(PF.client to client, CNT.counterId to counterId, CNT.scopeKey to scopeKey, CNT.periodKey to periodKey)
         sqlCxt.sqlDb.withSession(cxt) {
-            SqlTopicTranProvider.executeTopicTran(sqlCxt, CNT.tranIssue, null, key, tranTableName = CNT.formCounters) {
+            SqlTopicTranProvider.executeTopicTran(sqlCxt, CNT.tranIssue, null, key, tranTableName = CNT.gedraCounters) {
                 count = (sqlCxt.tranData[CNT.lastCount].toOptLong() ?: 0L) + 1
                 sqlCxt.tranData[CNT.lastCount] = count
             }
@@ -286,7 +286,7 @@ class CounterService : ServiceInitializer {
         fun get(cxt: KdrCxt): CounterService =
             getOrNull(cxt) ?: throw KdrException("The $serviceName is not available on this node.")
 
-        /** The service, or null on a node that runs no forms (an edge). */
+        /** The service, or null on a node that keeps no gedras (an edge). */
         fun getOrNull(cxt: KdrCxt): CounterService? = cxt.instanceConfig.get(serviceName) as? CounterService
     }
 }

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraWriteContext
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.LogGedra
@@ -47,7 +48,7 @@ object CounterTokens {
  *   further.
  * - **Changed or removed**, once it held an id: refused. An id is fixed once it is stored.
  * - **Newly given an id**: the write must send that id's token, issued to the acting user, for the form's client and the
- *   field's counter. A claim ([ValueClaims]) then records which form holds it, and an id already claimed -- the same
+ *   field's counter. A claim ([ValueClaims]) then records which gedra holds it, and an id already claimed -- the same
  *   token sent twice, even by two writes racing -- is refused.
  *
  * An entry is matched across the write by its trait and, for a keyed trait, its key, as an edit addresses one.
@@ -87,7 +88,7 @@ object CounterClaimHook : GedraWriteHook {
                 if (old == new) continue
                 if (old != null) {
                     throw KdrException.mkInput(
-                        "The id '$old' in '$field' of '$traitId' was given to this form when it was stored, and does not change.",
+                        "The id '$old' in '$field' of '$traitId' was given to this ${kindWord(row.kind)} when it was stored, and does not change.",
                     )
                 }
                 val token = issuedToken(cxt, row.client, traitId, field, counterId, new!!, tokens)
@@ -101,15 +102,15 @@ object CounterClaimHook : GedraWriteHook {
         }
         ValueClaims.claim(cxt, write.sqlCxt, claims) { claim, holder ->
             "The id '${claim.value}' in '${claim.field}' of '${claim.traitId}' is already stored" +
-                (if (holder == claim.gedraId) " on this form." else " on another form.") +
+                (if (holder == claim.gedraId) " on this ${kindWord(row.kind)}." else " elsewhere.") +
                 " Ask the counter '${claim.claimKind.removePrefix(CNT.claimKindPrefix)}' for another."
         }
         claims.forEach {
-            LogGedra.info(cxt) { "Form '${it.gedraId}' stores '${it.value}' from a counter in '${it.field}' of '${it.traitId}'." }
+            LogGedra.info(cxt) { "Gedra '${it.gedraId}' stores '${it.value}' from a counter in '${it.field}' of '${it.traitId}'." }
         }
     }
 
-    /** The token [value] was issued with, after holding it to the form's client and the acting user; refused otherwise. */
+    /** The token [value] was issued with, after holding it to the gedra's client and the acting user; refused otherwise. */
     private fun issuedToken(
         cxt: KdrCxt,
         client: String,
@@ -139,4 +140,12 @@ fun SchTypeBuilder.counterTokensShape() {
     type = SCT.array
     items { type = SCT.string }
     sensitive = true
+}
+
+/** A gedra of [kind] as a refusal names it: what a person calls it, not its enum name. */
+private fun kindWord(kind: GedraDataType): String = when (kind) {
+    GedraDataType.formDoc -> "form"
+    GedraDataType.fileRef -> "file reference"
+    GedraDataType.userData -> "user's data"
+    GedraDataType.wfData -> "workflow's data"
 }

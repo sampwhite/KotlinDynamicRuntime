@@ -8,16 +8,17 @@ import com.dynamicruntime.common.sql.tableModule
 
 /**
  * The SQL topic of the counts themselves (issue #1849): a topic of its own, so issuing an id takes one short lock on its
- * counter's row and never waits on a form's. The claims of its ids are value claims, in the gedra data topic, since one
- * is written in the transaction of the form that stores its id (`ValueClaims`).
+ * counter's row and never waits on a gedra's. The claims of its ids are value claims, in the gedra data topic, since one
+ * is written in the transaction of the gedra that stores its id (`ValueClaims`). Gedras of any kind -- a form, a file
+ * reference, a list of terms -- may be numbered from one counter, so nothing here is about forms.
  */
-const val formCounterTopic = "formCounter"
+const val gedraCounterTopic = "gedraCounter"
 
 /** Table and column names for counters (issue #1849). Each name matches its value. */
 @Suppress("ConstPropertyName")
 object CNT {
     /** One row per client, counter, scope, and period: the last count issued. */
-    const val formCounters = "FormCounters"
+    const val gedraCounters = "GedraCounters"
 
     /** Which counter a row is for, in its client (the row's `client`). */
     const val counterId = "counterId"
@@ -31,7 +32,7 @@ object CNT {
     /** The period the count runs in: [none] for a counter that never resets, and the client's day for a daily one. */
     const val periodKey = "periodKey"
 
-    /** On [formCounters]: the last count issued in the period, so the next is one more. */
+    /** On [gedraCounters]: the last count issued in the period, so the next is one more. */
     const val lastCount = "lastCount"
 
     /** A [scopeKey] or [periodKey] that is not one: a key column holds a value, and an empty one is not portable. */
@@ -45,8 +46,8 @@ object CNT {
 }
 
 /** The table of counts (issue #1849), each row the lock its counter takes as it issues an id. */
-fun counterTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "formCounter", topic = formCounterTopic) {
-    table(CNT.formCounters, "The last count a counter issued, per client, scope, and period (issue #1849).") {
+fun counterTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "gedraCounter", topic = gedraCounterTopic) {
+    table(CNT.gedraCounters, "The last count a counter issued, per client, scope, and period (issue #1849).") {
         column(CNT.counterId, "The counter, by its id in its client.", required = true)
         column(CNT.scopeKey, "What the counter is kept apart by within its client; '-' for none.", required = true)
         column(CNT.periodKey, "The period the count runs in: the client's day for a daily counter, '-' for one that never resets.", required = true)

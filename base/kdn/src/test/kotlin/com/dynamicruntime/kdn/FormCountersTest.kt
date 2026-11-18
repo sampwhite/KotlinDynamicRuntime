@@ -118,7 +118,7 @@ class FormCountersTest : StringSpec({
         form[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()["number"] shouldBe value
         // The same token again: the id is already stored.
         clerk.expectError(EXC.badInput, GEP.formDocCreate, create(listOf(receipt(value)), listOf(token)))[EP.errorMessage]
-            .toString() shouldContain "is already stored on another form"
+            .toString() shouldContain "is already stored elsewhere"
     }
 
     "saves racing with one token store it once, and the others are refused as already stored, never a server error" {
