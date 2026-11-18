@@ -32,6 +32,10 @@ class DataFileFieldsTest {
                     "byRoom" to mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to photo),
                 ),
             ),
+            "ns.Album" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf("title" to mapOf(SCH.type to SCT.string), "photos" to mapOf(SCH.type to SCT.array, SCH.items to photo)),
+            ),
             "ns.Plain" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("note" to mapOf(SCH.type to SCT.string))),
             // A union: the branch the value selects says which of its fields is a file.
             "ns.Media" to mapOf(
@@ -125,5 +129,21 @@ class DataFileFieldsTest {
     fun onlyAStringNamesAFile() {
         assertEquals(emptyList(), DataFileFields.collect(type("ns.Visit"), mapOf("clip" to 5)))
         assertEquals(emptyList(), DataFileFields.collect(type("ns.Visit"), mapOf("clip" to true)))
+    }
+
+    @Test
+    fun strippingTakesOutEveryFileFieldAndLeavesTheRest() {
+        val value = mapOf(
+            "note" to "kept",
+            "clip" to "gd.df.acme.c1",
+            "shots" to listOf(mapOf("caption" to "a", "photo" to "gd.df.acme.p1")),
+            "byRoom" to mapOf("kitchen" to "gd.df.acme.p2"),
+        )
+        val stripped = DataFileFields.strip(type("ns.Visit"), value)
+        assertEquals(mapOf("note" to "kept", "shots" to listOf(mapOf("caption" to "a")), "byRoom" to emptyMap<String, Any?>()), stripped)
+        assertEquals(emptyList(), DataFileFields.collect(type("ns.Visit"), stripped))
+        // A list of files is left empty; a value with none comes back as it was.
+        assertEquals(mapOf("title" to "t", "photos" to emptyList<Any?>()), DataFileFields.strip(type("ns.Album"), mapOf("title" to "t", "photos" to listOf("gd.df.acme.p3"))))
+        assertEquals(mapOf("note" to "n"), DataFileFields.strip(type("ns.Plain"), mapOf("note" to "n")))
     }
 }

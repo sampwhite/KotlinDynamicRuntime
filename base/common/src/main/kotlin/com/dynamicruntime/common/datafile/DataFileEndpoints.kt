@@ -18,7 +18,8 @@ private const val namespace = "kdr.${DFILE.section}"
 
 /**
  * The data-file endpoints (issue #1837), in the `files` section, which any signed-in user reaches: an upload's begin,
- * chunks, finish, abort, and status; a file's record, its content a range at a time, and its removal. How far a caller
+ * chunks, finish, abort, and status; a file's record, its content a range at a time, which forms use it (#1838), and its
+ * removal. How far a caller
  * reaches is their read scope, and an upload is its owner's alone ([DataFileService]).
  *
  * Theme: #DFILE.
@@ -46,6 +47,23 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         property(DFILE.declaredSize, "How many bytes the file is.") { type = SCT.integer }
         property(DFILE.nextOffset, "Where the next chunk begins: the bytes taken so far.") { type = SCT.integer }
         property(DFILE.expiresAt, "When the upload is no longer taken.") { dateTime() }
+    }
+    type(DFILE.useType) {
+        type = SCT.kObject
+        description = "A field of a form that names a file."
+        property(DFILE.formId, "The form's id.", required = true)
+        property(DFILE.traitId, "The trait of the entry holding the field.", required = true)
+        property(DFILE.fieldPath, "Where in the entry's data the field is.", required = true)
+    }
+    type(DFILE.usedByType) {
+        type = SCT.kObject
+        description = "Which live forms use a file."
+        property(DFILE.fileId, "The file's id.", required = true)
+        property(DFILE.usedBy, "Each field of a live form you may read that names it.", required = true) {
+            type = SCT.array
+            items { ref(DFILE.useType) }
+        }
+        property(DFILE.hiddenForms, "How many live forms you may not read use it too.", required = true) { type = SCT.integer }
     }
     type(DFILE.goneType) {
         type = SCT.kObject
@@ -123,7 +141,16 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         HttpMethod.GET,
         outputRef = DFILE.recordType,
         inputFields = { field(DFILE.fileId, "The file.", required = true) },
-    ) { c, request -> DataFileService.info(DataFileService.readable(c, request[DFILE.fileId].toOptStr().orEmpty())) }
+    ) { c, request -> DataFileService.info(DataFileService.viewable(c, request[DFILE.fileId].toOptStr().orEmpty())) }
+
+    itemEndpoint(
+        DFILE.usedByPath,
+        "Which live forms use a file: each field of a form you may read that names it, and how many forms you may not " +
+            "read use it too. A file a live form uses is not removed.",
+        HttpMethod.GET,
+        outputRef = DFILE.usedByType,
+        inputFields = { field(DFILE.fileId, "The file.", required = true) },
+    ) { c, request -> DataFileLinks.usedBy(c, DataFileService.viewable(c, request[DFILE.fileId].toOptStr().orEmpty())) }
 
     fileDownloadEndpoint(
         DFILE.contentPath,
@@ -134,7 +161,8 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
 
     generalEndpoint(
         DFILE.deletePath,
-        "Removes a file, aborting its upload if one is under way. Its owner may, and an administrator of its client.",
+        "Removes a file, aborting its upload if one is under way. Its owner may, and an administrator of its client. " +
+            "Refused while a live form's field names it.",
         HttpMethod.DELETE,
         outputRef = DFILE.goneType,
         inputFields = { field(DFILE.fileId, "The file.", required = true) },

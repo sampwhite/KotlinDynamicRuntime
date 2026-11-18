@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.datafile.DataFileLinks
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -118,12 +119,16 @@ import com.dynamicruntime.common.util.toOptStr
  * attached. The list path inlines the same thing over a page; this is the single-read counterpart, so a form opened
  * directly presents the same columns, and names its traits the same way, as a listing does.
  */
-private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> =
-    row.toJsonMap() +
+private fun withDisplayValues(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> {
+    val out = row.toJsonMap() +
         (GDF.displayValues to computeDisplayValues(
             cxt, row, SchemaService.get(cxt).listingColumnsFor(cxt.client), cxt.client,
         )) +
         (GDF.traitNames to rowTraitNames(row, traitNamesByClient(cxt, listOf(row))))
+    // The files its fields name (issue #1838), when it names any.
+    val files = DataFileLinks.filesOf(cxt, row)
+    return if (files.isEmpty()) out else out + (GDF.files to files)
+}
 
 /**
  * How many of the caller's most-recent documents a field-value suggestion list scans (issue #581). A suggestion
@@ -669,7 +674,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             type = SCT.array
             items {
                 type = SCT.kObject
-                property(GIF.category, "The discard category ('${GIF.unknownTrait}' or '${GIF.invalidEntry}').", required = true)
+                property(GIF.category, "The discard category ('${GIF.unknownTrait}', '${GIF.invalidEntry}', or '${GIF.dataFile}', an entry whose file fields were dropped).", required = true)
                 property(GE.traitId, "The trait the discarded entries named (blank when they named none).", required = true)
                 property(GIF.count, "How many entries were thrown away for this category and trait.", required = true) {
                     type = SCT.integer

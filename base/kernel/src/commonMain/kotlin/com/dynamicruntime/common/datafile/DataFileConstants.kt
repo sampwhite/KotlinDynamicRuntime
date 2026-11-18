@@ -42,7 +42,25 @@ object DFILE {
     /** In the answer to an abort or a removal: whether there was a file, or an upload, to remove. */
     const val removed = "removed"
 
+    // --- which forms use a file (issue #1838) ---
+    /** The fields of live forms the caller may read that name the file, each a [formId], [traitId], and [fieldPath]. */
+    const val usedBy = "usedBy"
+    const val formId = "formId"
+    const val traitId = "traitId"
+    const val fieldPath = "fieldPath"
+
+    /** How many live forms the caller may not read use the file too. */
+    const val hiddenForms = "hiddenForms"
+
+    /**
+     * The longest path to a file field a link keeps (issue #1838): a path takes in a map's keys, which are a form's data,
+     * and it is part of the link's primary key, which a database holds to a size. A save past it is refused.
+     */
+    const val maxFieldPathLength = 500
+
     /** Schema type names. */
+    const val usedByType = "DataFileUsedBy"
+    const val useType = "DataFileUse"
     const val recordType = "DataFile"
     const val uploadType = "DataFileUpload"
     const val goneType = "DataFileGone"
@@ -56,6 +74,7 @@ object DFILE {
     const val infoPath = "/$section/info"
     const val contentPath = "/$section/content"
     const val deletePath = "/$section/delete"
+    const val usedByPath = "/$section/usedBy"
 
     /**
      * How many bytes each chunk of an upload is, all but the last: what the server asks for, at least the 5 MiB the

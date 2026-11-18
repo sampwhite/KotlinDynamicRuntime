@@ -208,6 +208,13 @@ object GIF {
 
     /** An entry that failed validation against its trait's schema. */
     const val invalidEntry = "invalidEntry"
+
+    /**
+     * An entry whose file fields were taken out (issue #1838): the data files they named do not travel with an export,
+     * so an import keeps the rest of the entry and drops them -- or, for an entry that does not validate without them
+     * (a file field its trait requires), leaves the entry out. Counted per entry, not per field.
+     */
+    const val dataFile = "dataFile"
 }
 
 /** Field names for a gedra's wire shape (see `GedraDataRow.toJsonMap`). Each name matches its value. */
@@ -272,6 +279,13 @@ object GDF {
      * nor its name for a global one. Derived: attached to a listed row and to a single read, never sent nor stored.
      */
     const val traitNames = "traitNames"
+
+    /**
+     * A read form's **files** (issue #1838): by data file id, the name, kind, size, and status of each file its fields
+     * name, so the form's data holds only the id and what it says of a file is never stale. Derived: attached to a single
+     * read when the form names a file, never sent nor stored.
+     */
+    const val files = "files"
 
     /**
      * In a forms listing's `summary` (issue #1323): **the listing's columns**, one `{traitId, label, kind,

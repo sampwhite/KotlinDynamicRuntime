@@ -48,6 +48,38 @@ object DataFileFields {
             type.variants?.branches?.any { holdsFiles(it, depth + 1, seen) } == true
     }
 
+    /**
+     * [value], a value of [type], with every file field it holds taken out (issue #1838): an object's or a map's file
+     * field dropped, a list's file items left out. What an import keeps of a form's data, since the files its fields
+     * named are another deployment's, or another client's, and do not travel with it. A value naming no file comes back
+     * as it was.
+     */
+    fun strip(type: SchType, value: Any?, depth: Int = 0): Any? {
+        if (depth > maxDepth) throw tooDeep()
+        return when (value) {
+            is Map<*, *> -> {
+                val variants = type.variants
+                val shape = variants?.select(value[variants.discriminator].toOptStr()) ?: type
+                val out = LinkedHashMap<String, Any?>()
+                for ((key, entry) in value) {
+                    val name = key.toOptStr() ?: continue
+                    val fieldType = shape.properties[name]?.valueType ?: shape.additionalValueType
+                    when {
+                        fieldType == null -> out[name] = entry
+                        fieldType.isDataFile() -> {}
+                        else -> out[name] = strip(fieldType, entry, depth + 1)
+                    }
+                }
+                out
+            }
+            is List<*> -> {
+                val itemType = type.itemType ?: return value
+                if (itemType.isDataFile()) emptyList<Any?>() else value.map { strip(itemType, it, depth + 1) }
+            }
+            else -> value
+        }
+    }
+
     private fun walk(type: SchType, value: Any?, path: String, out: MutableList<DataFileUse>, depth: Int) {
         if (depth > maxDepth) throw tooDeep()
         if (value == null) return

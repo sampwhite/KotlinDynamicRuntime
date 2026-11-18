@@ -29,6 +29,33 @@ object GDT {
      * every chunk reads and writes it under the lock.
      */
     const val gedraFileUploads = "GedraFileUploads"
+
+    /**
+     * Which forms use which data files (issue #1838): one row per file field of a form's entries that names a file,
+     * written by `DataFileLinkHook` in the form's own write. It answers which forms use a file, refuses removing a file
+     * a live form uses, and lets a caller read a file through a form they can read. A form soft-deleted keeps its rows;
+     * only a live form's count. Not cached: read under a lock, or once per question asked of it.
+     */
+    const val gedraFileLinks = "GedraFileLinks"
+}
+
+/** Column names of [GDT.gedraFileLinks]. Each name matches its value. */
+@Suppress("ConstPropertyName")
+object GDL {
+    /** The data file a form's field names. */
+    const val fileId = "fileId"
+
+    /** The form whose field names it: its gedra id. */
+    const val holderId = "holderId"
+
+    /** The trait of the entry holding the field. */
+    const val traitId = "traitId"
+
+    /** The entry holding the field: its entry id. */
+    const val entryKey = "entryKey"
+
+    /** Where in the entry's data the field is, `photos[2].file` style (`DataFileUse.path`). */
+    const val fieldPath = "fieldPath"
 }
 
 /** Column names of [GDT.gedraFileUploads], and the keys inside its [progress]. */
@@ -208,5 +235,17 @@ fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         forUsers()
         // The sweep (issue #1839) finds the uploads past their time.
         index(GDU.expiresAt)
+    }
+    table(GDT.gedraFileLinks, "Which forms' fields name which data files: one row per field naming a file.") {
+        column(GDL.holderId, "Id of the form whose field names the file.", required = true)
+        column(GDL.traitId, "The trait of the entry holding the field.", required = true)
+        column(GDL.entryKey, "The id of the entry holding the field.", required = true)
+        column(GDL.fieldPath, "Where in the entry's data the field is.", required = true)
+        column(GDL.fileId, "Id of the data file the field names.", required = true)
+        // One file per field. Led by the form, so a form's save reads its own links by the key's first column.
+        primaryKey(GDL.holderId, GDL.traitId, GDL.entryKey, GDL.fieldPath)
+        forClient()
+        // Which forms use a file: a removal's refusal, a read through a form, and `/files/usedBy`.
+        index(GDL.fileId)
     }
 }
