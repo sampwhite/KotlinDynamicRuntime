@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlSession
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -139,8 +140,17 @@ class CounterService : ServiceInitializer {
      * client's current period, plus one, under the row's lock. Refused for a counter the client does not have (404) or
      * has disabled. [at] is the moment it is issued at -- the request's, unless a caller (a test) says another -- and
      * decides the day.
+     *
+     * **Never inside another transaction.** The count's row is locked until the transaction issuing from it commits, so
+     * an id issued inside a form's write would hold every other issue of that counter until the form was stored. A write
+     * that assigns an id itself -- an API create leaving a counter's field out -- issues it before its transaction opens,
+     * as a page does before its save, and hands the token to the claim as a page's arrives ([CounterTokens]). Refused
+     * here, so a caller that forgets finds out at once rather than under load.
      */
     fun issue(cxt: KdrCxt, client: String, counterId: String, at: Instant = cxt.instanceNow()): IssuedCounterId {
+        if (SqlSession.get(cxt)?.inTran == true) {
+            throw KdrException("A counter's id is issued before a write's transaction opens, never inside one.", code = EXC.internalError)
+        }
         val def = forClient(client)[counterId]
             ?: throw KdrException("Client '$client' has no counter '$counterId'.", code = EXC.notFound)
         if (!def.enabled) {

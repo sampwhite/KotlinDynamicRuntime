@@ -8,13 +8,11 @@ import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraWriteContext
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.LogGedra
+import com.dynamicruntime.common.gedra.ValueClaim
+import com.dynamicruntime.common.gedra.ValueClaims
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchTypeBuilder
-import com.dynamicruntime.common.sql.KdrTable
-import com.dynamicruntime.common.sql.PF
-import com.dynamicruntime.common.sql.SqlCxt
-import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -49,8 +47,8 @@ object CounterTokens {
  *   further.
  * - **Changed or removed**, once it held an id: refused. An id is fixed once it is stored.
  * - **Newly given an id**: the write must send that id's token, issued to the acting user, for the form's client and the
- *   field's counter. A claim row then records which form holds it, and an id already claimed -- the same token sent
- *   twice -- is refused.
+ *   field's counter. A claim ([ValueClaims]) then records which form holds it, and an id already claimed -- the same
+ *   token sent twice, even by two writes racing -- is refused.
  *
  * An entry is matched across the write by its trait and, for a keyed trait, its key, as an edit addresses one.
  */
@@ -76,6 +74,7 @@ object CounterClaimHook : GedraWriteHook {
         val after = counted(row.entries)
         if (before.isEmpty() && after.isEmpty()) return
         val tokens by lazy { CounterTokens.of(cxt).map { CounterToken.open(cxt, it) } }
+        val claims = mutableListOf<ValueClaim>()
         for (address in before.keys + after.keys) {
             val traitId = (after[address] ?: before.getValue(address)).first
             val fields = counterFieldsOf(dataTypeOf(traitId) ?: continue)
@@ -88,23 +87,35 @@ object CounterClaimHook : GedraWriteHook {
                         "The id '$old' in '$field' of '$traitId' was given to this form when it was stored, and does not change.",
                     )
                 }
-                claim(cxt, write.sqlCxt, row.client, row.gedraId.fullId, traitId, field, counterId, new!!, tokens)
+                val token = issuedToken(cxt, row.client, traitId, field, counterId, new!!, tokens)
+                claims.add(
+                    ValueClaim(
+                        row.client, CNT.claimKindPrefix + counterId, token.scopeKey, "${token.periodKey}/${token.count}",
+                        new, row.gedraId.fullId, traitId, field,
+                    ),
+                )
             }
+        }
+        ValueClaims.claim(cxt, write.sqlCxt, claims) { claim, holder ->
+            "The id '${claim.value}' in '${claim.field}' of '${claim.traitId}' is already stored" +
+                (if (holder == claim.gedraId) " on this form." else " on another form.") +
+                " Ask the counter '${claim.claimKind.removePrefix(CNT.claimKindPrefix)}' for another."
+        }
+        claims.forEach {
+            LogGedra.info(cxt) { "Form '${it.gedraId}' stores '${it.value}' from a counter in '${it.field}' of '${it.traitId}'." }
         }
     }
 
-    /** Records that [gedraId] holds [value], issued by [counterId], after holding the write to the token it was issued with. */
-    private fun claim(
+    /** The token [value] was issued with, after holding it to the form's client and the acting user; refused otherwise. */
+    private fun issuedToken(
         cxt: KdrCxt,
-        sqlCxt: SqlCxt,
         client: String,
-        gedraId: String,
         traitId: String,
         field: String,
         counterId: String,
         value: String,
         tokens: List<CounterToken>,
-    ) {
+    ): CounterToken {
         val token = tokens.firstOrNull { it.value == value && it.counterId == counterId }
             ?: throw KdrException.mkInput(
                 "The id '$value' in '$field' of '$traitId' was not sent with the token it was issued with. Ask the counter " +
@@ -116,32 +127,8 @@ object CounterClaimHook : GedraWriteHook {
         if (token.userId != cxt.userProfile.userId) {
             throw KdrException.mkInput("The id '$value' in '$field' of '$traitId' was issued to someone else.")
         }
-        val table = claimTable(cxt)
-        val key = mapOf(
-            PF.client to client, CNT.counterId to counterId, CNT.scopeKey to token.scopeKey,
-            CNT.periodKey to token.periodKey, CNT.issuedCount to token.count,
-        )
-        // Asked first, for a refusal that says what happened; the key is what holds the line when two writes race.
-        val held = sqlCxt.sqlDb.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), key)
-        if (held != null) {
-            val holder = held[CNT.gedraId].toOptStr()
-            throw KdrException.mkInput(
-                "The id '$value' in '$field' of '$traitId' is already stored" + (if (holder == gedraId) " on this form." else " on another form.") +
-                    " Ask the counter '$counterId' for another.",
-            )
-        }
-        val claim = LinkedHashMap<String, Any?>(key)
-        claim[CNT.counterValue] = value
-        claim[CNT.gedraId] = gedraId
-        claim[CNT.traitId] = traitId
-        claim[CNT.fieldName] = field
-        SqlTopicUtil.prepForStdExecute(cxt, table, claim)
-        sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), claim)
-        LogGedra.info(cxt) { "Form '$gedraId' stores '$value' from counter '$counterId' in '$field' of '$traitId'." }
+        return token
     }
-
-    private fun claimTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[CNT.formCounterClaims]
-        ?: throw KdrException("The ${CNT.formCounterClaims} table is not registered in the schema store.")
 }
 
 /** The shape of a write's [CTR.counterTokens] field: a list of sealed tokens, each a secret the request log redacts. */

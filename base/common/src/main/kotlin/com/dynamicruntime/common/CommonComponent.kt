@@ -8,10 +8,10 @@ import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.counter.CounterClaimHook
 import com.dynamicruntime.common.counter.CounterService
-import com.dynamicruntime.common.counter.counterClaimTables
 import com.dynamicruntime.common.counter.counterTables
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
+import com.dynamicruntime.common.gedra.valueClaimTables
 import com.dynamicruntime.common.gedra.workflow.OwnerOnlyGuard
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.gedra.EditorDeleteGuard
@@ -334,9 +334,10 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(reportHistoryTables(cxt), appOnly)
         // A workflow's parameters, its time windows first (issue #1356): set per client, in force at once.
         collector.addTables(workflowParamsTables(cxt), appOnly)
-        // Counters (issue #1849): the counts, in a topic of their own, and the claims, written with a form's data.
+        // Counters (issue #1849): the counts, in a topic of their own, and the values a form claims -- a counter's id
+        // first -- written with a form's data.
         collector.addTables(counterTables(cxt), appOnly)
-        collector.addTables(counterClaimTables(cxt), appOnly)
+        collector.addTables(valueClaimTables(cxt), appOnly)
         // Per-gedra job failures (issue #871), in the same topic.
         collector.addTables(jobExceptionTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)

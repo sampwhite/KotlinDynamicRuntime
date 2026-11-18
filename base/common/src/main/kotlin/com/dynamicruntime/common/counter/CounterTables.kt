@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.counter
 
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.gedra.gedraDataTopic
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -9,8 +8,8 @@ import com.dynamicruntime.common.sql.tableModule
 
 /**
  * The SQL topic of the counts themselves (issue #1849): a topic of its own, so issuing an id takes one short lock on its
- * counter's row and never waits on a form's. The claims are in [gedraDataTopic], since one is written in the
- * transaction of the form that stores its id.
+ * counter's row and never waits on a form's. The claims of its ids are value claims, in the gedra data topic, since one
+ * is written in the transaction of the form that stores its id (`ValueClaims`).
  */
 const val formCounterTopic = "formCounter"
 
@@ -19,9 +18,6 @@ const val formCounterTopic = "formCounter"
 object CNT {
     /** One row per client, counter, scope, and period: the last count issued. */
     const val formCounters = "FormCounters"
-
-    /** One row per id a form stores: which form holds it, so it is never stored twice. */
-    const val formCounterClaims = "FormCounterClaims"
 
     /** Which counter a row is for, in its client (the row's `client`). */
     const val counterId = "counterId"
@@ -38,23 +34,11 @@ object CNT {
     /** On [formCounters]: the last count issued in the period, so the next is one more. */
     const val lastCount = "lastCount"
 
-    /** On [formCounterClaims]: the count the stored id was issued with. */
-    const val issuedCount = "issuedCount"
-
-    /** On [formCounterClaims]: the id as the form holds it. */
-    const val counterValue = "counterValue"
-
-    /** On [formCounterClaims]: the form that holds the id. */
-    const val gedraId = "gedraId"
-
-    /** On [formCounterClaims]: the trait whose entry holds the id. */
-    const val traitId = "traitId"
-
-    /** On [formCounterClaims]: the field of the entry's data that holds the id. */
-    const val fieldName = "fieldName"
-
     /** A [scopeKey] or [periodKey] that is not one: a key column holds a value, and an empty one is not portable. */
     const val none = "-"
+
+    /** What a counter's ids are claimed as, before its id: `counter:receipt` ([com.dynamicruntime.common.gedra.VCL.claimKind]). */
+    const val claimKindPrefix = "counter:"
 
     /** The transaction an id is issued in. */
     const val tranIssue = "issueCounterId"
@@ -70,22 +54,5 @@ fun counterTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "f
         forClient()
         primaryKey(PF.client, CNT.counterId, CNT.scopeKey, CNT.periodKey)
         withTransactions()
-    }
-}
-
-/** The table of claims (issue #1849): written in the transaction of the form that stores an id, so an id is stored once. */
-fun counterClaimTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "formCounterClaims", topic = gedraDataTopic) {
-    table(CNT.formCounterClaims, "Which form holds each id a counter issued (issue #1849).") {
-        column(CNT.counterId, "The counter that issued the id.", required = true)
-        column(CNT.scopeKey, "The scope it was issued in; '-' for none.", required = true)
-        column(CNT.periodKey, "The period it was issued in; '-' for a counter that never resets.", required = true)
-        column(CNT.issuedCount, "The count it was issued with.", required = true) { type = SCT.integer }
-        column(CNT.counterValue, "The id, as the form holds it.", required = true)
-        column(CNT.gedraId, "The form that holds it.", required = true)
-        column(CNT.traitId, "The trait whose entry holds it.", required = true)
-        column(CNT.fieldName, "The field of the entry's data that holds it.", required = true)
-        forClient()
-        primaryKey(PF.client, CNT.counterId, CNT.scopeKey, CNT.periodKey, CNT.issuedCount)
-        index(CNT.gedraId)
     }
 }

@@ -121,6 +121,22 @@ class FormCountersTest : StringSpec({
             .toString() shouldContain "is already stored on another form"
     }
 
+    "saves racing with one token store it once, and the others are refused as already stored, never a server error" {
+        val clerk = createStore("store1849r")
+        val (value, token) = clerk.issue("receipt")
+        val body = create(listOf(receipt(value)), listOf(token))
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        val outcomes = try {
+            // A success's answer has no status, a refusal's says it.
+            (1..4).map { pool.submit<Int> { (clerk.client.sendJsonPostRequest(GEP.formDocCreate, body)[EP.status] as? Number)?.toInt() ?: 200 } }
+                .map { it.get() }
+        } finally {
+            pool.shutdown()
+        }
+        outcomes.count { it == 200 } shouldBe 1
+        outcomes.filter { it != 200 }.toSet() shouldBe setOf(EXC.badInput)
+    }
+
     "a stored id does not change, and the rest of the entry still does" {
         val clerk = createStore("store1849c")
         val (value, token) = clerk.issue("receipt")
