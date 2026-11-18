@@ -627,7 +627,7 @@ class GedraDataService : ServiceInitializer {
             // with the data. The built-in one records this form's initial derived state -- a core details workflow's
             // "unfinished", say -- so it lands even on a plain API create or a bad import, not only in an
             // interactive workflow step. Import reaches here per doc, so every imported doc runs them too.
-            fireWriteHooks(txCxt, sqlCxt, row)
+            fireWriteHooks(txCxt, sqlCxt, row, priorEntries = emptyList())
         }
         return row
     }
@@ -662,8 +662,8 @@ class GedraDataService : ServiceInitializer {
     }
 
     /** Fires the registered post-write hooks (issue #675) after a data write, inside its transaction. */
-    private fun fireWriteHooks(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {
-        val write = GedraWriteContext(sqlCxt, row)
+    private fun fireWriteHooks(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow, priorEntries: List<Map<String, Any?>>) {
+        val write = GedraWriteContext(sqlCxt, row, priorEntries)
         SchemaService.get(cxt).writeHooks().forEach { it.afterWrite(cxt, write) }
     }
 
@@ -786,8 +786,9 @@ class GedraDataService : ServiceInitializer {
                 txCxt.bindTransactionOwner(current.userId, current.client, current.org)
                 // The computed values first (issue #1501). Stored, they are a data write like any other, so the
                 // post-write hooks follow it -- the built-in one deriving the state from the data as now stored.
+                val prior = current.entries
                 result = if (refreshComputedData(txCxt, sqlCxt, current)) {
-                    fireWriteHooks(txCxt, sqlCxt, current)
+                    fireWriteHooks(txCxt, sqlCxt, current, prior)
                     StateRecompute(StateRecomputeOutcome.written)
                 } else {
                     recomputeDerivedStateUnderLock(txCxt, sqlCxt, current, skipIfUnchanged)
@@ -1065,11 +1066,15 @@ class GedraDataService : ServiceInitializer {
                 }
                 val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entryData)
                 // The files its fields name stay behind (issue #1838): they are another client's, or another deployment's,
-                // and do not travel with an export, so the rest of the entry is kept and the fields are counted.
-                variants?.select(traitId)?.properties?.get(GE.data)?.valueType?.let { dataType ->
+                // and do not travel with an export, so the rest of the entry is kept and the entry is counted. One that
+                // cannot stand without them -- a file field it requires -- is left out under the same count, whatever
+                // `forgiveInvalidEntries` says: what it lacks is what an import never carries, not a fault in what was sent.
+                var strippedFiles = false
+                traitDataTypeIn(union, traitId)?.let { dataType ->
                     if (DataFileFields.holdsFiles(dataType) && DataFileFields.collect(dataType, entryData).isNotEmpty()) {
                         slim[GE.data] = DataFileFields.strip(dataType, entryData)
                         discard(GIF.dataFile, traitId)
+                        strippedFiles = true
                     }
                 }
                 // Trait save-time functions (issue #728) run on an import too, so it cannot store what a create
@@ -1079,6 +1084,10 @@ class GedraDataService : ServiceInitializer {
                 try {
                     slim[GE.data] = prepForSaveData(cxt, kind, traitId, slim[GE.data].toJsonMapOrEmpty(), cxt.client)
                 } catch (e: KdrException) {
+                    if (strippedFiles) {
+                        excluded.add(traitId)
+                        continue
+                    }
                     if (!opts.forgiveInvalidEntries) {
                         throw e
                     }
@@ -1100,6 +1109,10 @@ class GedraDataService : ServiceInitializer {
                 val stored = slim.asStoredEntry(entryId = entryId, source = GSRC.user, createdAt = now, createdBy = actor)
                 val failures = if (union != null) validate(union, stored) else emptyList()
                 if (failures.isNotEmpty()) {
+                    if (strippedFiles) {
+                        excluded.add(traitId)
+                        continue
+                    }
                     if (!opts.forgiveInvalidEntries) {
                         throw KdrException.mkInput(
                             "An imported entry for trait '$traitId' is invalid: " +
@@ -1565,8 +1578,9 @@ class GedraDataService : ServiceInitializer {
             // The post-write hooks (issue #675), on the same lock the patch holds: the built-in one recomputes
             // this form's derived state from the patched data, so state follows the edit on the raw patch path
             // exactly as on the core details save. `row` carries the post-edit entries so a deriver reads what is stored.
+            val prior = row.entries
             row.entries = entries
-            fireWriteHooks(txCxt, sqlCxt, row)
+            fireWriteHooks(txCxt, sqlCxt, row, prior)
         }
         return GedraPatchResult(target.gedraId, outcomes)
     }
@@ -1747,7 +1761,7 @@ class GedraDataService : ServiceInitializer {
         val present by lazy { registry.assemble(cxt) }
         val answers = HashMap<String, Boolean>()
         val allows = { expression: String -> answers.getOrPut(expression) { registry.parse(expression).matches(present) } }
-        fun dataTypeOf(traitId: String) = union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+        fun dataTypeOf(traitId: String) = traitDataTypeIn(union, traitId)
         fun refuse(traitId: String, paths: List<String>): Nothing = throw KdrException(
             "You may not change ${paths.joinToString(", ") { "'$it'" }} of '$traitId': " +
                 "${if (paths.size == 1) "it is" else "they are"} not offered to you, so " +
@@ -1784,20 +1798,21 @@ class GedraDataService : ServiceInitializer {
         val union = clientUnion(cxt, kind)
         val schema = SchemaService.get(cxt)
         return { traitId, data ->
-            val dataType = union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+            val dataType = traitDataTypeIn(union, traitId)
             val functions = dataType?.let { schema.writeFunctionsFor(cxt, it) }.orEmpty()
             if (functions.isEmpty()) data else runWriteFunctions(cxt, functions, data)
         }
     }
 
     /**
-     * Each trait's data type as [client]'s entry union for [kind] has it (issue #1838), or null for a trait it does not
-     * carry: what the files a stored entry names are read by. Asked of the data's own client, which a write's context
-     * may not be bound to.
+     * [client]'s entry union for [kind] (issue #1838), or null on a node with no compiled schema for it: what the files a
+     * stored entry names are read by. The store [cxt] has pinned when it is bound to [client] -- a write's, so its links
+     * are read by the very types its entries were validated against -- else the client's current one, for a read whose
+     * caller is of another client.
      */
-    fun traitDataTypes(cxt: KdrCxt, client: String, kind: GedraDataType): (String) -> SchType? {
-        val union = SchemaService.get(cxt).storeFor(client).types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
-        return { traitId -> union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType }
+    fun entryUnion(cxt: KdrCxt, client: String, kind: GedraDataType): SchType? {
+        val store = if (cxt.client == client) cxt.getClientSchema() else SchemaService.get(cxt).storeFor(client)
+        return store.types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
     }
 
     /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */
@@ -2259,6 +2274,10 @@ interface GatedWrite {
  * is taken. [missingHint] is appended to the absent case's message: what the caller probably meant instead (on an
  * edit, a delete).
  */
+/** The data type of [traitId]'s entries in [union], an entry union, or null when it carries no such trait. */
+fun traitDataTypeIn(union: SchType?, traitId: String): SchType? =
+    union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+
 fun entryDataOf(entry: Map<String, Any?>, traitId: String, missingHint: String = ""): Map<String, Any?> =
     when (val raw = entry[GE.data]) {
         null -> throw KdrException.mkInput("The '$traitId' entry carries no ${GE.data}.$missingHint")

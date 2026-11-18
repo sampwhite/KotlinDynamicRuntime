@@ -19,11 +19,15 @@ import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.GedraWriteContext
 import com.dynamicruntime.common.gedra.GedraWriteGuard
 import com.dynamicruntime.common.gedra.GedraWriteHook
+import com.dynamicruntime.common.gedra.LogGedra
 import com.dynamicruntime.common.gedra.gedraDataTopic
+import com.dynamicruntime.common.gedra.traitDataTypeIn
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.fileSizeLimit
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
+import com.dynamicruntime.common.sql.SqlStatement
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
@@ -64,43 +68,69 @@ object DataFileLinks {
 
     // --- writing them ----------------------------------------------------------------------------------------------
 
-    /**
-     * Brings [row]'s links in line with the files its entries name, inside its write's transaction ([sqlCxt], holding
-     * the form's lock). Every file newly linked is locked, in sorted order, and must be: a live data file of the form's
-     * client, no longer uploading, of a kind and a size its field takes, and one the caller may use -- in their read
-     * scope, or already linked from this form. The system's own writes (a recompute, a job) use whatever the form
-     * already names. A refusal fails the write, as validation does.
-     */
-    fun syncLinks(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {
-        if (!row.kind.carriesEntries) return
-        val typeOf = GedraDataService.get(cxt).traitDataTypes(cxt, row.client, row.kind)
-        val wanted = LinkedHashMap<Place, DataFileUse>()
-        for (entry in row.entries) {
+    /** The files [entries] name, by where each is, read by [union]'s types. */
+    private fun usesOf(union: SchType, entries: List<Map<String, Any?>>): Map<Place, DataFileUse> {
+        val out = LinkedHashMap<Place, DataFileUse>()
+        for (entry in entries) {
             val traitId = entry[GE.traitId].toOptStr() ?: continue
-            val type = typeOf(traitId) ?: continue
+            val type = traitDataTypeIn(union, traitId) ?: continue
             if (!DataFileFields.holdsFiles(type)) continue
             val entryKey = entry[GE.entryId].toOptStr() ?: continue
-            for (use in DataFileFields.collect(type, entry[GE.data])) wanted[Place(traitId, entryKey, use.path)] = use
+            for (use in DataFileFields.collect(type, entry[GE.data])) out[Place(traitId, entryKey, use.path)] = use
         }
+        return out
+    }
+
+    /**
+     * Brings [row]'s links in line with the files its entries name, inside its write's transaction ([sqlCxt], holding
+     * the form's lock). [priorEntries] are the entries as they stood before the write.
+     *
+     * **Only what this write put there is judged.** A file a field names that it did not name before the write -- at
+     * that place -- is locked, in sorted order, and must be: a live data file of the form's client, no longer uploading,
+     * of a kind and a size its field takes, and one the caller may use (in their read scope, or already linked from this
+     * form). A value the write only carried along is left as it was, linked or not: one written before its field became a
+     * file field, say, was never checked, so it is never linked, and never refuses an unrelated edit. A refusal fails a
+     * caller's write, as validation does; the system's own write (a recompute storing computed values) is not failed for
+     * it, but leaves that field unlinked and says so in the log.
+     *
+     * **A client whose traits hold no file field costs no query.** The trade: a client that takes away the last of its
+     * file fields keeps its forms' links as they were, holding their files from removal, until a file field returns.
+     */
+    fun syncLinks(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow, priorEntries: List<Map<String, Any?>>) {
+        if (!row.kind.carriesEntries) return
+        val union = GedraDataService.get(cxt).entryUnion(cxt, row.client, row.kind) ?: return
+        if (!DataFileFields.holdsFiles(union)) return
+        val wanted = usesOf(union, row.entries)
+        val carried = usesOf(union, priorEntries).map { (place, use) -> place to use.fileId }.toSet()
         val table = linkTable(cxt)
         val holderId = row.gedraId.fullId
         val stored = sqlCxt.sqlDb.queryStatement(cxt, byHolderStmt(sqlCxt, table), mapOf(GDL.holderId to holderId))
         if (wanted.isEmpty() && stored.isEmpty()) return
         val storedAt = stored.associateBy { placeOf(it) }
-        val adds = wanted.filter { (place, use) -> storedAt[place]?.get(GDL.fileId).toOptStr() != use.fileId }
+        val candidates = wanted.filter { (place, use) ->
+            storedAt[place]?.get(GDL.fileId).toOptStr() != use.fileId && (place to use.fileId) !in carried
+        }
         val removes = storedAt.filter { (place, link) -> wanted[place]?.fileId != link[GDL.fileId].toOptStr() }
-        if (adds.isNotEmpty()) {
+        val system = cxt.userProfile.authId == null
+        val adds = LinkedHashMap<Place, DataFileUse>()
+        if (candidates.isNotEmpty()) {
             val linkedHere = stored.mapNotNull { it[GDL.fileId].toOptStr() }.toSet()
-            val newFiles = adds.values.map { it.fileId }.filter { it !in linkedHere }.toSortedSet()
+            val newFiles = candidates.values.map { it.fileId }.filter { it !in linkedHere }.toSortedSet()
             val locked = newFiles.filter { lockFile(sqlCxt, it) }.toSet()
-            val files = adds.values.map { it.fileId }.distinct().associateWith { readFileRow(cxt, sqlCxt, it) }
-            val callerScope = if (cxt.userProfile.authId == null) null else ReadScopeRules.forCaller(cxt)
-            for ((place, use) in adds) {
+            val files = candidates.values.map { it.fileId }.distinct().associateWith { readFileRow(cxt, sqlCxt, it) }
+            val callerScope = if (system) null else ReadScopeRules.forCaller(cxt)
+            for ((place, use) in candidates) {
                 val newHere = use.fileId in newFiles
-                checkUse(cxt, row, place, use, files[use.fileId]?.takeIf { !newHere || use.fileId in locked }, if (newHere) callerScope else null)
+                val file = files[use.fileId]?.takeIf { !newHere || use.fileId in locked }
+                val problem = problemOf(cxt, row, place, use, file, if (newHere) callerScope else null)
+                when {
+                    problem == null -> adds[place] = use
+                    system -> LogGedra.warn(cxt) { "Left a file field of '$holderId' unlinked: $problem" }
+                    else -> throw KdrException.mkInput(problem)
+                }
             }
         }
-        for (place in removes.keys + adds.keys.filter { it in storedAt }) {
+        for (place in removes.keys) {
             sqlCxt.sqlDb.executeStatement(cxt, deleteStmt(sqlCxt, table), placeData(holderId, place))
         }
         val insert = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
@@ -115,31 +145,33 @@ object DataFileLinks {
     }
 
     /**
-     * Refuses [use], at [place] in [row], unless [file] -- the data file it names, read under its lock, or null when
-     * there is none to use -- is one the field may hold. [callerScope], when given, is the caller's read scope, which
-     * must admit the file: given only for a file this form did not already link, and not for the system's own writes.
+     * What keeps [use], at [place] in [row], from naming [file] -- the data file it names, read under its lock, or null
+     * when there is none to use -- as a sentence for the writer; null when nothing does. [callerScope], when given, is the
+     * caller's read scope, which must admit the file: given only for a file this form did not already link, and not for
+     * the system's own writes.
      */
-    private fun checkUse(cxt: KdrCxt, row: GedraDataRow, place: Place, use: DataFileUse, file: GedraDataRow?, callerScope: ReadScope?) {
+    private fun problemOf(cxt: KdrCxt, row: GedraDataRow, place: Place, use: DataFileUse, file: GedraDataRow?, callerScope: ReadScope?): String? {
+        if (place.fieldPath.length > DFILE.maxFieldPathLength) {
+            return "A file field's path in '${place.traitId}' is ${place.fieldPath.length} characters; at most " +
+                "${DFILE.maxFieldPathLength} are kept."
+        }
         val field = "'${place.fieldPath}' of '${place.traitId}'"
         val usable = file != null && file.client == row.client &&
             (callerScope == null || GedraDataService.get(cxt).admitsGedra(callerScope, file))
-        if (file == null || !usable) {
-            throw KdrException.mkInput("The field $field names the file '${use.fileId}', which is no file you may use here.")
-        }
+        if (file == null || !usable) return "The field $field names the file '${use.fileId}', which is no file you may use here."
         val record = DataFileService.fileOf(file)
         if (record[DFILE.status] == DFSTAT.uploading) {
-            throw KdrException.mkInput("The field $field names the file '${use.fileId}', which is still being uploaded.")
+            return "The field $field names the file '${use.fileId}', which is still being uploaded."
         }
         val kind = FileKinds.byId(record[DFILE.kind].toOptStr().orEmpty())
         val limit = kind?.let { use.field.fileSizeLimit(it) }
         if (kind == null || limit == null) {
             val takes = use.field.fileKinds.joinToString(", ") { it.label }
-            throw KdrException.mkInput("The field $field takes $takes files; '${use.fileId}' is ${kind?.label ?: "none of them"}.")
+            return "The field $field takes $takes files; '${use.fileId}' is ${kind?.label ?: "none of them"}."
         }
         val size = record[DFILE.size].toOptLong() ?: 0L
-        if (size > limit) {
-            throw KdrException.mkInput("The field $field takes a ${kind.label} file of at most $limit bytes; '${use.fileId}' is $size.")
-        }
+        if (size > limit) return "The field $field takes a ${kind.label} file of at most $limit bytes; '${use.fileId}' is $size."
+        return null
     }
 
     /** Takes [fileId]'s lock inside the open transaction; false when it names no gedra that has one. */
@@ -166,48 +198,65 @@ object DataFileLinks {
 
     // --- reading them ----------------------------------------------------------------------------------------------
 
-    /**
-     * The links to [fileId] from forms still live, each `{holderId, traitId, entryKey, fieldPath}`. Read from SQL --
-     * inside whatever transaction [cxt] has open, else in a session of its own -- and each form's liveness from it too,
-     * so a removal under the file's lock sees what a save committed a moment ago.
-     */
-    fun liveLinksTo(cxt: KdrCxt, fileId: String): List<Map<String, Any?>> {
+    /** The link rows of [stmt] for [key], read in [cxt]'s open session or one of its own. */
+    private fun queryLinks(cxt: KdrCxt, key: Map<String, Any?>, stmt: (SqlCxt, KdrTable) -> SqlStatement): List<Map<String, Any?>> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
-        val table = linkTable(cxt)
         var out: List<Map<String, Any?>> = emptyList()
-        // A session already open -- the removal's transaction -- is the one used.
-        sqlCxt.sqlDb.withSession(cxt) {
-            val links = sqlCxt.sqlDb.queryStatement(cxt, byFileStmt(sqlCxt, table), mapOf(GDL.fileId to fileId))
-            if (links.isNotEmpty()) {
-                val forms = GedraDataService.get(cxt).gedraDataTable(cxt)
-                val select = SqlTopicUtil.mkTableSelectStmt(sqlCxt, forms)
-                val live = links.mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
-                    .filter { sqlCxt.sqlDb.queryOneEnabled(cxt, select, mapOf(GD.gedraId to it)) != null }.toSet()
-                out = links.filter { it[GDL.holderId].toOptStr() in live }
-            }
-        }
+        // A session already open -- a removal's transaction -- is the one used.
+        sqlCxt.sqlDb.withSession(cxt) { out = sqlCxt.sqlDb.queryStatement(cxt, stmt(sqlCxt, linkTable(cxt)), key) }
         return out
     }
 
-    /** The live forms of [holderIds] the caller's read scope admits, by id, read as any form is. */
-    private fun visibleForms(cxt: KdrCxt, holderIds: Collection<String>): Map<String, GedraDataRow> {
+    /** The forms of [holderIds] that are live and that [scope] admits, by id, read as any form is: from the cache. */
+    private fun formsIn(cxt: KdrCxt, holderIds: Collection<String>, scope: ReadScope): Map<String, GedraDataRow> {
         val data = GedraDataService.get(cxt)
         val gedras = GedraService.get(cxt)
-        val scope = ReadScopeRules.forCaller(cxt)
         return holderIds.groupBy { gedras.readId(it).dataType }.flatMap { (kind, ids) ->
             if (kind == null) emptyList() else data.readGedras(cxt, kind, ids, scope).entries.map { it.toPair() }
         }.toMap()
     }
 
     /**
+     * Which live forms link a file: the [links] from those the caller may read, and how many more there are, [hidden].
+     */
+    class FileUsage(val links: List<Map<String, Any?>>, val hidden: Int) {
+        val visibleForms: List<String> get() = links.mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
+    }
+
+    /**
+     * Which live forms link [fileId], and which of them the caller may read. With [liveFromSql], whether a form is live
+     * is read from SQL, in [cxt]'s open transaction: a removal, under the file's lock, must see a form a save made a
+     * moment ago on another node, which the cache may not hold yet. Otherwise the cache answers it.
+     */
+    fun usage(cxt: KdrCxt, fileId: String, liveFromSql: Boolean): FileUsage {
+        val links = queryLinks(cxt, mapOf(GDL.fileId to fileId), ::byFileStmt)
+        if (links.isEmpty()) return FileUsage(emptyList(), 0)
+        val holders = links.mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
+        val live = if (liveFromSql) {
+            val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+            val select = SqlTopicUtil.mkTableSelectStmt(sqlCxt, GedraDataService.get(cxt).gedraDataTable(cxt))
+            var found: Set<String> = emptySet()
+            sqlCxt.sqlDb.withSession(cxt) {
+                found = holders.filter { sqlCxt.sqlDb.queryOneEnabled(cxt, select, mapOf(GD.gedraId to it)) != null }.toSet()
+            }
+            found
+        } else {
+            formsIn(cxt, holders, ReadScope.unrestricted).keys
+        }
+        val visible = formsIn(cxt, holders.filter { it in live }, ReadScopeRules.forCaller(cxt)).keys
+        return FileUsage(links.filter { it[GDL.holderId].toOptStr() in visible }, live.count { it !in visible })
+    }
+
+    /**
      * The data file [fileId] when the caller may read it through a live form that links it, one their read scope
-     * admits; null otherwise. What [DataFileService.viewable] falls back to after the caller's own scope.
+     * admits; null otherwise. What [DataFileService.viewable] falls back to after the caller's own scope: one query of
+     * the links, and the forms from the cache, which holds only live ones.
      */
     fun readableThroughLink(cxt: KdrCxt, fileId: String): GedraDataRow? {
         if (fileIdOf(cxt, fileId) == null) return null
         val file = GedraDataService.get(cxt).queryGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted) ?: return null
-        val holders = liveLinksTo(cxt, fileId).mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
-        return if (holders.isNotEmpty() && visibleForms(cxt, holders).isNotEmpty()) file else null
+        val holders = queryLinks(cxt, mapOf(GDL.fileId to fileId), ::byFileStmt).mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
+        return if (holders.isNotEmpty() && formsIn(cxt, holders, ReadScopeRules.forCaller(cxt)).isNotEmpty()) file else null
     }
 
     /**
@@ -215,34 +264,32 @@ object DataFileLinks {
      * many forms they may not read use it too.
      */
     fun usedBy(cxt: KdrCxt, file: GedraDataRow): Map<String, Any?> {
-        val links = liveLinksTo(cxt, file.gedraId.fullId)
-        val holders = links.mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
-        val visible = visibleForms(cxt, holders)
+        val usage = usage(cxt, file.gedraId.fullId, liveFromSql = false)
         return linkedMapOf(
             DFILE.fileId to file.gedraId.fullId,
-            DFILE.usedBy to links.filter { it[GDL.holderId].toOptStr() in visible }.map {
-                linkedMapOf(
-                    DFILE.formId to it[GDL.holderId], DFILE.traitId to it[GDL.traitId], DFILE.fieldPath to it[GDL.fieldPath],
-                )
+            DFILE.usedBy to usage.links.map {
+                linkedMapOf(DFILE.formId to it[GDL.holderId], DFILE.traitId to it[GDL.traitId], DFILE.fieldPath to it[GDL.fieldPath])
             },
-            DFILE.hiddenForms to holders.count { it !in visible },
+            DFILE.hiddenForms to usage.hidden,
         )
     }
 
     /**
-     * The files [row]'s entries name, as a form read carries them beside its data (`files`): by id, each one's name,
-     * kind, size, and status -- so a form's data holds only the id, and what it says of a file is never stale. Only
-     * live files of the form's own client, which is all a save links; empty when it names none.
+     * The files [row]'s entries name and link, as a form read carries them beside its data (`files`): by id, each one's
+     * name, kind, size, and status -- so a form's data holds only the id, and what it says of a file is never stale.
+     * Only a file the form links, so a value its save never checked tells a reader nothing of a file; empty when it
+     * names none, and then no query is made.
      */
     fun filesOf(cxt: KdrCxt, row: GedraDataRow): Map<String, Any?> {
         if (!row.kind.carriesEntries) return emptyMap()
-        val typeOf = GedraDataService.get(cxt).traitDataTypes(cxt, row.client, row.kind)
-        val ids = row.entries.flatMap { entry ->
-            val type = entry[GE.traitId].toOptStr()?.let(typeOf)
-            if (type == null || !DataFileFields.holdsFiles(type)) emptyList() else DataFileFields.collect(type, entry[GE.data]).map { it.fileId }
-        }.distinct().filter { fileIdOf(cxt, it) != null }
-        if (ids.isEmpty()) return emptyMap()
-        return GedraDataService.get(cxt).readGedras(cxt, GedraDataType.dataFile, ids, ReadScope.unrestricted)
+        val union = GedraDataService.get(cxt).entryUnion(cxt, row.client, row.kind) ?: return emptyMap()
+        if (!DataFileFields.holdsFiles(union)) return emptyMap()
+        val named = usesOf(union, row.entries).values.map { it.fileId }.toSet()
+        if (named.isEmpty()) return emptyMap()
+        val linked = queryLinks(cxt, mapOf(GDL.holderId to row.gedraId.fullId), ::byHolderStmt)
+            .mapNotNull { it[GDL.fileId].toOptStr() }.filter { it in named }.distinct()
+        if (linked.isEmpty()) return emptyMap()
+        return GedraDataService.get(cxt).readGedras(cxt, GedraDataType.dataFile, linked, ReadScope.unrestricted)
             .filterValues { it.client == row.client }
             .mapValues { (_, file) ->
                 val record = DataFileService.fileOf(file)
@@ -284,7 +331,7 @@ object DataFileLinks {
  */
 object DataFileLinkHook : GedraWriteHook {
     override fun afterWrite(cxt: KdrCxt, write: GedraWriteContext) {
-        DataFileLinks.syncLinks(cxt, write.sqlCxt, write.row)
+        DataFileLinks.syncLinks(cxt, write.sqlCxt, write.row, write.priorEntries)
     }
 }
 
@@ -297,15 +344,14 @@ object DataFileLinkHook : GedraWriteHook {
 object DataFileDeleteGuard : GedraWriteGuard {
     override fun check(cxt: KdrCxt, write: GedraGuardedWrite): ((List<Map<String, Any?>>) -> List<Map<String, Any?>>)? {
         if (!write.deletesGedra || write.row.kind != GedraDataType.dataFile) return null
-        val used = DataFileLinks.usedBy(cxt, write.row)
-        @Suppress("UNCHECKED_CAST")
-        val shown = (used[DFILE.usedBy] as List<Map<String, Any?>>).mapNotNull { it[DFILE.formId].toOptStr() }.distinct()
-        val hidden = used[DFILE.hiddenForms] as Int
-        if (shown.isEmpty() && hidden == 0) return null
-        val named = shown.map { "'$it'" } + (if (hidden > 0) listOf("$hidden you cannot see") else emptyList())
+        val usage = DataFileLinks.usage(cxt, write.row.gedraId.fullId, liveFromSql = true)
+        val shown = usage.visibleForms
+        val total = shown.size + usage.hidden
+        if (total == 0) return null
+        val named = shown.map { "'$it'" } + (if (usage.hidden > 0) listOf("${usage.hidden} you cannot see") else emptyList())
         throw KdrException(
-            "The file '${write.row.gedraId}' is used by ${shown.size + hidden} form${if (shown.size + hidden == 1) "" else "s"} " +
-                "(${named.joinToString(", ")}); remove it from ${if (shown.size + hidden == 1) "it" else "them"} first.",
+            "The file '${write.row.gedraId}' is used by $total form${if (total == 1) "" else "s"} " +
+                "(${named.joinToString(", ")}); remove it from ${if (total == 1) "it" else "them"} first.",
             code = EXC.conflict,
         )
     }

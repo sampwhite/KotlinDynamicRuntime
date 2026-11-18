@@ -5,7 +5,9 @@ import com.dynamicruntime.common.sql.SqlCxt
 
 /**
  * What a [GedraWriteHook] is handed about the write that just happened (issue #675): the open transaction it
- * runs in ([sqlCxt]) and the written [row] (its entries the post-write ones a patch produced).
+ * runs in ([sqlCxt]), the written [row] (its entries the post-write ones a patch produced), and [priorEntries], the
+ * entries as they stood under the lock before the write -- empty for a create -- so a hook can tell what this write
+ * changed from what it only carried along (issue #1838).
  *
  * A **parameters object rather than loose arguments on purpose.** A write path builds up "the universe already
  * built" -- the row, and in time things it read or resolved on the way (a state row already read under the lock,
@@ -14,7 +16,7 @@ import com.dynamicruntime.common.sql.SqlCxt
  * also where the double state-row read (recompute reads it, then `writeState` re-reads it) would be retired: the
  * already-read row rides along rather than being fetched twice.
  */
-class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow)
+class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow, val priorEntries: List<Map<String, Any?>>)
 
 /**
  * A component-registered action run after a gedra's data is written (issue #675), **inside the write's own

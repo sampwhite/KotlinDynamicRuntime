@@ -52,6 +52,12 @@ object DFILE {
     /** How many live forms the caller may not read use the file too. */
     const val hiddenForms = "hiddenForms"
 
+    /**
+     * The longest path to a file field a link keeps (issue #1838): a path takes in a map's keys, which are a form's data,
+     * and it is part of the link's primary key, which a database holds to a size. A save past it is refused.
+     */
+    const val maxFieldPathLength = 500
+
     /** Schema type names. */
     const val usedByType = "DataFileUsedBy"
     const val useType = "DataFileUse"

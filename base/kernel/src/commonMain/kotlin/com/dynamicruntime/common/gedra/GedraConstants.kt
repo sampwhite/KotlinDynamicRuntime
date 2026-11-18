@@ -211,7 +211,8 @@ object GIF {
 
     /**
      * An entry whose file fields were taken out (issue #1838): the data files they named do not travel with an export,
-     * so an import keeps the rest of the entry and drops them. Counted per entry, not per field.
+     * so an import keeps the rest of the entry and drops them -- or, for an entry that does not validate without them
+     * (a file field its trait requires), leaves the entry out. Counted per entry, not per field.
      */
     const val dataFile = "dataFile"
 }

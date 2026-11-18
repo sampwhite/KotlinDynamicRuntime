@@ -10,7 +10,9 @@ import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GDT
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
@@ -21,6 +23,10 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.gedraDataTopic
+import com.dynamicruntime.common.sql.SqlStmtUtil
+import com.dynamicruntime.common.util.mkUniqueId
+import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
@@ -45,24 +51,36 @@ import java.util.concurrent.TimeUnit
 class DataFileLinkTest : StringSpec({
     val cxt = TestInstances.default("links1838")
     val client = "links1838"
-    val setup = cxt.mkSubContext("setup", client).also { it.userId = 18380L }
-    GedraConfigService.get(cxt).writeConfig(
-        setup,
-        gedraConfig(cxt, "main", clientNamespace(client), client) {
-            defineClient(
-                ClientDef(
-                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
-                    enabledEnvironments = setOf(ENV.unit, ENV.local),
-                ),
-            )
-            trait("VisitEntry", "visit", setOf(GedraDataType.formDoc), "A site visit.") {
-                property("note", "What was seen.")
-                property("photo", "A photograph of the site.") { dataFile(FKIND.png, maxSize = 1000) }
-                property("clip", "A video of the site.") { dataFile(FKIND.mp4) }
-            }
-        },
-    )
-    GedraConfigReload.reloadClient(cxt, client)
+
+    /** Defines [clientId] with its traits: `visit`'s photo always a file, `extra`'s ref a file only when [refIsFile]. */
+    fun defineClient(clientId: String, refIsFile: Boolean = false) {
+        val setup = cxt.mkSubContext("setup", clientId).also { it.userId = 18380L }
+        GedraConfigService.get(cxt).writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(clientId), clientId) {
+                defineClient(
+                    ClientDef(
+                        clientId = clientId, name = clientId, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                trait("VisitEntry", "visit", setOf(GedraDataType.formDoc), "A site visit.") {
+                    property("note", "What was seen.")
+                    property("photo", "A photograph of the site.") { dataFile(FKIND.png, maxSize = 1000) }
+                    property("clip", "A video of the site.") { dataFile(FKIND.mp4) }
+                    property("rooms", "A photograph of each room, by its name.") { mapOfValues { dataFile(FKIND.png) } }
+                }
+                trait("BadgeEntry", "badge", setOf(GedraDataType.formDoc), "A badge, which must have its photograph.") {
+                    property("photo", "The badge's photograph.", required = true) { dataFile(FKIND.png) }
+                }
+                trait("ExtraEntry", "extra", setOf(GedraDataType.formDoc), "A reference.") {
+                    if (refIsFile) property("ref", "A file.") { dataFile(FKIND.png) } else property("ref", "Some text.")
+                }
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, clientId)
+    }
+    defineClient(client)
 
     val owner = TestUser.create(cxt, "pat@links1838.test", userClient = client)
     val sam = TestUser.create(cxt, "sam@links1838.test", userClient = client)
@@ -209,14 +227,75 @@ class DataFileLinkTest : StringSpec({
         info(sam, photo)[EP.status] shouldBe EXC.notFound.toLong()
     }
 
-    "an import drops the file fields and keeps the rest of the entry" {
+    "an import drops the file fields and keeps the rest of the entry, leaving out one that needs its file" {
         val photo = upload(owner, "export.png", "image/png", png(300, seed = 7))
+        val badge = mapOf(GE.traitId to "badge", GE.data to mapOf("photo" to photo))
         val answer = owner.postData(
-            clientPath(GEP.formDocImport, client), mapOf(GIF.data to mapOf(GDF.entries to listOf(visit(photo, note = "carried")))),
+            clientPath(GEP.formDocImport, client),
+            mapOf(GIF.data to mapOf(GDF.entries to listOf(visit(photo, note = "carried"), badge))),
         )
-        answer[GIF.discarded].toJsonListOfMaps().map { it[GIF.category] to it[GE.traitId] } shouldBe listOf(GIF.dataFile to "visit")
-        val formId = answer[GIF.imported].toJsonListOfMaps().single()[GDF.gedraId].toOptStr().shouldNotBeNull()
+        answer[GIF.discarded].toJsonListOfMaps().map { it[GIF.category] to it[GE.traitId] }.toSet() shouldBe
+            setOf(GIF.dataFile to "visit", GIF.dataFile to "badge")
+        val imported = answer[GIF.imported].toJsonListOfMaps().single()
+        imported[GIF.excludedTraits] shouldBe listOf("badge")
+        val formId = imported[GDF.gedraId].toOptStr().shouldNotBeNull()
         read(owner, formId)[GDF.entries].toJsonListOfMaps().single()[GE.data] shouldBe mapOf("note" to "carried")
+    }
+
+    "a save naming a file that does not exist makes no lock for it" {
+        val missing = "gd.df.$client.${cxt.mkUniqueId()}"
+        create(owner, missing)[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "no file you may use"
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = cxt.getGlobalSchema().tables.getValue(GDT.gedraDataTran)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qTestGedraDataTran", table.columns, "select * from t:${GDT.gedraDataTran} where c:${GD.gedraId} = :${GD.gedraId}",
+        )
+        var found: Map<String, Any?>? = mapOf()
+        sqlCxt.sqlDb.withSession(cxt) { found = sqlCxt.sqlDb.queryOneStatement(cxt, stmt, mapOf(GD.gedraId to missing)) }
+        found shouldBe null
+    }
+
+    "a file field's path is held to a length" {
+        val photo = upload(owner, "room.png", "image/png", png(300, seed = 9))
+        val room = mapOf(GE.traitId to "visit", GE.data to mapOf("rooms" to mapOf("x".repeat(DFILE.maxFieldPathLength) to photo)))
+        val refused = envelope(
+            owner.client.sendEditRequest(clientPath(GEP.formDocCreate, client), null, mapOf(GDF.entries to listOf(room)), HttpMethod.POST),
+        )
+        refused[EP.status] shouldBe EXC.badInput.toLong()
+        refused[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "at most ${DFILE.maxFieldPathLength}"
+    }
+
+    "a value its field did not take as a file when written is left unlinked, and refuses no later edit" {
+        val later = "links1838b"
+        defineClient(later)
+        val pat = TestUser.create(cxt, "pat@links1838b.test", userClient = later)
+        val photo = upload(pat, "later.png", "image/png", png(300, seed = 10))
+        val created = envelope(
+            pat.client.sendEditRequest(
+                clientPath(GEP.formDocCreate, later), null,
+                mapOf(GDF.entries to listOf(mapOf(GE.traitId to "extra", GE.data to mapOf("ref" to photo)), visit())),
+                HttpMethod.POST,
+            ),
+        )
+        val formId = formIdOf(created)
+        // The field becomes a file field: the value stored before it was never checked, so it is never linked.
+        defineClient(later, refIsFile = true)
+        val patched = envelope(
+            pat.client.sendEditRequest(
+                clientPath(GEP.patch, later), null,
+                mapOf(
+                    GPF.targets to mapOf(
+                        GedraDataType.formDoc.name to listOf(
+                            mapOf(GDF.gedraId to formId, GPF.edits to listOf(visit(note = "edited") + (GED.action to GedraEditAction.addOrReplace.name))),
+                        ),
+                    ),
+                ),
+                HttpMethod.POST,
+            ),
+        )
+        patched[EP.status] shouldBe null
+        pat.getItem(clientPath(GEP.formDoc, later), mapOf(GDF.gedraId to formId))[GDF.files] shouldBe null
+        pat.getItem(DFILE.usedByPath, mapOf(DFILE.fileId to photo))[DFILE.usedBy].toJsonListOfMaps().size shouldBe 0
     }
 
     "saves racing a removal never deadlock, and a removed file is named by no form" {

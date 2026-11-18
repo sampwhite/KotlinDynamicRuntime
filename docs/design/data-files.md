@@ -116,15 +116,25 @@ data holds only the id.
 **Each save links the form to what its fields name** (`DataFileLinkHook`, a write hook, in the save's own
 transaction): one row of `GedraFileLinks` per field naming a file -- the file, the form, the entry, and where in the
 entry's data the field is. A create, a patch, an import, and a recompute that stores computed values each keep them
-current. A file the form newly names must be:
+current. A file a field names that it did not name before the write must be:
 
 - a live data file of the form's own client, no longer uploading;
 - of a kind the field takes, and no larger than its limit;
 - one the caller may use: in their read scope -- their own, or any of the client's for an administrator or an editor --
   or already named by this form, so saving a form someone else put a file on needs no right to the file. The system's
   own writes use whatever the form names.
+- at a field whose path, map keys and all, is at most 500 characters, since the path is part of the link's key.
 
-Anything else refuses the save (400), saying which field and why.
+Anything else refuses the save (400), saying which field and why. The system's own write -- a recompute storing
+computed values -- is not failed for it: that field is left unlinked, and the log says so.
+
+**Only what a write put there is judged.** A value the write only carried along is left as it was, linked or not. One
+stored before its field became a file field was never checked, so it is never linked, never opens the file to anyone,
+and never refuses an unrelated edit of the form.
+
+**A client whose traits hold no file field pays nothing**: no links are read or written for its forms. The trade is that
+a client taking away the last of its file fields keeps its forms' links as they were, holding those files from removal,
+until a file field returns.
 
 **Locks.** A save holds the form's lock and takes the lock of each file it newly names, in sorted order. A removal takes
 only the file's. So the two cannot wait on each other, and whichever takes the file's lock second sees what the first
@@ -134,10 +144,13 @@ committed: a save after a removal finds the file gone, and a removal after a sav
 for reading through, and for `usedBy`.
 
 **A read of a form** (`GET /gedra/formDoc`) carries `files` beside its data when it names any: by id, each file's
-name, kind, size, and status. What a form says of a file is read from the file's record, so it is never stale.
+name, kind, size, and status -- of a file it links, so a value its save never checked tells a reader nothing. What a
+form says of a file is read from the file's record, so it is never stale.
 
 **An import drops a form's file fields** and keeps the rest of the entry, counting each such entry under the discard
-category `dataFile`: the files are another client's or another deployment's, and do not travel with an export.
+category `dataFile`: the files are another client's or another deployment's, and do not travel with an export. An entry
+that does not validate without them -- a file field its trait requires -- is left out of the form, under the same count,
+rather than refusing the import.
 
 ## Who may do what
 
