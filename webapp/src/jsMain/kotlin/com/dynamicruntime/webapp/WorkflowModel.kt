@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.endpoint.EP
@@ -823,7 +824,8 @@ fun workflowSaveEntries(valuesByTrait: Map<String, Map<String, Any?>>): List<Map
 
 /**
  * The body a workflow save posts: which workflow, task and save, and the collected entries. A core details workflow `edit`
- * save (issue #659) also carries the [gedraId] of the form it updates; a create save omits it (null).
+ * save (issue #659) also carries the [gedraId] of the form it updates; a create save omits it (null). [counterTokens]
+ * are those of the ids a counter issued for the page (issue #1849).
  */
 fun workflowSaveBody(
     workflowId: String,
@@ -832,6 +834,7 @@ fun workflowSaveBody(
     entries: List<Map<String, Any?>>,
     gedraId: String? = null,
     forUserRef: String? = null,
+    counterTokens: List<String> = emptyList(),
 ): Map<String, Any?> = buildMap {
     put(GDF.workflowId, workflowId)
     put(GDF.taskId, taskId)
@@ -841,6 +844,8 @@ fun workflowSaveBody(
     // Create the form for another user (issue #727): a create save only, so a picked user rides the body just
     // as the plain create sends `user`; an edit save passes null.
     forUserRef?.trim()?.ifEmpty { null }?.let { put(EI.user, it) }
+    // The tokens of the ids the page asked a counter for (issue #1849), which a save storing them must send.
+    if (counterTokens.isNotEmpty()) put(CTR.counterTokens, counterTokens)
 }
 
 /**

@@ -4,6 +4,7 @@ import com.dynamicruntime.common.app.DBGK
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
@@ -999,7 +1000,9 @@ class GedraDataService : ServiceInitializer {
      * been written yet the whole import is rejected. Status traits are not a concern -- they live in another
      * table and are never carried in a document's entries.
      *
-     * Every surviving entry is stamped fresh (`source = user`, the caller as actor, now as the timestamps) and
+     * A field a counter fills is left out of the copy (issue #1849): its id is the form's it came from.
+ *
+ * Every surviving entry is stamped fresh (`source = user`, the caller as actor, now as the timestamps) and
      * gets a new entry id unless [GedraImportOptions.preserveEntryIds] is set, which the endpoint permits only
      * from an env-authed channel. A document reduced to no surviving entries creates nothing.
      */
@@ -1064,15 +1067,19 @@ class GedraDataService : ServiceInitializer {
                     excluded.add(traitId)
                     continue
                 }
-                val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entryData)
+                // An id a counter issued belongs to the form it was stored on (issue #1849): the copy is a new form, so
+                // it is given none, and a counter's field it is required to have fails the entry as any missing field does.
+                val counted = traitDataTypeIn(union, traitId)?.let(::counterFieldsOf).orEmpty()
+                val kept = entryData - counted.keys
+                val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to kept)
                 // The files its fields name stay behind (issue #1838): they are another client's, or another deployment's,
                 // and do not travel with an export, so the rest of the entry is kept and the entry is counted. One that
                 // cannot stand without them -- a file field it requires -- is left out under the same count, whatever
                 // `forgiveInvalidEntries` says: what it lacks is what an import never carries, not a fault in what was sent.
                 var strippedFiles = false
                 traitDataTypeIn(union, traitId)?.let { dataType ->
-                    if (DataFileFields.holdsFiles(dataType) && DataFileFields.collect(dataType, entryData).isNotEmpty()) {
-                        slim[GE.data] = DataFileFields.strip(dataType, entryData)
+                    if (DataFileFields.holdsFiles(dataType) && DataFileFields.collect(dataType, kept).isNotEmpty()) {
+                        slim[GE.data] = DataFileFields.strip(dataType, kept)
                         discard(GIF.dataFile, traitId)
                         strippedFiles = true
                     }

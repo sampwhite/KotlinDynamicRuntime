@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.counter.CounterTokens
+import com.dynamicruntime.common.counter.counterTokensShape
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
@@ -279,6 +282,8 @@ class GedraDataRow(
                     // confined to the caller's own scope, so a client admin creates for a user in their client;
                     // absent (or naming yourself) is the ordinary self-create. Enforced in the handler, not here.
                     property(EI.user, createForUserHint)
+                    // The tokens of the ids a counter issued that this write stores (issue #1849).
+                    property(CTR.counterTokens, CounterTokens.hint) { counterTokensShape() }
                 }
                 property(GDF.createdAt, "When the gedra was created.", required = true) {
                     dateTime()

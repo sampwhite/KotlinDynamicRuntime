@@ -293,6 +293,12 @@ every form shows it as a box of several lines, and that only a plain string take
 lists the keyword with the rest, but the assistant reads the API guide rather than that reference, so without the line
 it would write a one-line field.
 
+**Numbering** (#1849). The prompt says what a counter is -- a `kdr:counterDef` entry with a prefix, digits, and a
+reset, made with `patch_config` -- and that a field takes its ids with `"g-counter"` in its trait's `dataSchema`. No
+editor offers either yet, and the traits editor treats a trait holding a counter's field as one written by hand, so
+both are written with `patch_config`. Without the lines the assistant would not know a form can be numbered at all: the
+slot and the keyword are in the references it can read, but nothing would send it there.
+
 **A turn** starts with `POST /clientAdmin/assistant/message` (`conversationId`, `clientMessageId`, `text`), which
 checks, in order: the assistant is on for the client, the client has a sandbox, its budget is not spent, the caller
 has turns left this hour (`KDR_ASSISTANT_TURNS_PER_HOUR`, counted in the database), the client has room for another

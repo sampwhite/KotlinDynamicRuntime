@@ -67,6 +67,11 @@ class SchType(
      */
     val fileMaxSize: Long? = null,
     /**
+     * Custom `g-counter` keyword (resolved, issue #1849): the id of the client counter that fills this plain string,
+     * or null for an ordinary field. See [SCH.counter].
+     */
+    val counter: String? = null,
+    /**
      * JSON Schema `pattern`, compiled to mean the same on the JVM and in the browser (issue #823) -- see
      * [SchPattern]. Null unless declared, and only ever set on a plain string type; the parser refuses it
      * elsewhere. Checked after edge whitespace is handled, like the other string checks.

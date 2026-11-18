@@ -94,6 +94,9 @@ object GCEL {
 
     /** A file ref (issue #1153). */
     const val fileRef = "fileRef"
+
+    /** A counter, or a field naming one (issue #1849). */
+    const val counter = "counter"
 }
 
 /**

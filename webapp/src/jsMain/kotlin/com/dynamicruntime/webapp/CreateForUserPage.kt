@@ -46,7 +46,9 @@ val CreateForUserPage = FC<Props> {
     // Step two: the form, in the picked user's client's rules.
     var catalog by useState<Catalog?>(null)
     var endpoint by useState<EndpointInfo?>(null)
-    var values by useState<Map<String, Any?>>(emptyMap())
+    val valuesState = useState<Map<String, Any?>>(emptyMap())
+    var values by valuesState
+    val updateValues = valuesState.component2()
     var failures by useState<List<SchFailure>?>(null)
     var revalidate by useState(false)
     var focusRequest by useState(0)
@@ -58,6 +60,9 @@ val CreateForUserPage = FC<Props> {
     // Load the chosen user's client's create schema when a user is picked (issue #714 mechanism: resolve the
     // endpoint on that client's surface). Re-runs when the picked user changes -- including to null (the box was
     // cleared or edited), which resets the form so a stale one is never left under a changed pick.
+    // A counter's field (issue #1849): given its id, from the picked user's client, as its section is added.
+    val counterIds = useCounterIds(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, values, updateValues, picked?.client)
+
     useEffect(picked?.userId) {
         val user = picked
         catalog = null
@@ -169,7 +174,8 @@ val CreateForUserPage = FC<Props> {
                                 val launched = routeParams()
                                 createForUserScope.launch {
                                     try {
-                                        val newId = AdminApi.createFormForUser(user.primaryId, payload)
+                                        // With the tokens of the ids the page asked for (issue #1849).
+                                        val newId = AdminApi.createFormForUser(user.primaryId, withCounterTokens(payload, counterIds.tokens))
                                         // Back to the listing this page was launched from -- its search, sort and
                                         // chosen client as they were -- flashing the new row (issue #663), through the
                                         // one shared create return (issue #758: only while the user is still here).
@@ -205,6 +211,7 @@ val CreateForUserPage = FC<Props> {
                     )
                 }
 
+                counterIds.error?.let { errorText("Couldn't get this form's id.", it) }
                 runError?.let { errorText("Couldn't create the form.", it) }
             }
         }

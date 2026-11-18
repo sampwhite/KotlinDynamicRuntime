@@ -268,6 +268,7 @@ A signed-in caller may call these.
 
 | Method | Path | Notes | What it does |
 |---|---|---|---|
+| POST | `/gedra/counter/issue` | per client, published | Issues the next id of one of the client's counters, with the token a write sends back to store it. Each call uses up an id, so one that is never stored is a gap. A daily counter's count starts again at 1 on each of the client's days. |
 | DELETE | `/gedra/formDoc` | per client, published | Deletes a form document, so that it is no longer readable or listed. |
 | GET | `/gedra/formDoc` | per client, published | Fetches one form document by its gedra id. |
 | POST | `/gedra/formDoc/create` | per client, published | Creates a form document carrying the supplied entries, and answers with it as stored. |

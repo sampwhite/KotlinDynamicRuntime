@@ -285,6 +285,23 @@ a verification code, a token -- that must never be written down. The request log
 input nobody declared (`password`, `verifyCode`, `formAuthToken`, names ending in `token`, `secret`, `credential`, ...),
 so declare a secret whose name the list would not catch. It takes no part in validation, and exports as nothing.
 
+## Ids from a counter: `counter` (issue #1849)
+
+`counter = "receipt"` on a plain string field (the custom `g-counter` keyword) says the client's counter `receipt`
+fills it: a prefix, a template over the day, then a zero-padded count, such as `R20261117-0042`. The counter is a
+`kdr:counterDef` entry of the client's configuration (`counter(...)` in the `gedraConfig` DSL), with its prefix, its
+digits (2 to 8), and whether it starts again each day. A page asks `/gedra/counter/issue` for an id as it opens a form,
+and shows it read-only; the write that stores it sends the token it was issued with, in `counterTokens`.
+
+- **Not validation.** Any text passes the schema. The write is what holds a field to an id: a value not issued to the
+  writer, a token used twice, and a change to a stored id are refused by `CounterClaimHook`, inside the write's
+  transaction. An import leaves the field out, since its id belongs to the form it was copied from.
+- **Not `derived`.** The caller supplies the value, if only one it was issued, so the field can be part of a
+  `g-primaryKey`. The parser refuses `counter` beside `derived`, choices, or a `const`, and on anything but a plain
+  string.
+- **Where.** A field of a trait's own data. One named inside a nested object or a list, or naming a counter the client
+  does not have, is reported when the configuration loads, and refused when it is written.
+
 ## Choice lists: written down, or sourced at render time
 <!-- Theme: #NARRW -->
 

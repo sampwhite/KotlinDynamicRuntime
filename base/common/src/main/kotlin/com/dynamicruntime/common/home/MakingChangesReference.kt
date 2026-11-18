@@ -74,6 +74,15 @@ val changeGroups: List<ChangeGroup> = listOf(
                 "One of the platform's traits narrowed: fields hidden or required, choices kept, a name of its own",
                 traitsPanel, UADEP.clientTraitNarrow, ATOOL.narrowTrait, dryRun = true,
             ),
+            // No editor offers counters yet (issue #1849): a counter, and a field taking its ids, are written as JSON.
+            ChangeWay(
+                "A counter, made or changed: a form's ids, a prefix and then a zero-padded count (`${CCT.counterDef}`)",
+                bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
+            ),
+            ChangeWay(
+                "A field that takes its ids from a counter (`g-counter` in its trait's `dataSchema`), or a trait holding one",
+                bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
+            ),
         ),
     ),
     ChangeGroup(

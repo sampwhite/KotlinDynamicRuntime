@@ -1,6 +1,10 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.counter.counterFieldsOf
+import com.dynamicruntime.common.counter.counterPrefix
+import com.dynamicruntime.common.counter.counterValueText
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.DefRepairContext
 import com.dynamicruntime.common.startup.repairTypeDef
@@ -29,6 +33,7 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
 class SchKeywordsTest : StringSpec({
     include(schConditionTests())
     include(schDerivedTests())
+    include(schCounterTests())
     include(schOuterWhitespaceTests())
     include(schVisibleOnlyTests())
     include(schOpenOptionsTests())
@@ -36,6 +41,57 @@ class SchKeywordsTest : StringSpec({
     include(schGKeywordsTests())
     include(schStdKeywordsTests())
 })
+
+/**
+ * `g-counter` (issue #1849): a plain string a client's counter numbers. Read onto the field's type, where a form and the
+ * write that stores an id find it, and refused anywhere an issued id could not go, or beside what would say the value is
+ * produced elsewhere or one of a list.
+ */
+private fun schCounterTests() = stringSpec {
+
+    val cxt = KdrCxt.mkSimpleCxt("test")
+
+    fun parse(build: SchTypeBuilder.() -> Unit): SchType = parseSchemaTypes(
+        schemaDefs(cxt, "c") {
+            type("Receipt") {
+                type = SCT.kObject
+                property("number", "The receipt's id.", build = build)
+                property("note", "A note.")
+            }
+        },
+    ).getValue("c.Receipt")
+
+    fun refusal(build: SchTypeBuilder.() -> Unit): String = shouldThrow<KdrException> { parse(build) }.message.orEmpty()
+
+    "a counter's field names its counter, and the fields a counter fills are found by it" {
+        val type = parse { counter = "receipt" }
+        type.properties.getValue("number").valueType.counter shouldBe "receipt"
+        counterFieldsOf(type) shouldBe mapOf("number" to "receipt")
+    }
+
+    "a counter takes no part in validation: any text is the value, and the write is what holds it to an issued id" {
+        coerceAndValidate(parse { counter = "receipt" }, mapOf("number" to "R-0001"), SchOpts(forInput = true))
+            .failures.shouldBeEmpty()
+    }
+
+    "a counter is refused off a plain string, and beside a derivation or a list" {
+        refusal { type = SCT.integer; counter = "receipt" } shouldContain "numbers a plain string"
+        refusal { dayOnlyDate(); counter = "receipt" } shouldContain "numbers a plain string"
+        refusal { counter = "receipt"; derived = true } shouldContain SCH.derived
+        refusal { counter = "receipt"; option("a") } shouldContain SCH.options
+    }
+
+    "a counter id has the shape of one" {
+        refusal { counter = "1st receipt" } shouldContain CTR.idRule
+    }
+
+    "an id is its prefix and a count padded to its digits, widening when the count outgrows them" {
+        counterValueText("ORD-", 7, 2) shouldBe "ORD-07"
+        counterValueText("ORD-", 100, 2) shouldBe "ORD-100"
+        counterPrefix($$"R${compactDay}-", "2026-11-17") shouldBe "R20261117-"
+        counterPrefix($$"${day}/", "2026-11-17") shouldBe "2026-11-17/"
+    }
+}
 
 /**
  * Conditional presence: `if` / `then` / `else` in the one shape this layer reads (issue #253).

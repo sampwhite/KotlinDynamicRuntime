@@ -137,6 +137,12 @@ class TraitDesignTest {
         )
         assertNotNull(traitDesignOf("place", null, nested).notEditable)
         assertNotNull(traitDesignOf("shared", null, mapOf(SCH.dRef to $$"#/$defs/x.Shared")).notEditable)
+        // A counter's field (issue #1849), which would otherwise read as free text.
+        val numbered = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("number" to mapOf(SCH.type to SCT.string, SCH.counter to "receipt")),
+        )
+        assertNotNull(traitDesignOf("receipt", null, numbered).notEditable)
     }
 
     @Test

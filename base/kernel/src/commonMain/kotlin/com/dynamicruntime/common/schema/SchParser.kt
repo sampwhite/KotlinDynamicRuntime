@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileKind
 import com.dynamicruntime.common.filekind.FileKinds
@@ -464,6 +465,7 @@ fun parseNode(
         // An object's content is deliberately not kept: there is nothing to consume it, and a ride-along raw
         // map would be a field nobody reads that still has to be maintained.
         derived = map[SCH.derived].let { it == true || it is Map<*, *> },
+        counter = parseCounter(where, map, jsonType, format),
         schemaDocument = map[SCH.schemaDocument] == true,
         variants = variants,
         condition = parseCondition(name, map),
@@ -579,6 +581,41 @@ fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): 
         )
     }
     return SchPattern.compileResult(where, source).orThrow()
+}
+
+/**
+ * Reads the custom `g-counter` keyword (issue #1849): absent is null, and otherwise the id of the counter that fills the
+ * field. Refused where a counter's value could not go -- anything but a plain string -- and beside what would say the
+ * value comes from elsewhere ([SCH.derived]) or must be one of a list ([SCH.options], [SCH.const]). Whether the client
+ * defines the counter is judged where its counters are known, not here.
+ */
+@KdrPrivate
+fun parseCounter(where: String, map: Map<String, Any?>, jsonType: String?, format: String?): String? {
+    val raw = map[SCH.counter] ?: return null
+    val id = raw as? String
+        ?: throw schemaFault(SchemaError.badValue, "$where sets '${SCH.counter}' to something other than text.")
+    if (!CTR.idRegex.matches(id)) {
+        throw schemaFault(
+            SchemaError.badValue,
+            "$where sets '${SCH.counter}' to '$id', which is not a counter id: ${CTR.idRule}.",
+        )
+    }
+    if (jsonType != SCT.string || isNonTextFormat(format)) {
+        val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "$where has '${SCH.counter}', which numbers a plain string, and this type is $actual.",
+        )
+    }
+    val clash = listOf(SCH.derived, SCH.options, SCH.const).firstOrNull { map[it] != null && map[it] != false }
+    if (clash != null) {
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "$where has both '${SCH.counter}' and '$clash'. A counter's field holds the id it was issued, so it can " +
+                "neither be produced elsewhere nor be one of a list.",
+        )
+    }
+    return id
 }
 
 /** Reads JSON Schema `uniqueItems` (issue #823): absent is false, and anything but true or false is refused. */

@@ -260,6 +260,12 @@ open class SchTypeBuilder(
     var derived: Any? by SchAttr(data, SCH.derived)
 
     /**
+     * Custom `g-counter` keyword (issue #1849): the id of the client counter that fills this plain string, issued
+     * before the form is saved and fixed once stored. See [SCH.counter].
+     */
+    var counter: String? by SchAttr(data, SCH.counter)
+
+    /**
      * Declares the functions run on this type's data each time it is written (issue #1501), as `g-onWrite`: each a
      * usage object naming its kind in `fn` -- `computeValue(...)` in `base:common` builds one. Replaces any declared
      * before; on a trait's data type, they run after an edit is merged.

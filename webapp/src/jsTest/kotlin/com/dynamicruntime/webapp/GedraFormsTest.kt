@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WAGG
@@ -403,10 +404,13 @@ class GedraFormsTest {
         assertEquals(mapOf(GDF.entries to entries, EI.user to "42"), formForUserBody("42", mapOf(GDF.entries to entries)))
     }
 
-    /** What neither create page draws (issue #762): the power flag, and the user the page answers itself. */
+    /**
+     * What neither create page draws (issue #762): the power flag, and the user and the counters' tokens (issue #1849)
+     * the page answers itself.
+     */
     @Test
     fun theCreatePagesOmitThePowerFlagAndTheUser() {
-        assertEquals(setOf(GDF.allowAdditionalTraits, EI.user), formCreateOmittedFields.toSet())
+        assertEquals(setOf(GDF.allowAdditionalTraits, EI.user, CTR.counterTokens), formCreateOmittedFields.toSet())
     }
 
     /** A one-branch-per-trait union: a `name` branch and an `expenseReport` branch, the latter with a title. */
