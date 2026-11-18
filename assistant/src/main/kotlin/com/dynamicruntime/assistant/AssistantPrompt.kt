@@ -4,6 +4,7 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -113,6 +114,18 @@ object AssistantPrompt {
             |- A trait of the client's own is made or changed with ${ATOOL.designTrait}. One of the platform's traits that
             |  the client includes is never redefined: narrow it for the client with ${ATOOL.narrowTrait}, hiding or
             |  requiring its fields, or keeping fewer of its choices.
+            |
+            |Numbering:
+            |- A form numbered like a receipt (R20261117-0042) takes its id from a counter: a '${CCT.counterDef}' entry, made
+            |  or changed with ${ATOOL.patchConfig}, with a 'prefix' -- a template that may read ${'$'}{day} (2026-11-17) or
+            |  ${'$'}{compactDay} (20261117) -- 'digits' (2 to 8), and 'reset', 'never' or 'daily'. A daily counter's prefix
+            |  must change with the day, or its ids would repeat. read_doc '${HDOC.clientConfiguration}' lists its fields.
+            |- A field takes its ids from a counter with "g-counter": "<the counter's id>" in its trait's dataSchema, on a
+            |  plain string. ${ATOOL.designTrait} offers no such field, so write that trait's dataSchema with
+            |  ${ATOOL.patchConfig}, and change a trait holding one with ${ATOOL.patchConfig} as well.
+            |- The form shows the next id, read-only, before it is saved, and an id never changes once stored; an id a form
+            |  is never saved with is a gap. Put the field on the creation workflow's task when every new form should have
+            |  one, and add a forms list column for it, so a form can be found by its id.
             |
             |How forms read:
             |- A field's label, description, or hint: ${ATOOL.setFieldCopy} changes it on one workflow's form, and

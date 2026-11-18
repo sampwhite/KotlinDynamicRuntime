@@ -48,6 +48,8 @@ each kind of change, which to use.
 | Which of the platform's traits it includes | Clients page, **Forms and data**, **Traits** | `POST /clientAdmin/client/traits/set` | `set_included_traits` | No |
 | A trait of its own, made or changed: its fields, their kinds, and their choices | Clients page, **Forms and data**, **Traits** | `POST /clientAdmin/client/traits/design` | `design_trait` | Yes |
 | One of the platform's traits narrowed: fields hidden or required, choices kept, a name of its own | Clients page, **Forms and data**, **Traits** | `POST /clientAdmin/client/traits/narrow` | `narrow_trait` | Yes |
+| A counter, made or changed: a form's ids, a prefix and then a zero-padded count (`kdr:counterDef`) | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
+| A field that takes its ids from a counter (`g-counter` in its trait's `dataSchema`), or a trait holding one | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
 
 ## A workflow's form
 
