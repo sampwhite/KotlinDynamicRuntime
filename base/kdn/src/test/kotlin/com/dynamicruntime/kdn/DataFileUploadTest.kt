@@ -176,6 +176,29 @@ class DataFileUploadTest : StringSpec({
         status[DFILE.nextOffset] shouldBe DFILE.chunkBytes.toLong()
     }
 
+    "a last chunk sent while another request finishes the upload waits, then finishes it; a finished file takes no other chunk" {
+        val video = mp4("avc1", DFILE.chunkBytes + 20_000)
+        val fileId = begin(owner, "busy.mp4", "video/mp4", video.size)[DFILE.fileId].toOptStr()!!
+        val first = video.copyOfRange(0, DFILE.chunkBytes)
+        val last = video.copyOfRange(DFILE.chunkBytes, video.size)
+        sendChunk(owner, fileId, 0, first)[EP.status] shouldBe null
+
+        // Another request holds the finish, as the first does while it puts a large file together.
+        DataFileService.claimFinish(cxt, fileId)
+        val busy = sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last)
+        busy[EP.status] shouldBe EXC.tooManyRequests.toLong()
+        busy[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "is being finished"
+        // Every byte is taken, and the upload is not finished: resuming sends the last chunk again.
+        val status = owner.getItem(DFILE.statusPath, mapOf(DFILE.fileId to fileId))
+        status[DFILE.status] shouldBe DFSTAT.uploading
+        status[DFILE.nextOffset] shouldBe video.size.toLong()
+
+        DataFileService.releaseFinish(cxt, fileId)
+        recordOf(sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last))[DFILE.status] shouldBe DFSTAT.ready
+        // Only the chunk whose answer was lost is answered with the record; any other is not one the file took.
+        sendChunk(owner, fileId, 0, first)[EP.status] shouldBe EXC.conflict.toLong()
+    }
+
     "a file whose bytes are not the kind it was sent as is refused by the chunk that finishes it, and is gone" {
         val sent = begin(owner, "photo.png", "image/png", jpeg.size)[DFILE.fileId].toOptStr()!!
         val refused = sendChunk(owner, sent, 0, jpeg)

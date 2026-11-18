@@ -94,6 +94,13 @@ object GDU {
      */
     const val completed = "completed"
 
+    /**
+     * Under [progress]: when a request began finishing the upload (issue #1840), so a second -- the last chunk sent
+     * again while the first still works -- waits rather than finishing it twice. Held for `DataFileService.finishLeaseMs`
+     * at most, so a node that stopped part-way does not hold the upload for good.
+     */
+    const val finishingAt = "finishingAt"
+
     // Each part's keys.
     const val number = "number"
     const val size = "size"

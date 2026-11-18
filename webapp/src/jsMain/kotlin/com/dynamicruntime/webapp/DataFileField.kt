@@ -14,10 +14,13 @@ import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.await
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.dynamicruntime.common.util.Sha256
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
@@ -25,6 +28,7 @@ import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.video
 import react.useEffect
+import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
@@ -88,7 +92,11 @@ object DataFileApi {
         val size = (file.size as Number).toLong()
         val name = file.name as? String
         if (resume == null && sentWhole(size)) {
-            val answer = retried { Http.sendRawApiResult(DFILE.uploadPath, mapOf(DFILE.name to name, DFILE.mimeType to kind.mimeType), file) }
+            // Sent again only when refused before it was read (a 429): one that went unanswered may have made the file,
+            // and sending it again would make a second.
+            val answer = retried(onlyUnread = true) {
+                Http.sendRawApiResult(DFILE.uploadPath, mapOf(DFILE.name to name, DFILE.mimeType to kind.mimeType), file)
+            }
             onProgress(size)
             val record = answer[EP.results].toJsonMapOrEmpty()
             return dataFileViewFrom(record[DFILE.fileId].toOptStr().orEmpty(), record)
@@ -97,15 +105,16 @@ object DataFileApi {
         val chunkSize: Long
         var offset: Long
         if (resume == null) {
-            val begun = Http.sendApi("POST", DFILE.beginPath, mapOf(DFILE.name to name, DFILE.mimeType to kind.mimeType, DFILE.declaredSize to size))[EP.item]
-                .toJsonMapOrEmpty()
+            val begin = mapOf(DFILE.name to name, DFILE.mimeType to kind.mimeType, DFILE.declaredSize to size)
+            val begun = Http.sendApi("POST", DFILE.beginPath, begin)[EP.item].toJsonMapOrEmpty()
             fileId = begun[DFILE.fileId].toOptStr() ?: throw ApiFailure("The upload began with no file id.")
             chunkSize = begun[DFILE.chunkSize].toOptLong() ?: DFILE.chunkBytes.toLong()
             offset = 0L
             onBegun(fileId)
         } else {
             fileId = resume.fileId
-            val status = retried { Http.getApiResult(DFILE.statusPath + queryString(mapOf(DFILE.fileId to fileId))) }[EP.item].toJsonMapOrEmpty()
+            val status = retried { Http.getApiResult(DFILE.statusPath + queryString(mapOf(DFILE.fileId to fileId))) }[EP.item]
+                .toJsonMapOrEmpty()
             // Finished already: the answer that said so was what was lost.
             if (status[DFILE.status] != DFSTAT.uploading) return info(fileId)
             chunkSize = status[DFILE.chunkSize].toOptLong() ?: DFILE.chunkBytes.toLong()
@@ -142,22 +151,37 @@ object DataFileApi {
         }
     }
 
-    /** [send]'s answer, sent again after a wait when it had none, or the server failed; any other refusal thrown. */
-    private suspend fun retried(send: suspend () -> ApiResult<Map<String, Any?>>): Map<String, Any?> {
+    /**
+     * [send]'s answer, sent again after a wait when it had none or the server failed; any other refusal thrown. With
+     * [onlyUnread], for a request that is not safe to repeat, sent again only after a 429 -- refused before its body
+     * was read -- and any other failure thrown.
+     */
+    private suspend fun retried(onlyUnread: Boolean = false, send: suspend () -> ApiResult<Map<String, Any?>>): Map<String, Any?> {
         var attempt = 0
         while (true) {
             when (val sent = send()) {
                 is ApiResult.Ok -> return sent.value
-                is ApiResult.Refused ->
-                    if (sendFailure(sent.error.status, false) == SendFailure.retry) delay(retryDelayMs(++attempt) ?: throw sent.error) else throw sent.error
-                is ApiResult.Failed -> delay(retryDelayMs(++attempt) ?: throw sent.cause)
+                is ApiResult.Refused -> {
+                    val status = sent.error.status
+                    val again = if (onlyUnread) status == 429 else sendFailure(status, false) == SendFailure.retry
+                    if (!again) throw sent.error
+                    delay(retryDelayMs(++attempt) ?: throw sent.error)
+                }
+                is ApiResult.Failed -> if (onlyUnread) throw sent.cause else delay(retryDelayMs(++attempt) ?: throw sent.cause)
             }
         }
     }
 }
 
-/** The SHA-256 of [buffer], an `ArrayBuffer`, in hex: the browser's own digest, which the chunk is checked against. */
+/**
+ * The SHA-256 of [buffer], an `ArrayBuffer`, in hex, which the chunk is checked against: the browser's own digest, or,
+ * where a page has none -- the browser offers it only over HTTPS and on localhost, so not to an address on a LAN -- the
+ * kernel's, which is slower but the same hash.
+ */
 private suspend fun sha256Hex(buffer: dynamic): String {
+    if (js("typeof crypto === 'undefined' || !crypto.subtle") as Boolean) {
+        return Sha256.hexOf(js("new Int8Array(buffer)").unsafeCast<ByteArray>())
+    }
     val digest = (js("crypto.subtle.digest('SHA-256', buffer)") as Promise<dynamic>).await()
     val bytes = js("new Uint8Array(digest)")
     val length = bytes.length as Int
@@ -175,17 +199,22 @@ private suspend fun headBytes(file: dynamic): ByteArray {
     return js("new Int8Array(head)").unsafeCast<ByteArray>()
 }
 
-/** A file's record as a field has it: the [view] once read, or [missing] when it cannot be read. */
-class DataFileState(val view: DataFileView?, val missing: Boolean)
+/**
+ * A file's record as a field has it: the [view] once read; [missing] when the server says there is none for the caller
+ * -- removed, or not theirs to read; [unread] when it could not be asked -- no answer, or the server's own failure --
+ * which [retry] asks again.
+ */
+class DataFileState(val view: DataFileView?, val missing: Boolean, val unread: Boolean = false, val retry: () -> Unit = {})
 
 /**
- * [fileId]'s record, from [DataFileCache] or asked for: no view while it is being read, and [DataFileState.missing] when
- * it cannot be -- removed, or not the caller's to read.
+ * [fileId]'s record, from [DataFileCache] or asked for: no view while it is being read, [DataFileState.missing] when it
+ * is not there for the caller, and [DataFileState.unread] when the asking failed, with a way to ask again.
  */
 fun useDataFile(fileId: String?): DataFileState {
     var state by useState { DataFileState(fileId?.let { DataFileCache.get(it) }, false) }
+    var asked by useState(0)
     val latest = useRef<String>(null)
-    useEffect(fileId) {
+    useEffect(fileId, asked) {
         latest.current = fileId
         if (fileId == null) {
             state = DataFileState(null, false)
@@ -202,11 +231,13 @@ fun useDataFile(fileId: String?): DataFileState {
             if (latest.current != fileId) return@launch
             state = when (read) {
                 is ApiResult.Ok -> DataFileState(read.value.also { DataFileCache.remember(it) }, false)
-                else -> DataFileState(null, true)
+                // Refused: a 404 (or a 403) is the file's absence for this caller; a 5xx, like no answer, says nothing of it.
+                is ApiResult.Refused -> if ((read.error.status ?: 500) < 500) DataFileState(null, true) else DataFileState(null, false, true)
+                is ApiResult.Failed -> DataFileState(null, false, true)
             }
         }
     }
-    return state
+    return if (state.unread) DataFileState(null, false, true) { asked += 1 } else state
 }
 
 /** How a file a field holds is shown: its name, a link to it, what it is, and, for an image or a video, the thing itself. */
@@ -217,6 +248,15 @@ private fun react.ChildrenBuilder.dataFileShown(fileId: String, state: DataFileS
             className = ClassName("data-file-shown")
             span { className = ClassName("field-value"); +"File unavailable" }
             span { className = ClassName("type-hint"); +" · $fileId" }
+        }
+        state.unread -> div {
+            className = ClassName("data-file-shown")
+            span { className = ClassName("type-hint"); +"The file could not be read just now." }
+            Button {
+                type = "link"
+                onClick = { state.retry() }
+                +"Try again"
+            }
         }
         view == null -> span { className = ClassName("type-hint"); +"Reading the file…" }
         else -> div {
@@ -266,6 +306,28 @@ val DataFileValue = FC<DataFileValueProps> { props ->
     dataFileShown(props.fileId, useDataFile(props.fileId))
 }
 
+/**
+ * The files a read-only form's list or map of files holds, one under another: a map's each under its key. [value] is
+ * the field's value as stored; anything in it that is not a file's id is left out, as the server's walk leaves it.
+ */
+fun react.ChildrenBuilder.dataFileList(value: Any?) {
+    val entries: List<Pair<String?, String>> = when (value) {
+        is List<*> -> value.mapNotNull { it.toOptStr()?.takeIf { id -> id.isNotEmpty() } }.map { null to it }
+        is Map<*, *> -> value.mapNotNull { (key, id) -> id.toOptStr()?.takeIf { it.isNotEmpty() }?.let { key.toOptStr() to it } }
+        else -> emptyList()
+    }
+    div {
+        className = ClassName("data-file-list")
+        entries.forEachIndexed { at, (label, id) ->
+            div {
+                key = "${label ?: at}:$id".unsafeCast<Key>()
+                label?.let { span { className = ClassName("field-label"); +it } }
+                DataFileValue { fileId = id }
+            }
+        }
+    }
+}
+
 external interface DataFileFieldProps : Props {
     /** The field's schema: the kinds of file it takes, and how large. */
     var type: SchType
@@ -297,10 +359,30 @@ val DataFileField = FC<DataFileFieldProps> { props ->
     val job = useRef<Job>(null)
     val begunId = useRef<String>(null)
     val reached = useRef(0L)
+    // What the upload's end calls: the field's props as of the latest render, never those it started under -- the form
+    // emits a whole object of values, so an emit from then would undo what was typed elsewhere while it ran.
+    val latest = useRef(props)
+    latest.current = props
+    val pendingNow = useRef<PendingUpload>(null)
+    pendingNow.current = pending
 
     /** Ends the upload of [fileId] on the server, dropping what it took; nothing waits for the answer. */
     fun discard(fileId: String?) {
         fileId?.let { dataFileScope.launch { apiResult { DataFileApi.abort(it) } } }
+    }
+
+    // A field that goes -- its section removed, the page left -- takes its upload with it: stopped, and dropped on the
+    // server, rather than finishing later into a form that is no longer there.
+    useEffectOnce {
+        try {
+            awaitCancellation()
+        } finally {
+            if (job.current?.isActive == true) {
+                job.current?.cancel()
+                discard(begunId.current)
+            }
+            discard(pendingNow.current?.fileId)
+        }
     }
 
     fun start(file: dynamic, kind: FileKind, resume: PendingUpload?) {
@@ -318,9 +400,10 @@ val DataFileField = FC<DataFileFieldProps> { props ->
                     onProgress = { reached.current = it; sent = it },
                 )
                 DataFileCache.remember(done)
+                begunId.current = null
                 sent = null
-                props.onEmit(done.fileId)
-                props.onCommit?.invoke()
+                latest.current?.onEmit(done.fileId)
+                latest.current?.onCommit?.invoke()
             } catch (e: CancellationException) {
                 sent = null
                 throw e
@@ -332,7 +415,11 @@ val DataFileField = FC<DataFileFieldProps> { props ->
                 val status = (e as? ApiError)?.status
                 if (id != null && (e is ApiFailure || (status != null && sendFailure(status, false) == SendFailure.retry))) {
                     pending = PendingUpload(id, file, kind, reached.current ?: 0L)
+                } else {
+                    // Refused, so it can never finish: dropped now rather than left to its 24 hours.
+                    discard(id)
                 }
+                begunId.current = null
             }
         }
     }
@@ -357,6 +444,7 @@ val DataFileField = FC<DataFileFieldProps> { props ->
                         job.current?.cancel()
                         sent = null
                         discard(begunId.current)
+                        begunId.current = null
                     }
                     +"Cancel upload"
                 }

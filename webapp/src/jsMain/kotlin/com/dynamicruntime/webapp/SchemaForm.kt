@@ -1635,6 +1635,13 @@ internal fun ChildrenBuilder.readOnlyValue(
         value.toOptStr()?.takeIf { it.isNotEmpty() }?.let { id -> DataFileValue { fileId = id } }
         return
     }
+    // And a list of them, or a map of them (each under its key): every file shown, none as an id.
+    val holdsFiles = (vt.jsonType == SCT.array && vt.itemType?.isDataFile() == true && value is List<*>) ||
+        (vt.jsonType == SCT.kObject && vt.properties.isEmpty() && vt.additionalValueType?.isDataFile() == true && value is Map<*, *>)
+    if (holdsFiles) {
+        dataFileList(value)
+        return
+    }
     // A structured array -- its elements are objects with declared fields -- reads far better as a nested table
     // (a sub-table inside the cell) than as raw JSON (issue #540): this is what turns a database-tables row's
     // `columns`/`indexes` into readable sub-tables rather than a JSON blob. A free-form array (no element

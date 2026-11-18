@@ -53,7 +53,10 @@ be read in ranges with no check of its hash ([the file store's ranged read](#rea
 body, as `application/octet-stream`. It answers the file's record, `ready`, and is refused as an upload in chunks is: by
 the checks a begin makes, a `Content-Length` past 8 MiB before the body is read, and the checks of the finish. It is a
 begin, one chunk, and its finish, run in one request, so it adds no path of its own through the store, and a file it
-refuses, or that a store's failure stops, leaves nothing behind. An image or a document is usually this size, and a
+refuses, or that any failure stops, is aborted, leaving nothing behind: nobody holds its id to resume it. **It is not
+safe to send again**: one whose answer was lost may have made the file, and a second would make another. So the webapp
+sends it again only after a 429, which the dispatcher answers before reading the body; for anything else it says so,
+and an extra file a person's own retry makes is unlinked, for the sweep (#1839). An image or a document is usually this size, and a
 resume would gain it nothing.
 
 A larger file -- a video, above all -- comes **in chunks, in order**, so a lost connection costs a chunk rather than the
@@ -110,7 +113,15 @@ and marked `ready`.
 which is answered as taken and finishes. (The status then reports every byte taken and the file still `uploading`.)
 That the store put the chunks together is recorded in the upload's row the moment it is done, so the second run takes up
 from where the file is -- staged, or already under its hash -- and never asks the store to complete an upload it has
-completed. A chunk sent again after the file is finished is answered with its record.
+completed. A last chunk sent again after the file is finished is answered with its record; any other chunk of a finished
+file is a 409, since it is not one the file took.
+
+**One request finishes an upload at a time.** A finish claims the upload under its lock, recording when in its row
+(`finishingAt`), before it asks the store for anything. A large file's finish takes a while -- the parts put together
+and, on S3, copied to the file's hash -- and a sender whose connection dropped meanwhile sends the last chunk again.
+That request finds the claim and is answered 429, to be sent again shortly, rather than asking the store to complete
+parts it no longer has (a 404 that would read as the upload's end). A finish that fails gives the claim up at once; one
+whose node stopped holds it at most five minutes (`finishLeaseMs`).
 
 ## Reading a file
 

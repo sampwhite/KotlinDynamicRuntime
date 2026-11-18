@@ -344,16 +344,25 @@ its kind and size, and an image or a `<video preload="metadata">` in place (`.da
   field's kinds), so a JPEG named `.png`, a PDF picked for a photo, or a file past the field's size is refused in the
   browser with what it is. The kind found, not the browser's guess at a type, is what the upload is sent as.
 - **A file of 8 MiB or less goes in one request** (`/files/upload`); a larger one is begun and sent in chunks, each
-  hashed with SubtleCrypto, the last of which finishes it (`DataFileApi.upload`). A request with no answer, or a 5xx or
-  429, is sent again after 1, 2, 4, and 8 seconds; a 409 that says where the upload is resumes there; anything else
-  stops it with the server's message.
+  hashed with SubtleCrypto (or the kernel's `Sha256` where a page has none: plain HTTP to an address that is not
+  localhost), the last of which finishes it (`DataFileApi.upload`). A chunk with no answer, or a 5xx or 429, is sent
+  again after 1, 2, 4, and 8 seconds -- a 429 is also what a last chunk sent again gets while the first still finishes
+  the file; a 409 that says where the upload is resumes there; anything else stops it with the server's message. The
+  one-request upload is sent again only after a 429, since one whose answer was lost may have made the file.
+- **The upload's end emits through the field's latest props** (`latest`), never the ones it started under: the schema
+  form's emit closes over the values of its render, so a stale one would undo what was typed elsewhere while the file
+  went up. A field that unmounts -- its section removed, the page left -- cancels its upload and aborts it on the server.
 - **The field takes the file's id only once the file is ready**, so the form's values never hold one still uploading,
   which a save would refuse. An upload stopped by the network keeps its id and the browser's file in the component, and
   offers **Resume** (asks `/files/upload/status`, sends from `nextOffset`, or the last chunk again when every byte is in)
   and **Discard** (aborts it). A reload loses them, and the sweep removes what was left.
 - **A file's record is read once per page load** (`DataFileCache`): seeded from a form's `files` when the view or the
   raw editor reads one, else asked of `/files/info` by the field. The workflow pages read the workflow view, which
-  carries no `files`, so there each field asks.
+  carries no `files`, so there each field asks. A 4xx is "File unavailable"; no answer or a 5xx is "could not be read
+  just now", with **Try again**.
+- **A list of files** draws a file control per element (`renderScalarList` asks `controlKind` of the element type), and
+  read-only a `dataFileList`, as does a **map of files**, each under its key. Editing a map of files is still the JSON
+  map editor (`deferred-work.md`).
 - **Verified in the browser pane** by setting the hidden `input.file-picker`'s `files` from a `DataTransfer` and
   dispatching `change`, since the OS picker cannot be driven; a playable WebM comes from a canvas through
   `MediaRecorder`, where no ffmpeg is at hand. A network failure is simulated by wrapping `window.fetch`, which every
