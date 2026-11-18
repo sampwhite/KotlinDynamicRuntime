@@ -1,5 +1,7 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.datafile.DataFileDeleteGuard
+import com.dynamicruntime.common.datafile.DataFileLinkHook
 import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.datafile.dataFileSchema
 import com.dynamicruntime.common.cfact.addCommonCFacts
@@ -205,6 +207,9 @@ class CommonComponent : ComponentDefinition {
         collector.addSchemaFunction(ComputeValueCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the core details save) keep core details state fresh.
+        // The links between forms and the data files their fields name (issue #1838), first: the next hook rebinds the
+        // write's context to the form's owner, and a file newly linked must be one the caller may use.
+        collector.addWriteHook(DataFileLinkHook)
         collector.addWriteHook(DerivedStateWriteHook)
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
         // path, under the form's lock -- or record the override a permitted writer asked for.
@@ -213,6 +218,8 @@ class CommonComponent : ComponentDefinition {
         collector.addWriteGuard(EditorDeleteGuard)
         collector.addWriteGuard(OwnerOnlyGuard)
         collector.addWriteGuard(TraitLockGuard)
+        // A data file a live form's field names is not removed (issue #1838).
+        collector.addWriteGuard(DataFileDeleteGuard)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))

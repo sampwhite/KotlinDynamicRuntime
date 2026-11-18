@@ -94,5 +94,23 @@ class SqlTopicTranProvider(
             val provider = SqlTopicTranProvider(sqlCxt, tranName, tranId, tranTableName, tranExecute)
             SqlTranUtil.doTran(sqlCxt, tranName, provider)
         }
+
+        /**
+         * Takes, **inside a transaction already open** on [sqlCxt], the lock on a second row of the topic's lock table --
+         * the one [key] names -- and answers whether there was one to take (issue #1838). It **never inserts**: a key
+         * naming no lock row is answered false and nothing is made, so a caller asking to lock something that does not
+         * exist learns so rather than minting a lock row for it, as [executeTopicTran] would. The lock is held until the
+         * open transaction ends, and the row's [PF.lastTranId] is left as it is: no transaction ran *on* it.
+         *
+         * Several such locks are taken in a fixed order -- sorted by key -- by whoever takes more than one, so two
+         * transactions locking overlapping rows cannot each hold one the other waits for.
+         */
+        fun lockExisting(sqlCxt: SqlCxt, tranName: String, key: Map<String, Any?>, tranTableName: String? = null): Boolean {
+            val topic = sqlCxt.sqlTopic ?: throw KdrException("SqlCxt must provide a SqlTopic to take a lock for $tranName.")
+            val tran = topic.tranFor(tranTableName, tranName)
+            val data = LinkedHashMap(key)
+            data[PF.touchedAt] = sqlCxt.cxt.instanceNow()
+            return sqlCxt.sqlDb.executeStatement(sqlCxt.cxt, tran.takeLock, data) > 0
+        }
     }
 }

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.filekind.DataFileFields
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
@@ -174,6 +175,10 @@ class GedraDataService : ServiceInitializer {
      *
      * Theme: #RDSCP.
      */
+    /** Whether [scope] admits [row] (issue #1838): [admitsRow]'s test, on a row already extracted. */
+    fun admitsGedra(scope: ReadScope, row: GedraDataRow): Boolean =
+        admitsRow(scope, mapOf(PF.client to row.client, PF.org to row.org, PF.userId to row.userId))
+
     private fun admitsRow(scope: ReadScope, row: Map<String, Any?>): Boolean {
         if (scope.client != null && row[PF.client].toOptStr() != scope.client) return false
         if (!scope.admitsOrg(row[PF.org].toOptStr()?.ifEmpty { null })) return false
@@ -1059,6 +1064,14 @@ class GedraDataService : ServiceInitializer {
                     continue
                 }
                 val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entryData)
+                // The files its fields name stay behind (issue #1838): they are another client's, or another deployment's,
+                // and do not travel with an export, so the rest of the entry is kept and the fields are counted.
+                variants?.select(traitId)?.properties?.get(GE.data)?.valueType?.let { dataType ->
+                    if (DataFileFields.holdsFiles(dataType) && DataFileFields.collect(dataType, entryData).isNotEmpty()) {
+                        slim[GE.data] = DataFileFields.strip(dataType, entryData)
+                        discard(GIF.dataFile, traitId)
+                    }
+                }
                 // Trait save-time functions (issue #728) run on an import too, so it cannot store what a create
                 // or a patch would refuse. A rejection is treated exactly like the schema failure below --
                 // forgiven and counted when `forgiveInvalidEntries` is set, fatal to the whole import otherwise
@@ -1775,6 +1788,16 @@ class GedraDataService : ServiceInitializer {
             val functions = dataType?.let { schema.writeFunctionsFor(cxt, it) }.orEmpty()
             if (functions.isEmpty()) data else runWriteFunctions(cxt, functions, data)
         }
+    }
+
+    /**
+     * Each trait's data type as [client]'s entry union for [kind] has it (issue #1838), or null for a trait it does not
+     * carry: what the files a stored entry names are read by. Asked of the data's own client, which a write's context
+     * may not be bound to.
+     */
+    fun traitDataTypes(cxt: KdrCxt, client: String, kind: GedraDataType): (String) -> SchType? {
+        val union = SchemaService.get(cxt).storeFor(client).types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
+        return { traitId -> union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType }
     }
 
     /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */

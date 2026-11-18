@@ -203,6 +203,11 @@ class GedraDataRow(
                     mapOfValues { type = SCT.string }
                     derived = true
                 }
+                // The files the row's fields name (issue #1838), attached to a single read of a form that names one.
+                property(GDF.files, "Each data file the entries name, by id: its name, kind, size, and status (issue #1838).") {
+                    mapOfValues { type = SCT.kObject }
+                    derived = true
+                }
                 // The owner as a block of user-type information (issue #580, was two flat keys in #562): the
                 // email, and a display name when it adds one. Attached to a *listed* row for a caller who may
                 // see other users' documents; absent for an ordinary caller and on a single read. Open, since

@@ -33,18 +33,17 @@ class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow)
  * whose failure must not fail the write (a recomputable projection) swallows its own faults -- as the built-in
  * [DerivedStateWriteHook] does.
  *
- * **Future: a `priority` for ordering.** When there is more than one hook, this interface should advertise a
- * priority the fire loop sorts on, rather than leaning on registration order (which couples ordering to
- * component load order). It is deliberately not here yet: with a single hook there is nothing to sort, so a sort
- * added now could not be exercised by a test -- and an untested sort is the kind of thing that is quietly wrong
- * until the second hook lands. So the sort waits for the second hook, which is also the first test of it.
+ * **Two hooks, both registered by `CommonComponent`, in this order:** `DataFileLinkHook` (issue #1838), which links a
+ * form to the data files its fields name and judges a newly linked file against the **caller's** read scope, then
+ * [DerivedStateWriteHook]. The order matters, and is why the link hook is first: all hooks in one firing are handed the
+ * **same** `cxt`, and the state hook rebinds its owner ([com.dynamicruntime.common.context.KdrCxt.bindTransactionOwner])
+ * to own its state to the gedra, which a later hook would see.
  *
- * **Future: a per-hook context.** All hooks in one firing are handed the **same** `cxt`, so a hook that rebinds
- * its owner ([com.dynamicruntime.common.context.KdrCxt.bindTransactionOwner], as [DerivedStateWriteHook] does to
- * own its state to the gedra) would leak that rebind into a later hook that expected the actor's scope. Harmless
- * with one hook; when the second lands, give each hook its own transaction-scoped context (a fresh
- * `mkTransactionSubContext` sharing the session) so one hook's rebind cannot bleed into the next -- the same
- * "waits for the second hook" call as the priority above.
+ * **Future: a `priority` for ordering, and a per-hook context.** Both hooks are the common component's, so registration
+ * order is one decision in one file, not an accident of component load order. When a hook comes from another
+ * component, or one that must run after the state hook needs the actor's scope, this interface should advertise a
+ * priority the fire loop sorts on, and each hook should get its own transaction-scoped context (a fresh
+ * `mkTransactionSubContext` sharing the session) so one hook's rebind cannot bleed into the next.
  */
 fun interface GedraWriteHook {
     /** Run after [write]'s data write, inside its transaction. */

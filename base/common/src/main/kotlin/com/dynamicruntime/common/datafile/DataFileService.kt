@@ -57,8 +57,9 @@ import kotlin.time.Duration.Companion.hours
  * and checks its bytes are the kind it was sent as -- and, for an MP4, that its video is H.264 ([Mp4Video]).
  *
  * **Who may do what.** Reading a file -- its record, its content -- is for whoever's read scope admits the record: its
- * owner, or an administrator of its client. An upload is its owner's alone. A trait field naming the file, and reading
- * through the form that names it, come with the link table (#1838).
+ * owner, or an administrator of its client -- and for whoever may read a live form whose field names it ([viewable],
+ * through [DataFileLinks]). Removing one is for the first alone, and refused while a live form names it. An upload is
+ * its owner's alone.
  *
  * Theme: #DFILE.
  */
@@ -88,6 +89,15 @@ object DataFileService {
     /** The data file [fileId] when the caller's read scope admits it; a 404 otherwise, absent or not theirs alike. */
     fun readable(cxt: KdrCxt, fileId: String): GedraDataRow =
         GedraDataService.get(cxt).queryGedra(cxt, fileId, GedraDataType.dataFile, ReadScopeRules.forCaller(cxt))
+            ?: throw KdrException("There is no such file.", code = EXC.notFound)
+
+    /**
+     * The data file [fileId] when the caller may read it (issue #1838): their read scope admits it ([readable]), or a
+     * live form that names it does. A 404 otherwise, absent or not theirs alike.
+     */
+    fun viewable(cxt: KdrCxt, fileId: String): GedraDataRow =
+        GedraDataService.get(cxt).queryGedra(cxt, fileId, GedraDataType.dataFile, ReadScopeRules.forCaller(cxt))
+            ?: DataFileLinks.readableThroughLink(cxt, fileId)
             ?: throw KdrException("There is no such file.", code = EXC.notFound)
 
     /** The data file [fileId] when the caller is its owner, who alone uploads it. */
@@ -372,7 +382,7 @@ object DataFileService {
      * as a download under its name. A file still uploading has none yet.
      */
     fun content(cxt: KdrCxt, fileId: String): StreamedContent {
-        val row = readable(cxt, fileId)
+        val row = viewable(cxt, fileId)
         val file = fileOf(row)
         val hash = file[DFILE.hash].toOptStr()
         if (file[DFILE.status] == DFSTAT.uploading || hash == null) {
@@ -389,7 +399,8 @@ object DataFileService {
     /**
      * Removes [fileId] for a caller whose read scope admits it -- its owner, or an administrator of its client --
      * aborting its upload when one is under way. The record is soft-deleted, as a form is. The bytes stay: another file
-     * of the same hash may be them, and the sweep (#1839) takes those no record names.
+     * of the same hash may be them, and the sweep (#1839) takes those no record names. Refused (409) while a live form's
+     * field names it ([DataFileDeleteGuard]), under the file's lock.
      */
     fun delete(cxt: KdrCxt, fileId: String): Boolean {
         val row = readable(cxt, fileId)
