@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FSENV
 import com.dynamicruntime.common.filestore.FST
@@ -65,9 +66,9 @@ class FileStoreBootTest : StringSpec({
         val bucket = FileBucketFixtureComponent.bucket
         File(dir, bucket).isDirectory shouldBe true
         val service = FileStoreService.get(cxt)
-        // Beside the one bucket the runtime itself keeps files in (a client's web assets, issue #1130), which the
+        // Beside the buckets the runtime itself keeps files in (a client's web assets, issue #1130; data files, #1837), which the
         // same boot made ready in the same place.
-        service.declaredBuckets().map { it.name } shouldContainExactlyInAnyOrder listOf(ClientWebAssetService.bucket, bucket)
+        service.declaredBuckets().map { it.name } shouldContainExactlyInAnyOrder listOf(ClientWebAssetService.bucket, DFILE.bucket, bucket)
         File(dir, ClientWebAssetService.bucket).isDirectory shouldBe true
 
         val meta = service.put(cxt, bucket, "reports/q3", ContentData("three,four\n", "text/csv", saveAsFilename = "q3.csv"))

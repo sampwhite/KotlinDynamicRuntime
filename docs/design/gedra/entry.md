@@ -20,8 +20,8 @@ concrete.
 - **Gedra**: the universal top-level entity, a vessel that carries any cargo. Also the product's brand name, on the
   Jira model where the brand and the colloquial unit name are the same word. Hard G. Domain-model tier, so no `Kdr`
   prefix.
-- **Gedra kinds**: what a gedra *is*. The data kinds are `userData`, `formDoc`, `wfData`, and `fileRef`
-  (`GedraDataType`). Configuration, workflows included, is stored as the config kind `configDoc`.
+- **Gedra kinds**: what a gedra *is*. The data kinds are `userData`, `formDoc`, `wfData`, and `dataFile`
+  (`GedraDataType`); a data file holds no entries, only its record ([`../data-files.md`](../data-files.md)). Configuration, workflows included, is stored as the config kind `configDoc`.
 - **The tables**: `GedraDataTran` is the transaction root, one row per gedra, and the lock a write takes.
   `GedraData` holds the gedra's data and `GedraDataStates` its state, both under that one lock. `GedraDataRow` is
   one data row read back, entries included.

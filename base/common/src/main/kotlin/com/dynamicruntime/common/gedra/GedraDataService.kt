@@ -511,6 +511,7 @@ class GedraDataService : ServiceInitializer {
          */
         creationWorkflowId: com.dynamicruntime.common.gedra.workflow.WfRef? = null,
     ): GedraDataRow {
+        requireEntryKind(kind)
         // At most one entry per trait -- or per primary-key value, for a keyed trait (issue #487) -- refused
         // before anything is minted (issue #337). This was not checked when create was written, so a caller
         // could store two entries nothing could address, which is how the patch, and the form, address them.
@@ -559,6 +560,16 @@ class GedraDataService : ServiceInitializer {
         // union requires the fields `asStoredEntry` adds.
         checkStoredEntries(cxt, kind, stored)
         return insertStoredGedra(cxt, kind, stored, creationWorkflowId)
+    }
+
+    /**
+     * Refuses [kind] when a gedra of it holds no entries (issue #1837): a data file, whose record its own service
+     * writes, is not created, patched, or imported as a form is.
+     */
+    private fun requireEntryKind(kind: GedraDataType) {
+        if (!kind.carriesEntries) {
+            throw KdrException.mkInput("A ${kind.name} gedra holds no entries, so it is not created, patched, or imported with them.")
+        }
     }
 
     /**
@@ -992,6 +1003,7 @@ class GedraDataService : ServiceInitializer {
         docs: List<Map<String, Any?>>,
         opts: GedraImportOptions,
     ): GedraImportResult {
+        requireEntryKind(kind)
         val union = clientUnion(cxt, kind)
         val variants = union?.variants
         val gate = gatedWrite(cxt, kind)
@@ -1288,6 +1300,7 @@ class GedraDataService : ServiceInitializer {
         scope: ReadScope,
         allowAdditionalTraits: Boolean = false,
     ): List<GedraPatchResult> {
+        targetsByKind.keys.forEach { requireEntryKind(it) }
         val ordered = kindApplyOrder.mapNotNull { kind -> targetsByKind[kind]?.let { kind to it } }
         val patchCxt = cxt.mkSubContext("patch", oneClient(cxt, ordered))
         // Admit, check and prepare every target before writing anything (the whole security story, issue #337):

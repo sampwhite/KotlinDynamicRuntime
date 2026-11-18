@@ -103,10 +103,18 @@ enum class GedraDataType(override val idAbbrev: String) : GedraKind {
      */
     wfData("wf"),
 
-    /** A pointer to (and claim on) file content held in a file store. */
-    fileRef("fr");
+    /**
+     * A **data file** (issue #1837): an uploaded file a form's trait field names by this record's id, its bytes in the
+     * file store. It holds no entries -- its metadata is under `data.file` -- so nothing that writes entries (a create,
+     * a patch, an import) takes one. Not a configuration's named image, which is a "file ref" (`kdr:fileRefDef`): the
+     * two kinds are kept apart by their names.
+     */
+    dataFile("df");
 
     override val storageType: GedraStorageType get() = GedraStorageType.dataStore
+
+    /** Whether a gedra of this kind holds entries, which a create, a patch, and an import write. */
+    val carriesEntries: Boolean get() = this != dataFile
 }
 
 /**

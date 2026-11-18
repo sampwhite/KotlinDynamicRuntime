@@ -195,7 +195,7 @@ Keyed by `traitId`.
 |---|---|---|---|
 | `traitId` | string | yes | The trait's id, unique within its client's view: its own and the global traits. |
 | `typeName` | string | yes | The name of the entry type the trait generates. |
-| `appliesTo` | array of one of `userData`, `formDoc`, `wfData`, `fileRef` | yes | The gedra kinds an entry of this trait may be carried on. |
+| `appliesTo` | array of one of `userData`, `formDoc`, `wfData`, `dataFile` | yes | The gedra kinds an entry of this trait may be carried on. |
 | `description` | string |  | What the trait is for. |
 | `dataSchema` | a schema | yes | The schema of the trait's own data, validated by parsing it. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |

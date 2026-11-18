@@ -129,6 +129,7 @@ class PlanLimitsTest : StringSpec({
             listOf(
                 QuotaMeasure(QUOTA.forms, 0, 100), QuotaMeasure(QUOTA.users, 0, 20),
                 QuotaMeasure(QUOTA.workflows, 2, 4), QuotaMeasure(QUOTA.schemas, 1, 10),
+                QuotaMeasure(QUOTA.fileMegabytes, 0, 500),
             ),
         )
         rows.getValue(plain).containsKey(CLD.planUsage) shouldBe false

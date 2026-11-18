@@ -12,8 +12,10 @@ import com.dynamicruntime.common.util.toOptStr
  * elsewhere -- in the file store, or as a file on the server's own disk. The names here are the ones the two sides have to agree on -- the backend serves a ref at the address
  * the frontend builds ([staticPath]) under the name a listing hands it ([versionedName]).
  *
- * Not to be confused with `GedraDataType.fileRef`, a kind of **data** gedra -- a claim on a file held as data,
- * with no write path yet. A file ref in configuration is a client's named, published file, and shares only the word.
+ * Not to be confused with a **data file** (`GedraDataType.dataFile`, issue #1837): a file uploaded for a form's
+ * data, which a trait field names. A file ref here is a client's named, published image, part of its configuration;
+ * "file ref" is the images' word in code and "data file" the other's, so neither is ever plain "file ref" beside the
+ * other.
  */
 @Suppress("ConstPropertyName")
 object FREF {

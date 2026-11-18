@@ -22,6 +22,56 @@ object GDT {
      * own always-resident cache (issue #598).
      */
     const val gedraDataStates = "GedraDataStates"
+
+    /**
+     * An upload under way (issue #1837): one row per data file still taking its chunks, under the same
+     * [gedraDataTran] lock as the file's record, and deleted once the upload finishes or is aborted. Never cached --
+     * every chunk reads and writes it under the lock.
+     */
+    const val gedraFileUploads = "GedraFileUploads"
+}
+
+/** Column names of [GDT.gedraFileUploads], and the keys inside its [progress]. */
+@Suppress("ConstPropertyName")
+object GDU {
+    /** Where the chunks are staged in the file store, until the upload finishes and the file is named by its hash. */
+    const val stagingKey = "stagingKey"
+
+    /** The file store's token for the staged upload. */
+    const val token = "token"
+
+    /** How many bytes each chunk is, all but the last. */
+    const val chunkSize = "chunkSize"
+
+    /** How many bytes the file said it would be, which the chunks must add up to. */
+    const val declaredSize = "declaredSize"
+
+    /** Where the next chunk begins: the bytes taken so far. */
+    const val nextOffset = "nextOffset"
+
+    /** When the upload is no longer taken. */
+    const val expiresAt = "expiresAt"
+
+    /** A JSON map: the [parts] taken, and the running hash's saved state, [hashState]. */
+    const val progress = "progress"
+
+    /** Under [progress]: each chunk taken, in order, as the file store took it, with its own SHA-256. */
+    const val parts = "parts"
+
+    /** Under [progress]: the SHA-256 of every byte taken so far, as `Sha256.toState` saves it. */
+    const val hashState = "hashState"
+
+    /**
+     * Under [progress]: true once the file store has put the chunks together, so a finish that failed after it takes up
+     * from the file rather than asking the store to complete an upload it already has.
+     */
+    const val completed = "completed"
+
+    // Each part's keys.
+    const val number = "number"
+    const val size = "size"
+    const val tag = "tag"
+    const val sha256 = "sha256"
 }
 
 /** Column names for the gedra data tables, and the keys inside [GD.data]. */
@@ -143,5 +193,20 @@ fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         // cache uses -- without these two, both are full scans.
         index(PF.client)
         index(PF.updatedAt)
+    }
+    table(GDT.gedraFileUploads, "An upload of a data file under way: where its chunks are, and how far it has come.") {
+        // Keyed by the data file's [GD.gedraId], so a chunk takes the file's [GDT.gedraDataTran] lock (issue #1837).
+        column(GD.gedraId, "Id of the data file being uploaded.", required = true)
+        column(GDU.stagingKey, "Where the chunks are staged in the file store.", required = true)
+        column(GDU.token, "The file store's token for the staged upload.", required = true)
+        column(GDU.chunkSize, "How many bytes each chunk is, all but the last.", required = true) { type = SCT.integer }
+        column(GDU.declaredSize, "How many bytes the file said it would be.", required = true) { type = SCT.integer }
+        column(GDU.nextOffset, "Where the next chunk begins.", required = true) { type = SCT.integer }
+        column(GDU.expiresAt, "When the upload is no longer taken.", required = true) { dateTime() }
+        column(GDU.progress, "A JSON map: the chunks taken, and the running hash's state.") { type = SCT.kObject }
+        primaryKey(GD.gedraId)
+        forUsers()
+        // The sweep (issue #1839) finds the uploads past their time.
+        index(GDU.expiresAt)
     }
 }

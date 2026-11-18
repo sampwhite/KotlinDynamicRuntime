@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.UserService
@@ -12,6 +13,8 @@ import com.dynamicruntime.common.user.UserService
  *
  * - **Forms and users** are counted when one is created ([requireRoomForForm], [requireRoomForUser]): a soft limit,
  *   with the small race two creates at once leave.
+ * - **Megabytes of files** (issue #1837) are counted when an upload begins and again when it finishes
+ *   ([requireRoomForFile], [fileRoomProblem]).
  * - **Workflows, tasks, schemas, and attributes** are judged by a configuration write's trial ([requireConfigWithin]),
  *   against the candidate configuration as a whole.
  *
@@ -45,6 +48,36 @@ object PlanLimits {
         val held = UserService.get(cxt).countActiveUsers(cxt, client).total
         if (held >= limit) throw full(cxt, client, "$held users, as many as its plan allows ($limit)")
     }
+
+    /**
+     * Refuses a file of [adding] bytes in [client] when its plan has no room for it (issue #1837): the bytes its live
+     * data files take, this one added, past the plan's megabytes of files.
+     */
+    fun requireRoomForFile(cxt: KdrCxt, client: String, adding: Long) {
+        val limit = quotasOf(cxt, client).fileMegabytes ?: return
+        val used = DataFileService.usedBytes(cxt, client)
+        if (used + adding > limit * mebibyte) {
+            throw full(
+                cxt, client,
+                "${DataFileService.megabytesOf(used)} MB of files, and ${DataFileService.megabytesOf(adding)} MB more would pass " +
+                    "the $limit MB its plan allows",
+            )
+        }
+    }
+
+    /**
+     * What is wrong with [client]'s files against its plan, as a sentence, or null (issue #1837): asked again as an upload
+     * finishes, since two begun at once can each have found room the other then took.
+     */
+    fun fileRoomProblem(cxt: KdrCxt, client: String): String? {
+        val limit = quotasOf(cxt, client).fileMegabytes ?: return null
+        val used = DataFileService.usedBytes(cxt, client)
+        if (used <= limit * mebibyte) return null
+        return "Client '$client' is on the ${planOf(cxt, client)} plan, and its files would take " +
+            "${DataFileService.megabytesOf(used)} MB of the $limit MB it allows."
+    }
+
+    private const val mebibyte = 1024L * 1024L
 
     private fun full(cxt: KdrCxt, client: String, what: String) =
         KdrException.mkInput("Client '$client' is on the ${planOf(cxt, client)} plan and holds $what.")
@@ -112,6 +145,9 @@ object PlanLimits {
             quotas.users?.let { add(QuotaMeasure(QUOTA.users, users ?: UserService.get(cxt).countActiveUsers(cxt, client).total, it)) }
             quotas.workflows?.let { add(QuotaMeasure(QUOTA.workflows, config.workflows, it)) }
             quotas.schemas?.let { add(QuotaMeasure(QUOTA.schemas, config.schemas, it)) }
+            quotas.fileMegabytes?.let {
+                add(QuotaMeasure(QUOTA.fileMegabytes, DataFileService.megabytesOf(DataFileService.usedBytes(cxt, client)), it))
+            }
         }
         return PlanUsage(plan, measures)
     }
