@@ -102,6 +102,12 @@ The chunks are put together, and the file is checked before it is ready:
   and then the index whole, and reads each video track's codec from its sample description. H.264 (`avc1`, `avc3`)
   plays in every browser. HEVC (`hvc1`, `hev1`), which phones record by default, plays in some, and is refused with a
   message asking for H.264: stored, it would show nothing for half its viewers. Converting a video is not built.
+- **A QuickTime movie is an MP4** (#1840): what a Mac or an iPhone exports, named `.mov` or `.mp4`, its `ftyp` box
+  naming only `qt  `. Its boxes are the ones MP4's came from, so it is walked the same way -- its index often after
+  its media -- held to H.264 the same way (a ProRes master is refused for its codec), and stored and served as
+  `video/mp4`, as which every browser plays it. Until #1840 its brand refused it outright, which refused the H.264
+  movies people most often have. **Its audio is not checked**, as an MP4's is not: AAC, what is exported, plays
+  everywhere, while uncompressed PCM, rare outside an editor's masters, may play without sound.
 - **A WebM** is checked by its EBML document type.
 - **The plan still has room**: asked again, since two uploads begun at once can each have found room the other took.
 

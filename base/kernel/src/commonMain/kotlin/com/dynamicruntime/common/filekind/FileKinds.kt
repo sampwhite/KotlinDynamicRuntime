@@ -87,7 +87,8 @@ object FileKinds {
     val jpeg = FileKind(FKIND.jpeg, "JPEG", FKFAM.image, "image/jpeg", "jpg", setOf("image/jpg", "image/pjpeg"), maxSize = 20 * mb)
     val webp = FileKind(FKIND.webp, "WebP", FKFAM.image, "image/webp", "webp", maxSize = 20 * mb)
     val gif = FileKind(FKIND.gif, "GIF", FKFAM.image, "image/gif", "gif", maxSize = 20 * mb)
-    val mp4 = FileKind(FKIND.mp4, "MP4 video", FKFAM.video, "video/mp4", "mp4", maxSize = videoMax)
+    /** Also a QuickTime movie (`video/quicktime`, a `.mov`), served as MP4: the same boxes (issue #1840). */
+    val mp4 = FileKind(FKIND.mp4, "MP4 video", FKFAM.video, "video/mp4", "mp4", setOf("video/quicktime"), maxSize = videoMax)
     val webm = FileKind(FKIND.webm, "WebM video", FKFAM.video, "video/webm", "webm", maxSize = videoMax)
     val pdf = FileKind(FKIND.pdf, "PDF", FKFAM.document, "application/pdf", "pdf", maxSize = 50 * mb, disposition = FileDisposition.attachment)
 

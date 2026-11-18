@@ -80,6 +80,23 @@ class DataFileUploadTest : StringSpec({
         return head + u32(size - head.size) + ascii("mdat") + ByteArray(size - head.size - 8) { ((it * 31 + 7) and 0xFF).toByte() }
     }
 
+    /**
+     * A QuickTime movie of [size] bytes as a Mac exports one (issue #1840): `qt  ` its only brand, a `wide` box, its
+     * media, and its index last -- a video track of [codec] and a timed-metadata track beside it.
+     */
+    fun quickTime(codec: String, size: Int): ByteArray {
+        val ftyp = box("ftyp", ascii("qt  "), ByteArray(4), ascii("qt  "))
+        fun track(handler: String, format: String): ByteArray {
+            val hdlr = box("hdlr", ByteArray(4), ascii("mhlr"), ascii(handler), ByteArray(12), ascii("\u0000"))
+            val stsd = box("stsd", ByteArray(4), u32(1), box(format, ByteArray(78)))
+            return box("trak", box("mdia", hdlr, box("minf", box("stbl", stsd))))
+        }
+        val moov = box("moov", track("vide", codec), track("meta", "mebx"))
+        val head = ftyp + box("wide")
+        val media = size - head.size - moov.size
+        return head + u32(media) + ascii("mdat") + ByteArray(media - 8) { ((it * 13 + 5) and 0xFF).toByte() } + moov
+    }
+
     val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(200) { it.toByte() }
     val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + ByteArray(200)
 
@@ -302,6 +319,22 @@ class DataFileUploadTest : StringSpec({
         made[DFILE.fileId].toOptStr().shouldNotBeNull() shouldContain ":sandbox"
         FileStoreService.get(cxt).forOwner(cxt, parent).meta(cxt, DFILE.bucket, "clients/$parent/files/${png.sha256Hex()}").shouldNotBeNull()
         chief.getItem(DFILE.infoPath, mapOf(DFILE.fileId to made[DFILE.fileId]))[DFILE.status] shouldBe DFSTAT.ready
+    }
+
+    "a QuickTime movie of H.264 is taken as MP4 and served as one; one of ProRes is refused for its codec" {
+        // Sent as the browser names a `.mov`, its index after its media, as a Mac writes it.
+        val movie = quickTime("avc1", 60_000)
+        val record = recordOf(upload(owner, "export.mov", "video/quicktime", movie))
+        record[DFILE.status] shouldBe DFSTAT.ready
+        record[DFILE.kind] shouldBe "mp4"
+        record[DFILE.mimeType] shouldBe "video/mp4"
+        val content = owner.client.sendGetRequest(DFILE.contentPath, mapOf(DFILE.fileId to record[DFILE.fileId]))
+        content.rptStatusCode shouldBe 200
+        content.rptResponseMimeType shouldBe "video/mp4"
+
+        val prores = uploadWhole(owner, "master.mov", "video/quicktime", quickTime("apcn", 60_000))
+        prores[EP.status] shouldBe EXC.badInput.toLong()
+        prores[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "'apcn'"
     }
 
     "a file of one chunk or less is uploaded in one request; one refused there leaves nothing behind" {

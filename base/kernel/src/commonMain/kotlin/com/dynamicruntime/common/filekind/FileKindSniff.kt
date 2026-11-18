@@ -12,9 +12,11 @@ package com.dynamicruntime.common.filekind
  * - **WebM**: an EBML header whose document type is `webm`. A Matroska file (`matroska`) has the same header and
  *   is refused: a browser plays WebM, not Matroska in general.
  * - **MP4**: an `ftyp` box at offset 4 naming one of [mp4Brands], as its major brand or among the compatible brands
- *   the box lists -- a camera may write a brand of its own as the major one and list `isom` after it. The same box
- *   opens HEIC and AVIF *images* and QuickTime movies, so a major brand in [notMp4Brands] refuses the file whatever
- *   it lists. Whether the video inside is one a browser plays is judged when the upload finishes, not here.
+ *   the box lists -- a camera may write a brand of its own as the major one and list `isom` after it. A QuickTime
+ *   movie (`qt  `, what a Mac or an iPhone exports, whatever its file is named) is the same box structure and counts
+ *   as one (issue #1840). The same box opens HEIC and AVIF *images*, so a major brand in [notMp4Brands] refuses the
+ *   file whatever it lists. Whether the video inside is one a browser plays is judged when the upload finishes, not
+ *   here: a QuickTime movie of ProRes is refused then, as an MP4 of HEVC is.
  *
  * SVG has no mark -- it is a text document -- and is judged by parsing it, on the server only (`WebAssetCheck`).
  * Every kind with a mark has its rule in [rules], one place, which a test holds to the registry's kinds.
@@ -57,17 +59,17 @@ object FileKindSniff {
 
     /**
      * The brands that make an `ftyp` file MP4: the ISO base media brands, MP4 versions 1 and 2, H.264's own, Apple's
-     * M4V, and DASH segments.
+     * M4V, DASH segments, and QuickTime's (`qt  `), whose movies a browser plays as MP4 when their video is H.264.
      */
     val mp4Brands: Set<String> = setOf(
-        "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9", "mp41", "mp42", "avc1", "M4V ", "dash",
+        "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9", "mp41", "mp42", "avc1", "M4V ", "dash", "qt  ",
     )
 
     /**
-     * Major brands that are not MP4 video however MP4-like the brands they list: QuickTime (`qt  `), and the still
-     * images and image sequences of HEIF and AVIF, which list ISO brands too.
+     * Major brands that are not MP4 video however MP4-like the brands they list: the still images and image sequences
+     * of HEIF and AVIF, which list ISO brands too.
      */
-    val notMp4Brands: Set<String> = setOf("qt  ", "heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1", "avif", "avis")
+    val notMp4Brands: Set<String> = setOf("heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1", "avif", "avis")
 
     private fun ByteArray.holds(mark: ByteArray, at: Int = 0): Boolean =
         size >= at + mark.size && mark.indices.all { this[at + it] == mark[it] }

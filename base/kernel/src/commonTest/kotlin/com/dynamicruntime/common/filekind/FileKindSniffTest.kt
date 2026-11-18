@@ -42,8 +42,12 @@ class FileKindSniffTest {
 
     @Test
     fun aContainerSharedWithOtherFormatsIsToldByItsBrandOrType() {
-        // HEIC and AVIF images, and QuickTime movies, open with the same `ftyp` box as MP4.
-        for (brand in listOf("heic", "mif1", "avif", "qt  ")) assertNull(FileKindSniff.sniff(ftyp(brand)), brand)
+        // HEIC and AVIF images open with the same `ftyp` box as MP4.
+        for (brand in listOf("heic", "mif1", "avif")) assertNull(FileKindSniff.sniff(ftyp(brand)), brand)
+        // A QuickTime movie is MP4's own box structure (issue #1840): what a Mac exported, its header as it wrote it,
+        // naming no brand but its own.
+        assertEquals(FileKinds.mp4, FileKindSniff.sniff(ftyp("qt  ", "qt  ")))
+        assertEquals(FileKinds.mp4, FileKinds.declaredKind("video/quicktime"))
         // Matroska has WebM's header, and a browser does not play Matroska in general.
         assertNull(FileKindSniff.sniff(ebml("matroska")))
     }

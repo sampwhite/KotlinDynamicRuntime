@@ -12,6 +12,9 @@ import com.dynamicruntime.common.exception.KdrException
  * MP4 is held to H.264, and HEVC -- what a phone records by default -- is refused with a message saying so, rather
  * than stored to show nothing for half its viewers. A video converted to H.264 is a deferred job.
  *
+ * A QuickTime movie is walked the same way (issue #1840): its boxes are the ones an MP4's came from, its index often
+ * after its media, which the walk reaches a header at a time.
+ *
  * Pure: the bytes come from a reader the caller supplies, a range at a time, so a 2 GB file is read a few headers and
  * one `moov` box at a time -- on S3, a request each.
  *
