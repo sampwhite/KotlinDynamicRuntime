@@ -1176,6 +1176,34 @@ client's own ([`configuration-assistant.md`](../design/configuration-assistant.m
 - **Default budgets per plan** *(from #1525, #1527).* A budget the client's plan names, so an operator sets a plan once rather
   than each client's number. Waits for plans to exist as something the deployment records.
 
+## When a trial's checks cannot tell whether a request was understood
+
+The assistant trials ([the `kdr-testing` skill](../../.claude/skills/kdr-testing/SKILL.md)) judge the end state by
+structure: a field about an amount, typed as a number. Some questions are not structural: whether a reply explained the
+assistant's choice well, or whether a loosely worded request was taken as meant.
+
+- **A model as judge** *(from #1859).* A second model reads the transcript and the configuration against a rubric and
+  says met, varied, or not met, with why. It costs more, and is itself not deterministic, so it waits until structural
+  checks are found wanting on a real run.
+
+## When a past trial run needs looking at again
+
+A trial run leaves its node running, its data in an H2 file of its own (`h2Database/trial<runId>`), and a copy of the
+project's jars in its run directory, and `restartTrials` starts the node again on its own port. The files pile up.
+
+- **Clearing old runs** *(from #1859).* `stopTrials` offering to remove a stopped run's database and jars, once there
+  are enough to notice.
+- **Restarting on another port** *(from #1859).* When a run's port is taken by a newer run, `restartTrials` refuses;
+  once that happens often enough, it takes the first free trial port instead.
+
+## When a trial run takes too long to wait for
+
+A run's trials go one after another on its node, each a fresh client, so a run of several trials or every variant
+takes the sum of their times.
+
+- **Trials at once** *(from #1859).* Run a run's trials concurrently behind an option. Several conversations then
+  meet the per-client turn limits and the API's rate limits together, which is why it is not the default.
+
 ## When the Anthropic SDK's dependencies cost something
 
 The configuration assistant calls Claude through the official Anthropic Java SDK

@@ -2,9 +2,10 @@
 // of their client -- its workflows, traits, forms, wording, menu, forms list, or reports -- and Claude, using this
 // application's own endpoints as tools, drafts it in their sandbox for a person to try and publish.
 //
-// **Nothing else may compile-depend on this module**, as with `edge`: `launch` takes it `runtimeOnly`, guarded so a
-// workspace that leaves the module out still configures, and it is discovered through ServiceLoader. What the webapp
-// and core must name of it -- paths, fields, the cfact -- is in the kernel's `ASST`.
+// **Nothing else may compile-depend on this module**, as with `edge`, but for `assistantTrials`'s own test, which runs a
+// trial in-process against it: `launch` takes it `runtimeOnly`, guarded so a workspace that leaves the module out still
+// configures, and it is discovered through ServiceLoader. What the webapp and core must name of it -- paths, fields, the
+// cfact -- is in the kernel's `ASST`.
 plugins {
     id("kdr.kotlin-conventions")
 }

@@ -90,6 +90,7 @@ appui            # JVM host that serves the webapp bundle under the /wa context 
 edge             # the KdrEdge component: the front door a node booted in the edge role serves (StartEdge)
 multiNodeTest    # the multi-node test harness and the in-backend fixtures it drives (development only)
 assistant        # the configuration assistant: Claude configures a client in its sandbox (the Anthropic SDK lives here)
+assistantTrials  # named runs of the configuration assistant against the real model, and their reports (development only)
 bin              # convenience command-line scripts (see Command-line scripts below)
 build-logic      # included build providing the kdr.kotlin-*-conventions convention plugins
 examples         # templates and guides a deployment copies into the workspace directory
@@ -100,9 +101,10 @@ gradle           # the canonical Gradle wrapper, which kdr-install copies into t
 ```
 
 Module dependencies: `base/common` → `base/kernel` (JVM variant); `base/kdn` → `base/common`;
-`config` → `base/common` + `base/kdn`; `sample`, `appui`, `edge`, `multiNodeTest`, and `assistant` → `config`;
-`launch` → `config` + `appui`, with `sample`, `edge`, `multiNodeTest`, and `assistant` on its runtime classpath only;
-`webapp` → `base/kernel` (JS variant). Nothing may compile-depend on `edge` or `assistant`. `launch` picks up `edge`,
+`config` → `base/common` + `base/kdn`; `sample`, `appui`, `edge`, `multiNodeTest`, `assistant`, and `assistantTrials`
+→ `config`; `launch` → `config` + `appui`, with `sample`, `edge`, `multiNodeTest`, and `assistant` on its runtime
+classpath only; `webapp` → `base/kernel` (JS variant). Nothing may compile-depend on `edge` or `assistant`, except
+`assistantTrials`'s own test, which runs a trial in-process against the assistant. `launch` picks up `edge`,
 `multiNodeTest`, and `assistant` only when the workspace's `settings.gradle.kts` includes them, and leaves
 `multiNodeTest` out of the distribution it builds.
 
@@ -264,6 +266,13 @@ The multi-node harness, `./gradlew :multiNodeTest:harness`, sits outside the gat
 dedicated PostgreSQL database and runs its scenario suites against them, which takes a minute or two.
 `bin/kdr-multinode-db create` makes that database first (`reset` and `drop` are the other two actions), and
 `-Pattach=<urls>` runs the suites against nodes already running instead.
+
+The assistant trials, `./gradlew :assistantTrials:runTrials -Ptrials=<name>`, sit outside the gate too, since a run
+calls the real model and so costs money. Each trial configures a fresh client through prompts alone, and the run writes
+a report of what the assistant did, where it varied from what was expected, and the client's whole configuration. The
+node it starts, on the first free port of 7076 to 7079, is left running so the result can be looked at;
+`:assistantTrials:stopTrials` lists and stops those nodes, and `:assistantTrials:restartTrials` starts one again. The
+`kdr-testing` skill says more.
 
 `kdr-probe` drives a **running** instance as a chosen caller, for the checks a unit test cannot make — real
 cookies, the real dispatcher, live roles. Run it with no arguments to list its scenarios.

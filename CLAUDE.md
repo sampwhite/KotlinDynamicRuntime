@@ -136,6 +136,9 @@ to change a workspace file and find no statement of ownership either way, treat 
 own server on a free port instead (see the command above). Each additional workspace takes its own port; the
 one in use is recorded in that workspace's `CLAUDE.md`.
 
+`7076` to `7079` are the assistant trials' nodes (issue #1859), which a run leaves running for whoever ran it to look at:
+take none of them for a server of your own, and stop one only with `./gradlew :assistantTrials:stopTrials`.
+
 `kdr-probe` defaults to `http://localhost:7071` — a *shared, versioned* constant, so it is identical in every
 checkout. From a workspace whose server is elsewhere it therefore probes a **different workspace's** server and
 reports confident, wrong results about code that is not there.

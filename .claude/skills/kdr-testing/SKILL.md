@@ -466,6 +466,43 @@ the **multi-node harness** (issue #872), not the unit suite:
   the gate does not run it for you. Its first run found two real bugs no unit test had: the topic-transaction loop
   retrying a lost lock-row insert instead of taking the lock, and a pooled run's tasks sharing one SQL session.
 
+## The configuration assistant against the real model: trials
+
+The assistant's unit tests drive it with a `ScriptedModel`, so they show its tools work, never what the real model makes
+of a request. That is the **assistant trials** (issue #1859), in the `assistantTrials` module: named, repeatable runs
+that configure a fresh client through prompts alone and report what came of it.
+
+```bash
+./gradlew :assistantTrials:runTrials -Ptrials=list                        # the trials and their variants
+./gradlew :assistantTrials:runTrials -Ptrials=grantsBasics                # its first variant, against the real model
+./gradlew :assistantTrials:runTrials -Ptrials=grantsBasics -Pvariant=all  # every variant, one client each
+./gradlew :assistantTrials:runTrials -Ptrials=grantsBasics -Pprovider=fake  # the plumbing alone: no model, no cost
+./gradlew :assistantTrials:stopTrials                                     # the nodes still running; -Pport=<port>|all
+./gradlew :assistantTrials:restartTrials -Prun=<runId>                    # a run's node again, as the run left it
+```
+
+- **A run costs money, so ask before starting one** -- name the trials and variants -- unless the person asked for the
+  run. `-Pprovider=fake` answers with the built-in demo assistant: free, and enough to check a change to the harness.
+- **It starts its own node** on the first free port of **7076 to 7079**, a test instance with its data in an H2 file of
+  its own (`h2Database/trial<runId>`), the assistant on and offered to self-serve clients, and the API key from the
+  workspace's `private/secrets.properties` (checked before anything starts). `-Pmodel`, `-Peffort`, and `-Pbudget`
+  (a client's monthly allowance in weighted tokens) set the assistant; `-Pattach=<url>` uses a node you started.
+- **The node is left running**, so the result can be looked at: become the trial's administrator (the report names
+  the address) and look at the sandbox, or go on with a conversation and ask the assistant why it chose what it did.
+  Stop it when you are done. It runs from the run's own copy of the project's jars (`lib/` in the run directory), so
+  building or testing while it runs leaves it alone, and `restartTrials` brings it back on its port and database after
+  anything that stopped it.
+- **The report** (`assistantTrials/build/trialRuns/<runId>/report.md`) never fails a run. Per trial it gives each
+  expectation as met, varied, or not met, with what was found; how the assistant worked (read `making-changes` first,
+  dry-ran its changes, its refusals, its `patch_config` writes); each turn's tool calls and reply; the cost, from the
+  weighted tokens; and the client's whole configuration, also written a file per bundle under `config/`.
+- **A trial** is a Kotlin object (`GrantsBasics` is the first): a goal, its variants -- the same requests phrased
+  `explicit`, `loose`, or in the organization's `ownWords` -- and its expectations, which match by meaning (a field
+  about an amount, typed as a number) because the model chooses its own names. Add it to `Trials.all`. A new capability
+  extends one trial or starts another, so each stays small enough to run alone.
+- **The harness's own test** (`TrialHarnessTest`) runs a trial in-process against a `ScriptedModel`, through the same
+  calls, and is in the gate.
+
 ## Traveling the clock (`/fixture/clock`)
 
 Anything gated on elapsed time — a session lapsing, a rate-limit window reopening, a device's trust running
