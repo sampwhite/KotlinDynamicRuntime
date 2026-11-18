@@ -166,8 +166,10 @@ object DataFileLinks {
         val kind = FileKinds.byId(record[DFILE.kind].toOptStr().orEmpty())
         val limit = kind?.let { use.field.fileSizeLimit(it) }
         if (kind == null || limit == null) {
-            val takes = use.field.fileKinds.joinToString(", ") { it.label }
-            return "The field $field takes $takes files; '${use.fileId}' is ${kind?.label ?: "none of them"}."
+            val takes = use.field.fileKinds.map { it.label }.let { labels ->
+                if (labels.size <= 2) labels.joinToString(" or ") else labels.dropLast(1).joinToString(", ") + ", or " + labels.last()
+            }
+            return "The field $field takes only $takes; '${use.fileId}' is ${kind?.label ?: "none of these"}."
         }
         val size = record[DFILE.size].toOptLong() ?: 0L
         if (size > limit) return "The field $field takes a ${kind.label} file of at most $limit bytes; '${use.fileId}' is $size."

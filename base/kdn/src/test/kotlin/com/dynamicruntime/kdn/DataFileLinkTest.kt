@@ -162,7 +162,7 @@ class DataFileLinkTest : StringSpec({
 
     "a field refuses a file of another kind, one too large, another user's, one still uploading, and one removed" {
         val wrongKind = upload(owner, "site.jpg", "image/jpeg", jpeg)
-        create(owner, wrongKind)[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "takes PNG files"
+        create(owner, wrongKind)[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "takes only PNG;"
 
         val tooLarge = upload(owner, "big.png", "image/png", png(1500))
         create(owner, tooLarge)[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "at most 1000 bytes"

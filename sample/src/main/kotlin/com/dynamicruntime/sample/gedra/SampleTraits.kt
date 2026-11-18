@@ -2,6 +2,7 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -84,6 +85,17 @@ object ST {
     const val approved = "approved"
     const val decidedBy = "decidedBy"
     const val rejectionReason = "rejectionReason"
+
+    // --- the site media trait, which exercises files in a form's data (issue #1838) ---
+    const val siteMedia = "sample:siteMedia"
+    const val siteMediaEntry = "SiteMediaEntry"
+    const val caption = "caption"
+    const val photo = "photo"
+    const val video = "video"
+    const val report = "report"
+
+    /** The largest photograph [siteMedia] takes: below an image's own 20 MB, so the field's limit is the one met. */
+    const val photoMaxBytes = 5L * 1024 * 1024
 
     // --- the yearly trait, which exercises a primary key (issue #487): several entries told apart by `year` ---
     const val yearly = "sample:yearly"
@@ -275,6 +287,25 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // The `$ref` that makes interior alteration possible: a client narrowing `SiteAddress` narrows this
         // without the trait being edited, or knowing.
         property(ST.address, "Where the visit happened.", required = true) { ref(ST.siteAddress) }
+    }
+
+    // Files in a form's data (issue #1838): each field names a data file uploaded through `/files/upload/...` by its id,
+    // and declares the kinds it takes. A photograph is held below its kind's own largest, so a refusal for size is the
+    // field's; the video and the report take their kinds' own. Global, so a client taking every global trait (globex)
+    // carries it, and no client's chosen list is changed.
+    trait(
+        ST.siteMediaEntry,
+        ST.siteMedia,
+        setOf(GedraDataType.formDoc),
+        "Photographs, a video, and a report from a site, each an uploaded file.",
+    ) {
+        title = "Site media"
+        property(ST.caption, "What the files show.")
+        property(ST.photo, "A photograph of the site: PNG, JPEG, or WebP, up to 5 MB.") {
+            dataFile(FKIND.png, FKIND.jpeg, FKIND.webp, maxSize = ST.photoMaxBytes)
+        }
+        property(ST.video, "A video of the site: MP4 (H.264) or WebM.") { dataFile(FKIND.mp4, FKIND.webm) }
+        property(ST.report, "A written report, as a PDF.") { dataFile(FKIND.pdf) }
     }
 
     // A trait with a **primary key** (issue #487), and the one that exercises several entries of one trait: a

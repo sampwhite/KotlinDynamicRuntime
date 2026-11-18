@@ -152,6 +152,10 @@ category `dataFile`: the files are another client's or another deployment's, and
 that does not validate without them -- a file field its trait requires -- is left out of the form, under the same count,
 rather than refusing the import.
 
+**To try it**, the sample component (loaded in developer environments) declares a global trait, `sample:siteMedia`,
+with a photograph (PNG, JPEG, or WebP, up to 5 MB), a video (MP4 or WebM), and a report (PDF). The sample client
+`globex` takes every global trait, so its users' forms carry it.
+
 ## Who may do what
 
 The `files` section is any signed-in user's, and how far a caller reaches is their read scope, as for a form:
