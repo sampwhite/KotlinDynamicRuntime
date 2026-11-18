@@ -1510,6 +1510,9 @@ private fun ChildrenBuilder.renderScalarList(
     // What each remove button names its entry by on a friendly form (issue #1714), numbered apart when they read alike.
     val removeLabels = if (opts.friendly) distinctHeadings(elements.indices.map { entryHeading(entryLabelFor(copy, opts), it) }) else null
 
+    // A list of files keys each element by its file (issue #1840), so a field's upload stays with its file when one
+    // above it is removed; any other list keeps its place, since a text element's key would change as it is typed.
+    val fileKeys = if (elementType?.isDataFile() == true) elementKeys(elements) else null
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
         val elementMessages = errors.messagesAt(elementPath)
@@ -1518,6 +1521,7 @@ private fun ChildrenBuilder.renderScalarList(
             emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
         }
         div {
+            fileKeys?.let { key = it[i].unsafeCast<react.Key>() }
             id = ElementId(fieldRowId(elementPath))
             tabIndex = -1
             className = ClassName("${rowClass(elementMessages)} nested")

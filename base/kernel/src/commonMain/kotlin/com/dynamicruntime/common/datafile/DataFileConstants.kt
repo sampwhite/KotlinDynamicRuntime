@@ -88,6 +88,14 @@ object DFILE {
      */
     const val chunkBytes = 8 * 1024 * 1024
 
+    /**
+     * How long a request's claim to finish an upload holds without being renewed (issue #1840): the server renews it
+     * between the finish's steps, so it outlasts any one of them -- the parts put together, a file's checks, its copy to
+     * its hash -- and one a stopped node left behind lets the upload be finished again within minutes. In the kernel
+     * because the browser waits as long, sending the last chunk again, before it says the upload stopped.
+     */
+    const val finishLeaseMs = 5 * 60 * 1000L
+
     /** How long an upload may take, from its beginning, before it is no longer taken and the sweep removes it. */
     const val uploadHours = 24
 }

@@ -20,13 +20,16 @@ class DataFileUploadTest {
 
     /** The type of a file field taking [kinds], at most [maxSize] when given, parsed as a backend writes it. */
     private fun fileField(vararg kinds: String, maxSize: Long? = null): SchType {
-        val field = mutableMapOf<String, Any?>(SCH.type to SCT.string, SCH.format to SFMT.dataFile, SCH.fileKinds to kinds.toList())
+        val field = mutableMapOf<String, Any?>(
+            SCH.type to SCT.string, SCH.format to SFMT.dataFile, SCH.fileKinds to kinds.toList(),
+        )
         if (maxSize != null) field[SCH.fileMaxSize] = maxSize
         val schema = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("f" to field))
         return parseSchemaTypes(mapOf("t.T" to schema)).getValue("t.T").properties.getValue("f").valueType
     }
 
-    private val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(56)
+    private val png =
+        byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(56)
     private val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + ByteArray(60)
     private val pdf = "%PDF-1.7\n".encodeToByteArray() + ByteArray(55)
 
@@ -61,7 +64,8 @@ class DataFileUploadTest {
         assertEquals("PNG or JPEG, up to 5 MB.", dataFileHint(photo))
         // A limit no tighter than the kinds' own is not said.
         assertEquals("PDF.", dataFileHint(fileField(FKIND.pdf)))
-        assertEquals("MP4 video or WebM video.", dataFileHint(fileField(FKIND.mp4, FKIND.webm)))
+        // A kind known by another name says so: a `.mov` is welcome where an MP4 is.
+        assertEquals("MP4 video (a QuickTime .mov too) or WebM video.", dataFileHint(fileField(FKIND.mp4, FKIND.webm)))
         assertEquals("A, B, or C", orList(listOf("A", "B", "C")))
     }
 
@@ -96,6 +100,19 @@ class DataFileUploadTest {
 
         assertEquals(listOf(1000L, 2000L, 4000L, 8000L), (1..uploadRetries).map { retryDelayMs(it) })
         assertNull(retryDelayMs(uploadRetries + 1))
+
+        // A last chunk answered 429 while another request finishes the file is sent again past the claim's lease,
+        // since the server renews a working finish's claim, and given up on at three times it.
+        assertEquals(finishPollMs, finishingWaitMs(0))
+        assertEquals(finishPollMs, finishingWaitMs(DFILE.finishLeaseMs + 1))
+        assertNull(finishingWaitMs(3 * DFILE.finishLeaseMs))
+    }
+
+    @Test
+    fun aListOfFilesIsKeyedByItsFilesNotTheirPlaces() {
+        assertEquals(listOf("a#0", "b#0", "a#1", "#0", "#1"), elementKeys(listOf("a", "b", "a", null, "")))
+        // Removing the first leaves the others' keys as they were, so each field keeps its own upload.
+        assertEquals(elementKeys(listOf("x", "y", "z")).drop(1), elementKeys(listOf("y", "z")))
     }
 
     @Test

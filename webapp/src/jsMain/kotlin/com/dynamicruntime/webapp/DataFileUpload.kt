@@ -64,12 +64,19 @@ fun orList(words: List<String>): String = when (words.size) {
 }
 
 /**
+ * The kinds a file field takes, in words, each with what else it is known as: `MP4 video (a QuickTime .mov too) or
+ * WebM video` -- so a person holding a `.mov` reads that it is welcome.
+ */
+fun dataFileKindsText(vt: SchType): String =
+    orList(vt.fileKinds.map { kind -> kind.alsoKnownAs?.let { "${kind.label} ($it)" } ?: kind.label })
+
+/**
  * The note under a file field: the kinds it takes and, when the field holds them smaller than the kinds do, how large:
  * `PNG, JPEG, or WebP, up to 5 MB.` Sizes the kinds alone set are not said, since a field's own limit is the one a
  * person meets.
  */
 fun dataFileHint(vt: SchType): String {
-    val kinds = orList(vt.fileKinds.map { it.label })
+    val kinds = dataFileKindsText(vt)
     val limit = vt.fileMaxSize?.takeIf { max -> vt.fileKinds.any { it.maxSize > max } }
     return if (limit == null) "$kinds." else "$kinds, up to ${byteSizeText(limit)}."
 }
@@ -85,9 +92,12 @@ class PickedFile(val kind: FileKind?, val problem: String?)
  */
 fun judgePick(vt: SchType, head: ByteArray, size: Long): PickedFile {
     if (size < 1) return PickedFile(null, "This file is empty.")
-    val takes = orList(vt.fileKinds.map { it.label })
+    val takes = dataFileKindsText(vt)
     val kind = FileKindSniff.sniff(head, vt.fileKinds)
-        ?: return PickedFile(null, "This field takes only $takes; this file is ${FileKindSniff.sniff(head)?.let { "a ${it.label} file" } ?: "none of these"}.")
+    if (kind == null) {
+        val found = FileKindSniff.sniff(head)?.let { "a ${it.label} file" } ?: "none of these"
+        return PickedFile(null, "This field takes only $takes; this file is $found.")
+    }
     val limit = vt.fileSizeLimit(kind) ?: return PickedFile(null, "This field takes only $takes.")
     if (size > limit) {
         return PickedFile(null, "A ${kind.label} file here is at most ${byteSizeText(limit)}; this one is ${byteSizeText(size)}.")
@@ -141,3 +151,31 @@ const val uploadRetries = 4
 
 /** How long to wait before retry [attempt] (from 1): 1, 2, 4, then 8 seconds; null past [uploadRetries]. */
 fun retryDelayMs(attempt: Int): Long? = if (attempt < 1 || attempt > uploadRetries) null else 1000L shl (attempt - 1)
+
+/** How often the last chunk is sent again while the server finishes the file ([finishingWaitMs]). */
+const val finishPollMs = 3000L
+
+/**
+ * How long to wait, having waited [waitedMs], before sending the last chunk again when the server answered it with a
+ * 429 (issue #1840): another request is finishing the file -- the parts put together, the file checked and copied --
+ * which for a large file outlasts any ordinary retry. The server renews that request's claim between its steps, so a
+ * working finish can take longer than [DFILE.finishLeaseMs]; the wait gives up, null, at three times that, by when a
+ * finish still under way is no finish that will end.
+ */
+fun finishingWaitMs(waitedMs: Long): Long? = if (waitedMs >= 3 * DFILE.finishLeaseMs) null else finishPollMs
+
+/**
+ * The React keys of a list of files' elements (issue #1840): each its file's id, numbered among its equals, so a
+ * field's own state -- its upload under way, a stopped one to resume -- stays with its file when one above it is
+ * removed. Not its place in the list: React would hand the state of a removed element's field to the next. Slots not
+ * yet holding a file are told apart only by their order among themselves.
+ */
+fun elementKeys(elements: List<Any?>): List<String> {
+    val seen = mutableMapOf<String, Int>()
+    return elements.map { element ->
+        val id = element.toOptStr().orEmpty()
+        val n = seen[id] ?: 0
+        seen[id] = n + 1
+        "$id#$n"
+    }
+}

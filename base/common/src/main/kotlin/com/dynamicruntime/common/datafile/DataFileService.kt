@@ -38,6 +38,7 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.Sha256
 import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -73,13 +74,6 @@ object DataFileService {
     private const val tranChunk = "dataFileChunk"
     private const val tranFinish = "finishDataFileUpload"
     private const val mebibyte = 1024L * 1024L
-
-    /**
-     * How long a request's claim to finish an upload holds ([claimFinish], issue #1840): longer than any finish takes --
-     * the parts put together and, on S3, the copy to the file's hash -- and short enough that one a stopped node left
-     * behind lets the upload be finished again within minutes.
-     */
-    const val finishLeaseMs = 5 * 60 * 1000L
 
     /** The bucket data files are kept in, declared by `CommonComponent`. */
     fun bucketDef(): FileBucketDef = FileBucketDef(DFILE.bucket, "Files uploaded for forms' data, named by their hash.")
@@ -357,7 +351,8 @@ object DataFileService {
      * [DFSTAT.ready]. A file that fails a check -- one whose boxes are no MP4 we can read among them -- is removed, record
      * and bytes, and the refusal says why: what was sent is not a file this record can be.
      *
-     * **One request finishes an upload at a time** ([claimFinish]): another is a 429, to be sent again shortly.
+     * **One request finishes an upload at a time** ([claimFinish]): another is a 429, to be sent again shortly. The
+     * claim is renewed between the steps, so a long finish keeps it.
      *
      * **It may run again after a failure part-way**, a store's or the network's: that the chunks were put together
      * is recorded in the upload's row (`completed`) the moment it is done, so a second run takes up from where the file
@@ -376,20 +371,25 @@ object DataFileService {
                 extraData = linkedMapOf(DFILE.nextOffset to reached),
             )
         }
-        claimFinish(cxt, fileId)
+        val claim = claimFinish(cxt, fileId)
         try {
             // Read again now the claim is held: a finish that held it before may have got further.
             val claimed = readUploadNow(cxt, fileId) ?: throw notUploading(row)
-            return finishClaimed(cxt, row, claimed, declared)
+            return finishClaimed(cxt, row, claimed, declared, claim)
         } catch (e: Throwable) {
             // So the last chunk sent again finishes it now, rather than once the claim runs out.
-            runCatching { releaseFinish(cxt, fileId) }
+            runCatching { releaseFinish(cxt, fileId, claim) }
             throw e
         }
     }
 
-    /** [finish], once this request holds the claim to it: every step after the chunks are all taken. */
-    private fun finishClaimed(cxt: KdrCxt, row: GedraDataRow, upload: Map<String, Any?>, declared: Long): Map<String, Any?> {
+    /**
+     * [finish], once this request holds the claim to it ([claim]): every step after the chunks are all taken, the claim
+     * renewed between them, so a finish whose steps take long in all is not taken for one that stopped.
+     */
+    private fun finishClaimed(
+        cxt: KdrCxt, row: GedraDataRow, upload: Map<String, Any?>, declared: Long, claim: String,
+    ): Map<String, Any?> {
         val fileId = row.gedraId.fullId
         val file = fileOf(row)
         val kind = FileKinds.byId(file[DFILE.kind].toOptStr().orEmpty())
@@ -407,7 +407,7 @@ object DataFileService {
                 cxt, DFILE.bucket, stagingKey, upload[GDU.token].toOptStr().orEmpty(), parts, kind.mimeType, hash,
                 fileName = file[DFILE.name].toOptStr(),
             )
-            markCompleted(cxt, fileId)
+            markCompleted(cxt, fileId, claim)
         }
         // Where the whole file is now: still staged, or -- a call before this one moved it -- under its hash.
         val staged = files.meta(cxt, DFILE.bucket, stagingKey) != null
@@ -431,6 +431,7 @@ object DataFileService {
             GedraDataService.get(cxt).deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted)
             throw KdrException.mkInput(problem)
         }
+        renewFinish(cxt, fileId, claim)
         if (staged) {
             // Named by its hash: a file of the same hash already stored is these bytes, so the staged copy goes.
             if (files.meta(cxt, DFILE.bucket, contentKey) != null) {
@@ -466,10 +467,21 @@ object DataFileService {
     fun abort(cxt: KdrCxt, fileId: String): Boolean {
         val row = ownUpload(cxt, fileId)
         val upload = readUploadNow(cxt, fileId) ?: return false
-        FileStoreService.get(cxt).forOwner(cxt, ownerOf(row))
-            .abortStaged(cxt, DFILE.bucket, upload[GDU.stagingKey].toOptStr().orEmpty(), upload[GDU.token].toOptStr().orEmpty())
+        dropStaged(cxt, row, upload)
         endUpload(cxt, row)
         return GedraDataService.get(cxt).deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted)
+    }
+
+    /**
+     * Drops what the store holds of [row]'s [upload]: its parts, and the file put together from them when a finish that
+     * failed part-way got that far -- which nothing else names, so nothing else would remove. The bytes under the file's
+     * hash stay, since another record may be them.
+     */
+    private fun dropStaged(cxt: KdrCxt, row: GedraDataRow, upload: Map<String, Any?>) {
+        val files = FileStoreService.get(cxt).forOwner(cxt, ownerOf(row))
+        val stagingKey = upload[GDU.stagingKey].toOptStr().orEmpty()
+        files.abortStaged(cxt, DFILE.bucket, stagingKey, upload[GDU.token].toOptStr().orEmpty())
+        if (files.meta(cxt, DFILE.bucket, stagingKey) != null) files.delete(cxt, DFILE.bucket, stagingKey)
     }
 
     // --- reading and removing -------------------------------------------------------------------------------------
@@ -502,8 +514,7 @@ object DataFileService {
     fun delete(cxt: KdrCxt, fileId: String): Boolean {
         val row = readable(cxt, fileId)
         readUploadNow(cxt, fileId)?.let { upload ->
-            FileStoreService.get(cxt).forOwner(cxt, ownerOf(row))
-                .abortStaged(cxt, DFILE.bucket, upload[GDU.stagingKey].toOptStr().orEmpty(), upload[GDU.token].toOptStr().orEmpty())
+            dropStaged(cxt, row, upload)
             endUpload(cxt, row)
         }
         return GedraDataService.get(cxt).deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScopeRules.forCaller(cxt))
@@ -572,52 +583,76 @@ object DataFileService {
     }
 
     /**
-     * Claims, under the file's lock, the finish of [fileId]'s upload for this request (issue #1840), recording when in its
-     * row ([GDU.finishingAt]). A claim another request made within [finishLeaseMs] is a 429: the last chunk sent again
-     * while the first is still being finished waits for it, rather than asking the store to complete the parts a second
-     * time, which it no longer has. A claim older than that was left by a request that stopped, and is taken over.
+     * Claims, under the file's lock, the finish of [fileId]'s upload for this request (issue #1840), recording when and by
+     * whom in its row ([GDU.finishingAt], [GDU.finishingBy]); answers the claim's token. A claim another request made or
+     * renewed within [DFILE.finishLeaseMs] is a 429: the last chunk sent again while the first is still being finished
+     * waits for it, rather than asking the store to complete the parts a second time, which it no longer has. A claim
+     * older than that was left by a request that stopped, and is taken over.
      */
     @KdrInternal
-    fun claimFinish(cxt: KdrCxt, fileId: String) {
-        val txCxt = cxt.mkTransactionSubContext(tranFinish)
-        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
+    fun claimFinish(cxt: KdrCxt, fileId: String): String {
+        val claim = cxt.mkUniqueId()
         val now = cxt.instanceNow()
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranFinish, null, mapOf(GD.gedraId to fileId)) {
-            val current = readUpload(txCxt, sqlCxt, fileId) ?: return@executeTopicTran
-            val progress = current[GDU.progress].toJsonMapOrEmpty()
+        changeProgress(cxt, fileId) { progress ->
             val since = progress[GDU.finishingAt].toOptInstantOrNull()
-            if (since != null && (now - since).inWholeMilliseconds < finishLeaseMs) {
+            if (since != null && (now - since).inWholeMilliseconds < DFILE.finishLeaseMs) {
                 throw KdrException(
                     "The upload of '$fileId' is being finished; send its last chunk again shortly.", code = EXC.tooManyRequests,
                 )
             }
-            val updated = current.toMutableMap()
-            updated[GDU.progress] = progress + (GDU.finishingAt to now.formatDate())
-            writeUpload(txCxt, sqlCxt, updated, current)
+            progress + mapOf(GDU.finishingAt to now.formatDate(), GDU.finishingBy to claim)
+        }
+        return claim
+    }
+
+    /**
+     * Renews [claim] to finish [fileId]'s upload, between the finish's steps. A claim another request has taken over --
+     * this one went unrenewed past [DFILE.finishLeaseMs] -- is a 409: that request is finishing the upload now.
+     */
+    private fun renewFinish(cxt: KdrCxt, fileId: String, claim: String) {
+        val now = cxt.instanceNow()
+        changeProgress(cxt, fileId) { progress ->
+            if (progress[GDU.finishingBy] != claim) {
+                throw KdrException("The upload of '$fileId' is being finished by another request.", code = EXC.conflict)
+            }
+            progress + (GDU.finishingAt to now.formatDate())
         }
     }
 
-    /** Gives up this request's claim to finish [fileId]'s upload, after a finish that failed part-way. */
+    /** Gives up [claim] to finish [fileId]'s upload, after a finish that failed part-way; another request's is left. */
     @KdrInternal
-    fun releaseFinish(cxt: KdrCxt, fileId: String) {
-        val txCxt = cxt.mkTransactionSubContext(tranFinish)
-        val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranFinish, null, mapOf(GD.gedraId to fileId)) {
-            val current = readUpload(txCxt, sqlCxt, fileId) ?: return@executeTopicTran
-            val updated = current.toMutableMap()
-            updated[GDU.progress] = current[GDU.progress].toJsonMapOrEmpty() - GDU.finishingAt
-            writeUpload(txCxt, sqlCxt, updated, current)
+    fun releaseFinish(cxt: KdrCxt, fileId: String, claim: String) {
+        changeProgress(cxt, fileId) { progress ->
+            if (progress[GDU.finishingBy] != claim) null else progress - GDU.finishingAt - GDU.finishingBy
         }
     }
 
-    /** Records, under the file's lock, that the store has put [fileId]'s chunks together: what [finish] resumes from. */
-    private fun markCompleted(cxt: KdrCxt, fileId: String) {
+    /**
+     * Records, under the file's lock, that the store has put [fileId]'s chunks together -- what a finish resumes from --
+     * renewing [claim] as it does.
+     */
+    private fun markCompleted(cxt: KdrCxt, fileId: String, claim: String) {
+        val now = cxt.instanceNow()
+        changeProgress(cxt, fileId) { progress ->
+            if (progress[GDU.finishingBy] != claim) {
+                throw KdrException("The upload of '$fileId' is being finished by another request.", code = EXC.conflict)
+            }
+            progress + mapOf(GDU.completed to true, GDU.finishingAt to now.formatDate())
+        }
+    }
+
+    /**
+     * Changes [fileId]'s upload's progress under the file's lock: [change] answers the new progress from the current, or
+     * null to leave it. Nothing happens when the upload has ended.
+     */
+    private fun changeProgress(cxt: KdrCxt, fileId: String, change: (Map<String, Any?>) -> Map<String, Any?>?) {
         val txCxt = cxt.mkTransactionSubContext(tranFinish)
         val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranFinish, null, mapOf(GD.gedraId to fileId)) {
             val current = readUpload(txCxt, sqlCxt, fileId) ?: return@executeTopicTran
+            val progress = change(current[GDU.progress].toJsonMapOrEmpty()) ?: return@executeTopicTran
             val updated = current.toMutableMap()
-            updated[GDU.progress] = current[GDU.progress].toJsonMapOrEmpty() + (GDU.completed to true)
+            updated[GDU.progress] = progress
             writeUpload(txCxt, sqlCxt, updated, current)
         }
     }

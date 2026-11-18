@@ -201,7 +201,7 @@ class DataFileUploadTest : StringSpec({
         sendChunk(owner, fileId, 0, first)[EP.status] shouldBe null
 
         // Another request holds the finish, as the first does while it puts a large file together.
-        DataFileService.claimFinish(cxt, fileId)
+        val claim = DataFileService.claimFinish(cxt, fileId)
         val busy = sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last)
         busy[EP.status] shouldBe EXC.tooManyRequests.toLong()
         busy[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "is being finished"
@@ -210,7 +210,10 @@ class DataFileUploadTest : StringSpec({
         status[DFILE.status] shouldBe DFSTAT.uploading
         status[DFILE.nextOffset] shouldBe video.size.toLong()
 
-        DataFileService.releaseFinish(cxt, fileId)
+        // Only the request holding the claim gives it up: one that lost it leaves it to its holder.
+        DataFileService.releaseFinish(cxt, fileId, "not-the-claim")
+        sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last)[EP.status] shouldBe EXC.tooManyRequests.toLong()
+        DataFileService.releaseFinish(cxt, fileId, claim)
         recordOf(sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last))[DFILE.status] shouldBe DFSTAT.ready
         // Only the chunk whose answer was lost is answered with the record; any other is not one the file took.
         sendChunk(owner, fileId, 0, first)[EP.status] shouldBe EXC.conflict.toLong()
@@ -334,7 +337,7 @@ class DataFileUploadTest : StringSpec({
 
         val prores = uploadWhole(owner, "master.mov", "video/quicktime", quickTime("apcn", 60_000))
         prores[EP.status] shouldBe EXC.badInput.toLong()
-        prores[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "'apcn'"
+        prores[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "ProRes ('apcn')"
     }
 
     "a file of one chunk or less is uploaded in one request; one refused there leaves nothing behind" {

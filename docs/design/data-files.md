@@ -72,7 +72,8 @@ file:
    the file finishes the upload** in the same request (#1840): its checks are in the next section, and its answer
    carries the file's record under `file`.
 3. **Status** (`GET /files/upload/status?fileId=`) says where to resume after a lost connection.
-4. **Abort** (`POST /files/upload/abort {fileId}`) ends it without a file.
+4. **Abort** (`POST /files/upload/abort {fileId}`) ends it without a file: its parts dropped, and the file a finish
+   that failed part-way put together from them, which nothing else names.
 
 Until #1840 the finish was a call of its own, `POST /files/upload/finish`. It never did anything but follow the last
 chunk, so a caller made a call that told the server only what it already knew.
@@ -105,8 +106,10 @@ The chunks are put together, and the file is checked before it is ready:
 - **A QuickTime movie is an MP4** (#1840): what a Mac or an iPhone exports, named `.mov` or `.mp4`, its `ftyp` box
   naming only `qt  `. Its boxes are the ones MP4's came from, so it is walked the same way -- its index often after
   its media -- held to H.264 the same way (a ProRes master is refused for its codec), and stored and served as
-  `video/mp4`, as which every browser plays it. Until #1840 its brand refused it outright, which refused the H.264
-  movies people most often have. **Its audio is not checked**, as an MP4's is not: AAC, what is exported, plays
+  `video/mp4`. Until #1840 its brand refused it outright, which refused the H.264 movies people most often have. One
+  from a Mac (H.264 and AAC, its index after its media) was played that way in Chromium; Safari plays QuickTime
+  natively, and Firefox reads such a file as MP4, though no one has watched one there yet. A codec a person knows by
+  name is refused by it: a ProRes master is told "ProRes ('apcn')", not only its code. **Its audio is not checked**, as an MP4's is not: AAC, what is exported, plays
   everywhere, while uncompressed PCM, rare outside an editor's masters, may play without sound.
 - **A WebM** is checked by its EBML document type.
 - **The plan still has room**: asked again, since two uploads begun at once can each have found room the other took.
@@ -126,8 +129,11 @@ file is a 409, since it is not one the file took.
 (`finishingAt`), before it asks the store for anything. A large file's finish takes a while -- the parts put together
 and, on S3, copied to the file's hash -- and a sender whose connection dropped meanwhile sends the last chunk again.
 That request finds the claim and is answered 429, to be sent again shortly, rather than asking the store to complete
-parts it no longer has (a 404 that would read as the upload's end). A finish that fails gives the claim up at once; one
-whose node stopped holds it at most five minutes (`finishLeaseMs`).
+parts it no longer has (a 404 that would read as the upload's end). The claim carries a token, so only its holder
+renews it -- between the finish's steps, so a long finish keeps it -- or gives it up, at once when the finish fails. One
+whose node stopped lapses five minutes after its last renewal (`DFILE.finishLeaseMs`), and the next last chunk takes it
+over. The webapp, answered 429 for a last chunk, keeps sending it every few seconds, up to three times the lease,
+rather than reporting a stopped upload; the field says it is checking the file meanwhile.
 
 ## Reading a file
 

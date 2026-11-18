@@ -34,7 +34,8 @@ class SiteMediaTraitTest : StringSpec({
         handler.rptResponseData?.jsonMap().shouldNotBeNull()
 
     fun uploadPng(): String {
-        val sent = envelope(user.client.sendRawBodyRequest(DFILE.uploadPath, mapOf(DFILE.name to "site.png", DFILE.mimeType to "image/png"), png))
+        val args = mapOf(DFILE.name to "site.png", DFILE.mimeType to "image/png")
+        val sent = envelope(user.client.sendRawBodyRequest(DFILE.uploadPath, args, png))
         sent[EP.status] shouldBe null
         return sent[EP.results].toJsonMapOrEmpty()[DFILE.fileId].toOptStr().shouldNotBeNull()
     }

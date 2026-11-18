@@ -40,6 +40,15 @@ object Mp4Video {
     private const val videoHandler = "vide"
 
     /**
+     * What a refusal calls a codec a person may know by name, beside its code (issue #1840): ProRes, the editing codec
+     * a QuickTime master is often in, and the older codecs a QuickTime movie may hold.
+     */
+    val codecNames: Map<String, String> = mapOf(
+        "apcn" to "ProRes", "apch" to "ProRes", "apcs" to "ProRes", "apco" to "ProRes", "ap4h" to "ProRes", "ap4x" to "ProRes",
+        "mp4v" to "MPEG-4 Part 2", "jpeg" to "Motion JPEG", "mjpa" to "Motion JPEG", "mjpb" to "Motion JPEG",
+    )
+
+    /**
      * The codecs of the video tracks of an MP4 of [size] bytes, read through [read] (an offset and a length within
      * the file, answering those bytes). Refuses, as bad input, a file whose boxes do not make an MP4 we can read.
      */
@@ -71,9 +80,12 @@ object Mp4Video {
         codecs.any { it in hevc } ->
             "This video is HEVC (H.265), which not every browser plays. Export it as H.264 -- most phones and editors " +
                 "offer 'Most compatible' or 'H.264' -- and upload that."
-        codecs.any { it !in h264 } ->
-            "This video's codec is ${codecs.filterNot { it in h264 }.distinct().joinToString(", ") { "'$it'" }}, which not every " +
-                "browser plays. Export it as H.264 and upload that."
+        codecs.any { it !in h264 } -> {
+            val named = codecs.filterNot { it in h264 }.distinct().joinToString(", ") { code ->
+                codecNames[code]?.let { "$it ('$code')" } ?: "'$code'"
+            }
+            "This video's codec is $named, which not every browser plays. Export it as H.264 and upload that."
+        }
         else -> null
     }
 

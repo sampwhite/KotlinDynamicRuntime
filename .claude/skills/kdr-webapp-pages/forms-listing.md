@@ -360,8 +360,15 @@ its kind and size, and an image or a `<video preload="metadata">` in place (`.da
   raw editor reads one, else asked of `/files/info` by the field. The workflow pages read the workflow view, which
   carries no `files`, so there each field asks. A 4xx is "File unavailable"; no answer or a 5xx is "could not be read
   just now", with **Try again**.
-- **A list of files** draws a file control per element (`renderScalarList` asks `controlKind` of the element type), and
-  read-only a `dataFileList`, as does a **map of files**, each under its key. Editing a map of files is still the JSON
+- **A last chunk answered 429 is waited out**, not retried four times: another request is finishing the file, which
+  for a large one outlasts a retry. It is sent again every few seconds (`finishingWaitMs`) up to three times the
+  server's claim lease (`DFILE.finishLeaseMs`), the bar at 100% and "Checking the file…" beside it.
+- **The note names what else a kind is known as** (`FileKind.alsoKnownAs`, `dataFileKindsText`): "MP4 video (a
+  QuickTime .mov too) or WebM video", since the MP4 kind takes a QuickTime movie.
+- **A list of files** draws a file control per element (`renderScalarList` asks `controlKind` of the element type), each
+  keyed by its file (`elementKeys`), so removing one above an upload leaves the upload with its own field -- by
+  position, React would hand it to the next element's; and read-only a `dataFileList`, as does a **map of files**, each
+  under its key. Editing a map of files is still the JSON
   map editor (`deferred-work.md`).
 - **Verified in the browser pane** by setting the hidden `input.file-picker`'s `files` from a `DataTransfer` and
   dispatching `change`, since the OS picker cannot be driven; a playable WebM comes from a canvas through

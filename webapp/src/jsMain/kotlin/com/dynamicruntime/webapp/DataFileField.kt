@@ -121,6 +121,7 @@ object DataFileApi {
             offset = resumeOffset(status[DFILE.nextOffset].toOptLong() ?: 0L, size, chunkSize)
         }
         var attempt = 0
+        var finishing = 0L
         while (true) {
             val end = chunkEnd(offset, size, chunkSize)
             val chunk = (file.slice(offset.toDouble(), end.toDouble()).arrayBuffer() as Promise<dynamic>).await()
@@ -134,6 +135,14 @@ object DataFileApi {
                     onProgress(offset)
                 }
                 is ApiResult.Refused -> {
+                    // The last chunk, while another request finishes the file: sent again until that is done.
+                    if (sent.error.status == 429 && end == size) {
+                        onProgress(size)
+                        val wait = finishingWaitMs(finishing) ?: throw sent.error
+                        delay(wait)
+                        finishing += wait
+                        continue
+                    }
                     val next = sent.error.extraData[DFILE.nextOffset].toOptLong()
                     when (sendFailure(sent.error.status, next != null)) {
                         SendFailure.resync -> {
@@ -232,7 +241,8 @@ fun useDataFile(fileId: String?): DataFileState {
             state = when (read) {
                 is ApiResult.Ok -> DataFileState(read.value.also { DataFileCache.remember(it) }, false)
                 // Refused: a 404 (or a 403) is the file's absence for this caller; a 5xx, like no answer, says nothing of it.
-                is ApiResult.Refused -> if ((read.error.status ?: 500) < 500) DataFileState(null, true) else DataFileState(null, false, true)
+                is ApiResult.Refused ->
+                    if ((read.error.status ?: 500) < 500) DataFileState(null, true) else DataFileState(null, false, true)
                 is ApiResult.Failed -> DataFileState(null, false, true)
             }
         }
@@ -438,6 +448,8 @@ val DataFileField = FC<DataFileFieldProps> { props ->
                     status = "active"
                     size = "small"
                 }
+                // Every byte sent: the server is putting the file together and checking it, which a large one takes a while.
+                if (total > 0 && uploading >= total) span { className = ClassName("type-hint"); +"Checking the file…" }
                 Button {
                     type = "link"
                     onClick = {

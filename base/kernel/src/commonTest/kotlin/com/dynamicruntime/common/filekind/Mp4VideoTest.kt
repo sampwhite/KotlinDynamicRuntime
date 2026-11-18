@@ -53,6 +53,8 @@ class Mp4VideoTest {
     fun anythingButH264IsAProblemSaidForTheUploader() {
         assertTrue(Mp4Video.h264Problem(listOf("hvc1"))!!.contains("HEVC"))
         assertTrue(Mp4Video.h264Problem(listOf("av01"))!!.contains("'av01'"))
+        // A codec a person knows by name is said by it, beside its code (issue #1840): a QuickTime master's ProRes.
+        assertTrue(Mp4Video.h264Problem(listOf("apcn"))!!.contains("ProRes ('apcn')"))
         assertTrue(Mp4Video.h264Problem(emptyList())!!.contains("no video track"))
     }
 
