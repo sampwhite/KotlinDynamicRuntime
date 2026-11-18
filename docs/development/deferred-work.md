@@ -767,6 +767,18 @@ clone to another client id in this one.
   import. Left out because no client holds file refs yet, so no import meets the refusal; the first clone or restore
   of one that does is the trigger, and the refusal says exactly what is missing.
 
+## When a person reloads the page in the middle of a large upload
+
+A form's file field (issue #1840) resumes an upload the network stopped while the page stays open: it keeps the
+file's id and the browser's `File` in the component, and Resume asks the server where the upload reached. A reload
+loses both, and the upload starts again from its first byte; the sweep (#1839) removes the one left behind.
+
+- **Resume an upload across a reload** *(#1840, deferred here 2026-11-18).* Keep each upload under way in the
+  browser's storage (its file id, the file's name, size, and last-modified time), and when the person picks the same
+  file again for the same field, offer to resume rather than begin. A page cannot reopen a file by itself, so the
+  pick stays; what it saves is the bytes already sent. Trigger: a client uploading videos large enough, or over a
+  connection poor enough, that starting over costs its people real time.
+
 ## When something must ask about a streamed file with HEAD
 
 A file sent a range at a time (`StreamedContent`, issue #1836) answers GET only: a request is matched to its endpoint

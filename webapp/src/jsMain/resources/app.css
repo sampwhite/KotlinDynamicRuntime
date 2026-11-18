@@ -594,6 +594,15 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .web-asset-actions { display: flex; gap: 8px; margin-top: 6px; }
 /* The browser's own file picker stays in the page -- a button opens it -- and out of sight (`FilePickButton`). */
 .file-picker { display: none; }
+
+/* A form's file field (issue #1840): what it holds, then its actions, its progress, and its note, one under another. */
+.data-file-field { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; }
+.data-file-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.data-file-progress { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); }
+.data-file-progress .ant-progress { flex: 1; margin: 0; }
+.data-file-shown { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+/* An image or a video, at most a modest box: a form shows the file, it is not a viewer. */
+.data-file-preview { display: block; max-width: min(480px, 100%); max-height: 360px; border-radius: 4px; background: var(--surface-page); }
 /* A client's file refs (issue #1176), drawn as its web assets are: a row a ref. What is unusual about one -- a
    draft, a missing file, an image the client was shipped with -- is a small mark beside its id. */
 .file-ref-tag {

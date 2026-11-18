@@ -119,6 +119,8 @@ class RequestBodyLimitTest : StringSpec({
             Triple("POST", "/$root${ACEP.bundlePatch}", largeMax.toLong()),
             Triple("POST", "/$root${ACEP.import}", largeMax.toLong()),
             Triple("POST", "/$root${DFILE.chunkPath}", DFILE.chunkBytes.toLong()),
+            // A small file whole (issue #1840), held to a chunk's size.
+            Triple("POST", "/$root${DFILE.uploadPath}", DFILE.chunkBytes.toLong()),
         )
     }
 

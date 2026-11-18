@@ -53,8 +53,10 @@ import kotlin.time.Duration.Companion.hours
  * **An upload comes in chunks** of [DFILE.chunkBytes], in order, so a lost connection costs a chunk and not the file:
  * [begin] says how large each must be; [chunk] takes one at the offset the upload has reached, checked against the
  * SHA-256 the sender says it has, and advances the hash of the whole -- saved in the upload's row, since the next chunk
- * may reach another node; [status] says where to resume; [finish] puts the chunks together, names the file by its hash,
- * and checks its bytes are the kind it was sent as -- and, for an MP4, that its video is H.264 ([Mp4Video]).
+ * may reach another node; [status] says where to resume. The chunk that completes the file finishes it ([finish]): puts
+ * the chunks together, names the file by its hash, and checks its bytes are the kind it was sent as -- and, for an MP4,
+ * that its video is H.264 ([Mp4Video]). A file of one chunk or less needs none of that ceremony: [uploadWhole] takes it
+ * in one request (issue #1840).
  *
  * **Who may do what.** Reading a file -- its record, its content -- is for whoever's read scope admits the record: its
  * owner, or an administrator of its client -- and for whoever may read a live form whose field names it ([viewable],
@@ -199,10 +201,16 @@ object DataFileService {
      * call; under the lock the offset is checked again, and only then does the upload advance. A chunk written for an
      * offset another request reached first is replaced in the store by the one that advanced, or its completion refuses
      * the upload as not the parts it recorded -- never a file made of parts it did not check.
+     *
+     * **The chunk that brings the upload to its declared size finishes it** ([finish]), in the same request (issue
+     * #1840), and the answer carries the file's record under [DFILE.file]. A finish that failed part-way is taken up again
+     * by sending that chunk again, which is answered as taken and finishes; one sent again after the file is finished is
+     * answered with its record.
      */
     fun chunk(cxt: KdrCxt, fileId: String, offset: Long, chunkHash: String, bytes: ByteArray): Map<String, Any?> {
         val row = ownUpload(cxt, fileId)
-        val upload = readUploadNow(cxt, fileId) ?: throw notUploading(row)
+        // No upload row: the file is finished -- this chunk's answer was lost -- or was never one being uploaded.
+        val upload = readUploadNow(cxt, fileId) ?: return endedAnswer(row)
         requireLive(cxt, upload)
         val chunkSize = upload[GDU.chunkSize].toOptLong() ?: DFILE.chunkBytes.toLong()
         val declared = upload[GDU.declaredSize].toOptLong() ?: 0L
@@ -216,8 +224,8 @@ object DataFileService {
         if (bytes.sha256Hex() != chunkHash.lowercase()) {
             throw KdrException.mkInput("The chunk at $offset does not hash to the '$chunkHash' it was sent with: send it again.")
         }
-        // Already taken, or not yet reachable: answered without writing anything.
-        settled(row, upload, offset, chunkHash)?.let { return it }
+        // Already taken, or not yet reachable: answered without writing anything -- and finished, when it is all taken.
+        settled(row, upload, offset, chunkHash)?.let { return finishedWhenWhole(cxt, fileId, declared, it) }
         val number = (offset / chunkSize + 1).toInt()
         val part = FileStoreService.get(cxt).forOwner(cxt, ownerOf(row))
             .putPart(cxt, DFILE.bucket, upload[GDU.stagingKey].toOptStr().orEmpty(), upload[GDU.token].toOptStr().orEmpty(), number, bytes)
@@ -238,7 +246,52 @@ object DataFileService {
             writeUpload(txCxt, txSql, updated, current)
             answer = uploadAnswer(fileId, DFSTAT.uploading, updated)
         }
-        return answer ?: throw KdrException("The chunk at $offset of '$fileId' was neither taken nor refused.")
+        val taken = answer ?: throw KdrException("The chunk at $offset of '$fileId' was neither taken nor refused.")
+        return finishedWhenWhole(cxt, fileId, declared, taken)
+    }
+
+    /** [answer], a chunk's, when the upload has not reached [declared] bytes; else the upload finished, with its record. */
+    private fun finishedWhenWhole(cxt: KdrCxt, fileId: String, declared: Long, answer: Map<String, Any?>): Map<String, Any?> {
+        if (answer[DFILE.nextOffset].toOptLong() != declared) return answer
+        return finishedAnswer(finish(cxt, fileId))
+    }
+
+    /** A chunk's answer for a finished file: where the upload ended, and the file's [record] under [DFILE.file]. */
+    private fun finishedAnswer(record: Map<String, Any?>): Map<String, Any?> = linkedMapOf(
+        DFILE.fileId to record[DFILE.fileId],
+        DFILE.status to record[DFILE.status],
+        DFILE.declaredSize to record[DFILE.size],
+        DFILE.nextOffset to record[DFILE.size],
+        DFILE.file to record,
+    )
+
+    /** A chunk's answer for [row], which has no upload under way: its record when it is finished, else a 409. */
+    private fun endedAnswer(row: GedraDataRow): Map<String, Any?> {
+        if (fileOf(row)[DFILE.status] == DFSTAT.uploading) throw notUploading(row)
+        return finishedAnswer(info(row))
+    }
+
+    /**
+     * Uploads [bytes], a whole file sent as [mimeType] and called [fileName], in one request (issue #1840): what [begin],
+     * one [chunk], and its finish do, for a file of at most [DFILE.chunkBytes] -- an image, a document -- that a resume
+     * would gain nothing for. Answers the file's record; refused as the three are, and a file refused leaves nothing.
+     */
+    fun uploadWhole(cxt: KdrCxt, fileName: String?, mimeType: String, bytes: ByteArray): Map<String, Any?> {
+        if (bytes.size > DFILE.chunkBytes) {
+            throw KdrException(
+                "A file sent in one request is at most ${DFILE.chunkBytes} bytes; upload this one in chunks.", code = EXC.payloadTooLarge,
+            )
+        }
+        val fileId = begin(cxt, fileName, mimeType, bytes.size.toLong())[DFILE.fileId].toOptStr()
+            ?: throw KdrException("An upload began with no file id.")
+        val answer = try {
+            chunk(cxt, fileId, 0L, bytes.sha256Hex(), bytes)
+        } catch (e: KdrException) {
+            // A file refused is gone already; one a store's failure stopped is dropped, since nobody will resume it.
+            if (e.code != EXC.badInput) runCatching { abort(cxt, fileId) }
+            throw e
+        }
+        return answer[DFILE.file].toJsonMapOrEmpty()
     }
 
     /**
@@ -271,13 +324,13 @@ object DataFileService {
     }
 
     /**
-     * Finishes the upload of [fileId], all its chunks taken: puts them together, checks the result is the kind it was
+     * Finishes the upload of [fileId], all its chunks taken -- run by the [chunk] that takes the last of them: puts them together, checks the result is the kind it was
      * sent as -- by its bytes, and an MP4's video by its codec ([Mp4Video]) -- names it by its hash, sharing the bytes of
      * a file of the same hash already stored, and marks the record [DFSTAT.ready]. A file that fails a check -- one whose
      * boxes are no MP4 we can read among them -- is removed, record and bytes, and the refusal says why: what was sent is
      * not a file this record can be.
      *
-     * **It may be called again after a failure part-way**, a store's or the network's: that the chunks were put together
+     * **It may run again after a failure part-way**, a store's or the network's: that the chunks were put together
      * is recorded in the upload's row (`completed`) the moment it is done, so a second call takes up from where the file
      * is -- staged, or already under its hash -- rather than asking the store to complete an upload it has completed.
      */
@@ -289,7 +342,7 @@ object DataFileService {
         val reached = upload[GDU.nextOffset].toOptLong() ?: 0L
         if (reached != declared) {
             throw KdrException(
-                "The upload of '$fileId' has taken $reached of its $declared bytes; send the rest before finishing it.",
+                "The upload of '$fileId' has taken $reached of its $declared bytes; send the rest to finish it.",
                 code = EXC.conflict,
                 extraData = linkedMapOf(DFILE.nextOffset to reached),
             )

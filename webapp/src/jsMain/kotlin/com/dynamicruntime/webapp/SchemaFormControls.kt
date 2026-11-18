@@ -8,6 +8,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.defaultLongTextLines
 import com.dynamicruntime.common.schema.hideGatedFields
 import com.dynamicruntime.common.schema.isBinaryFormat
+import com.dynamicruntime.common.schema.isDataFile
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
@@ -61,6 +62,9 @@ enum class ControlKind {
     /** File content (`format: "binary"`) — a native file input. */
     File,
 
+    /** A file in a form's data (`format: "gedra-file"`, issue #1840) — the [DataFileField]: uploaded, then its id held. */
+    DataFile,
+
     /** A free-form object with no declared properties — the `JsonObjectField` map editor (issue #251). */
     JsonMap,
 
@@ -90,6 +94,7 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind 
     vt.jsonType == SCT.string && isDateFormat(vt.format) ->
         if (vt.format == SFMT.date) ControlKind.Date else ControlKind.DateTime
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> ControlKind.File
+    vt.jsonType == SCT.string && vt.isDataFile() -> ControlKind.DataFile
     vt.jsonType == SCT.kObject -> ControlKind.JsonMap
     // Long text is the layout's word on plain text (issue #1118); on anything else the boot check refuses it.
     vt.longText -> ControlKind.LongText
@@ -238,6 +243,14 @@ internal fun ChildrenBuilder.widget(
                 commit()
             }
             markInvalid(asDynamic(), describedBy)
+        }
+        // A file in a form's data (issue #1840): uploaded by the field itself, which emits the file's id once it is ready.
+        ControlKind.DataFile -> DataFileField {
+            type = vt
+            this.value = value?.toString()?.ifEmpty { null }
+            this.describedBy = describedBy
+            onEmit = { id -> emit(id) }
+            onCommit = commit
         }
         ControlKind.JsonMap -> JsonObjectField {
             // One control over a whole object -- a map among them (issue #1055) -- has no box per field to leave

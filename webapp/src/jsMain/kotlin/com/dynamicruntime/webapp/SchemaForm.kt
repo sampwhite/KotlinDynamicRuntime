@@ -13,6 +13,7 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.errorContextData
+import com.dynamicruntime.common.schema.isDataFile
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchVariants
@@ -1629,6 +1630,11 @@ private fun ChildrenBuilder.prefillControls(
 internal fun ChildrenBuilder.readOnlyValue(
     vt: SchType, value: Any?, presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
 ) {
+    // A file in a form's data (issue #1840) shows as the file -- its name, a link, an image or a video -- not its id.
+    if (vt.isDataFile()) {
+        value.toOptStr()?.takeIf { it.isNotEmpty() }?.let { id -> DataFileValue { fileId = id } }
+        return
+    }
     // A structured array -- its elements are objects with declared fields -- reads far better as a nested table
     // (a sub-table inside the cell) than as raw JSON (issue #540): this is what turns a database-tables row's
     // `columns`/`indexes` into readable sub-tables rather than a JSON blob. A free-form array (no element

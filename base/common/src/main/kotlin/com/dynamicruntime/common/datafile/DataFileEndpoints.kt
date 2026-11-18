@@ -17,9 +17,9 @@ private const val namespace = "kdr.${DFILE.section}"
 
 
 /**
- * The data-file endpoints (issue #1837), in the `files` section, which any signed-in user reaches: an upload's begin,
- * chunks, finish, abort, and status; a file's record, its content a range at a time, which forms use it (#1838), and its
- * removal. How far a caller
+ * The data-file endpoints (issue #1837), in the `files` section, which any signed-in user reaches: a small file's
+ * upload in one request (#1840); a larger one's begin, chunks -- the last of which finishes it (#1840) -- abort, and
+ * status; a file's record, its content a range at a time, which forms use it (#1838), and its removal. How far a caller
  * reaches is their read scope, and an upload is its owner's alone ([DataFileService]).
  *
  * Theme: #DFILE.
@@ -47,6 +47,7 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         property(DFILE.declaredSize, "How many bytes the file is.") { type = SCT.integer }
         property(DFILE.nextOffset, "Where the next chunk begins: the bytes taken so far.") { type = SCT.integer }
         property(DFILE.expiresAt, "When the upload is no longer taken.") { dateTime() }
+        property(DFILE.file, "The file's record, once the chunk completing it has finished the upload.") { ref(DFILE.recordType) }
     }
     type(DFILE.useType) {
         type = SCT.kObject
@@ -71,11 +72,27 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         property(DFILE.removed, "Whether there was a file, or an upload, to remove.", required = true) { type = SCT.boolean }
     }
 
+    fileChunkEndpoint(
+        DFILE.uploadPath,
+        "Uploads a whole file for a form's data in one request (issue #1840): its bytes as the request's raw body, sent " +
+            "as application/octet-stream, at most ${DFILE.chunkBytes} bytes. Answers the file's record, ready. Refused as " +
+            "an upload in chunks is, and a larger file is uploaded in chunks (`${DFILE.beginPath}`).",
+        outputRef = DFILE.recordType,
+        maxBodyBytes = DFILE.chunkBytes,
+        inputFields = {
+            field(DFILE.name, "The file's name, as it was picked.")
+            field(DFILE.mimeType, "The type the file is sent as; its bytes must be that kind.", required = true)
+        },
+    ) { c, request ->
+        val body = request[EP.rawBody] as? ContentData ?: throw KdrException.mkInput("A file is the request's body.")
+        DataFileService.uploadWhole(c, request[DFILE.name].toOptStr(), request[DFILE.mimeType].toOptStr().orEmpty(), body.contentBytes())
+    }
+
     itemEndpoint(
         DFILE.beginPath,
-        "Begins an upload of a file for a form's data (issue #1837), answering how to send it: chunks of `chunkSize` bytes " +
-            "in order, each to `${DFILE.chunkPath}`, then `${DFILE.finishPath}`. Refused for a type no file may be, a " +
-            "size past its kind's largest, or a plan with no room for it.",
+        "Begins an upload of a file for a form's data in chunks (issue #1837), answering how to send it: chunks of " +
+            "`chunkSize` bytes in order, each to `${DFILE.chunkPath}`; the last finishes the upload. Refused for a type no " +
+            "file may be, a size past its kind's largest, or a plan with no room for it.",
         HttpMethod.POST,
         outputRef = DFILE.uploadType,
         inputFields = {
@@ -91,7 +108,10 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         DFILE.chunkPath,
         "Takes one chunk of an upload as the request's raw body, sent as application/octet-stream: the next one, at the " +
             "offset the upload has reached, with its SHA-256. A chunk taken already is answered again; any other is a 409 " +
-            "saying where the upload is (`${DFILE.nextOffset}`).",
+            "saying where the upload is (`${DFILE.nextOffset}`). The chunk completing the file finishes the upload: checks " +
+            "the file is the kind it was sent as -- an MP4's video must be H.264 -- and answers its record under " +
+            "`${DFILE.file}`. A file that fails is removed, and the refusal says why; a finish that failed part-way is " +
+            "taken up again by sending that chunk again.",
         outputRef = DFILE.uploadType,
         maxBodyBytes = DFILE.chunkBytes,
         inputFields = {
@@ -106,15 +126,6 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
             request[DFILE.chunkHash].toOptStr().orEmpty(), body.contentBytes(),
         )
     }
-
-    itemEndpoint(
-        DFILE.finishPath,
-        "Finishes an upload whose chunks are all taken: checks the file is the kind it was sent as -- an MP4's video must " +
-            "be H.264 -- and makes it ready. A file that fails is removed, and the refusal says why.",
-        HttpMethod.POST,
-        outputRef = DFILE.recordType,
-        inputFields = { field(DFILE.fileId, "The file being uploaded.", required = true) },
-    ) { c, request -> DataFileService.finish(c, request[DFILE.fileId].toOptStr().orEmpty()) }
 
     generalEndpoint(
         DFILE.abortPath,

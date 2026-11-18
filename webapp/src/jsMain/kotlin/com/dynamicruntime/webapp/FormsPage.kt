@@ -569,6 +569,8 @@ val FormsPage = FC<FormsPageProps> { props ->
         formsScope.launch {
             try {
                 val item = SchemaCatalogApi.invoke(ge, mapOf(GDF.gedraId to id))[EP.item].toJsonMapOrEmpty()
+                // The files its fields name, so each shows without a request of its own (issue #1840).
+                DataFileCache.rememberAll(item[GDF.files])
                 if (item.isEmpty()) viewMissing = true else viewRow = item
             } catch (e: Throwable) {
                 // A client (4xx) failure -- absent, or out of the caller's scope -- is the same "not yours to

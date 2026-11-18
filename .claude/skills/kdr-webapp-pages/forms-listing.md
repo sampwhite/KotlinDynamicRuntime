@@ -332,3 +332,29 @@ judge, and in production reads the owners' identities for all of a listing's row
 Within the caller's read scope, like every listing, and `review=mine` too: a reviewer who is neither an administrator
 nor an editor cannot list other people's forms, so their reviews do not show here (`deferred-work.md`).
 
+
+## A file field uploads a file, then holds its id (issue #1840)
+
+A trait field of format `gedra-file` (`dataFile(...)` in the DSL) draws `DataFileField` wherever a form is filled in --
+the raw editor, the workflow pages, the create pages -- since `controlKind` picks it from the schema
+(`ControlKind.DataFile`). Read-only, the same field draws `DataFileValue`: the file's name as a link to its content,
+its kind and size, and an image or a `<video preload="metadata">` in place (`.data-file-preview`, at most 480 by 360).
+
+- **A pick is judged by its first bytes before anything is sent** (`judgePick`, the kernel's `FileKindSniff` over the
+  field's kinds), so a JPEG named `.png`, a PDF picked for a photo, or a file past the field's size is refused in the
+  browser with what it is. The kind found, not the browser's guess at a type, is what the upload is sent as.
+- **A file of 8 MiB or less goes in one request** (`/files/upload`); a larger one is begun and sent in chunks, each
+  hashed with SubtleCrypto, the last of which finishes it (`DataFileApi.upload`). A request with no answer, or a 5xx or
+  429, is sent again after 1, 2, 4, and 8 seconds; a 409 that says where the upload is resumes there; anything else
+  stops it with the server's message.
+- **The field takes the file's id only once the file is ready**, so the form's values never hold one still uploading,
+  which a save would refuse. An upload stopped by the network keeps its id and the browser's file in the component, and
+  offers **Resume** (asks `/files/upload/status`, sends from `nextOffset`, or the last chunk again when every byte is in)
+  and **Discard** (aborts it). A reload loses them, and the sweep removes what was left.
+- **A file's record is read once per page load** (`DataFileCache`): seeded from a form's `files` when the view or the
+  raw editor reads one, else asked of `/files/info` by the field. The workflow pages read the workflow view, which
+  carries no `files`, so there each field asks.
+- **Verified in the browser pane** by setting the hidden `input.file-picker`'s `files` from a `DataTransfer` and
+  dispatching `change`, since the OS picker cannot be driven; a playable WebM comes from a canvas through
+  `MediaRecorder`, where no ffmpeg is at hand. A network failure is simulated by wrapping `window.fetch`, which every
+  request goes through (`fetchCompleted`).

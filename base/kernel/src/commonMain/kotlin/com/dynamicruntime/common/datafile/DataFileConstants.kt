@@ -16,7 +16,10 @@ object DFILE {
     const val bucket = "data-files"
 
     // --- the record: the keys under the gedra's `data.file` ---
-    /** Under the gedra's `data`: the file's record, a map of the keys below. */
+    /**
+     * Under the gedra's `data`: the file's record, a map of the keys below. Also, in the answer to the chunk that finishes
+     * an upload, the file's record as [infoPath] answers it (issue #1840).
+     */
     const val file = "file"
     const val name = "name"
     const val kind = "kind"
@@ -66,9 +69,11 @@ object DFILE {
     const val goneType = "DataFileGone"
 
     // --- endpoint paths ---
+    /** A whole file of at most [chunkBytes], in one request (issue #1840). */
+    const val uploadPath = "/$section/upload"
     const val beginPath = "/$section/upload/begin"
+    /** A chunk of an upload begun at [beginPath]; the one that completes the file finishes it (issue #1840). */
     const val chunkPath = "/$section/upload/chunk"
-    const val finishPath = "/$section/upload/finish"
     const val abortPath = "/$section/upload/abort"
     const val statusPath = "/$section/upload/status"
     const val infoPath = "/$section/info"
@@ -78,7 +83,8 @@ object DFILE {
 
     /**
      * How many bytes each chunk of an upload is, all but the last: what the server asks for, at least the 5 MiB the
-     * file store holds every part but the last to, and what one request carries.
+     * file store holds every part but the last to, and what one request carries -- so also the largest file
+     * [uploadPath] takes whole.
      */
     const val chunkBytes = 8 * 1024 * 1024
 
