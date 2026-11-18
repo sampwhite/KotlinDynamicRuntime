@@ -27,7 +27,7 @@ object VCL {
     /** The value as the gedra holds it, for a message naming it. */
     const val claimedValue = "claimedValue"
 
-    /** The gedra that holds the value -- a form, a file reference, or any other kind, told by its id. */
+    /** The gedra that holds the value -- a form, or any other kind that holds entries, told by its id. */
     const val gedraId = "gedraId"
 
     /** The trait whose entry holds it. */
@@ -43,9 +43,10 @@ object VCL {
 /**
  * The value claims table (issue #1849): one row per value a gedra holds that no other gedra in the claim's scope may
  * hold. In the gedra data topic, so a claim is written in the transaction of the gedra that holds it, and its primary
- * key is what keeps two gedras from holding one value, whatever two writes race. Any kind of gedra may claim -- a form
- * first, and a file reference or a list of terms as readily -- since the claim names the gedra by its id. A counter's ids are the first kind; a field
- * unique for each owner is to share it (issue #1851), keyed by a hash of its normalized value.
+ * key is what keeps two gedras from holding one value, whatever two writes race. Any kind of gedra that holds entries
+ * may claim -- a form first, and a container workflow's data or a list of terms as readily -- since the claim names the
+ * gedra by its id. A counter's ids are the first kind; a field unique for each owner is to share it (issue #1851), keyed
+ * by a hash of its normalized value.
  */
 fun valueClaimTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "gedraValueClaims", topic = gedraDataTopic) {
     table(VCL.gedraValueClaims, "Which gedra holds each value no other gedra in its scope may hold (issue #1849).") {

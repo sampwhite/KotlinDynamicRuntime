@@ -9,8 +9,9 @@ import com.dynamicruntime.common.sql.tableModule
 /**
  * The SQL topic of the counts themselves (issue #1849): a topic of its own, so issuing an id takes one short lock on its
  * counter's row and never waits on a gedra's. The claims of its ids are value claims, in the gedra data topic, since one
- * is written in the transaction of the gedra that stores its id (`ValueClaims`). Gedras of any kind -- a form, a file
- * reference, a list of terms -- may be numbered from one counter, so nothing here is about forms.
+ * is written in the transaction of the gedra that stores its id (`ValueClaims`). Gedras of any kind that holds entries
+ * -- a form, a container workflow's data, a list of terms -- may be numbered from one counter, so nothing here is about
+ * forms.
  */
 const val gedraCounterTopic = "gedraCounter"
 

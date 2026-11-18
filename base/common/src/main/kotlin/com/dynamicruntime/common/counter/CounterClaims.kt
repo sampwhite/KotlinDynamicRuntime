@@ -146,7 +146,7 @@ fun SchTypeBuilder.counterTokensShape() {
 /** A gedra of [kind] as a refusal names it: what a person calls it, not its enum name. */
 private fun kindWord(kind: GedraDataType): String = when (kind) {
     GedraDataType.formDoc -> "form"
-    GedraDataType.fileRef -> "file reference"
+    GedraDataType.dataFile -> "data file"
     GedraDataType.userData -> "user's data"
     GedraDataType.wfData -> "workflow's data"
 }
