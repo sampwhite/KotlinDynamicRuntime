@@ -408,7 +408,9 @@ conference demo dropped a column (#1612) because the table had grown wide, which
   each column between its minimum and its preferred width, scrolling only below the minimums -- at 1100 pixels the
   display columns, To review, Workflows, and Status would then all be in view. The same model resizable columns
   (#1666) needs: a dragged width is the preferred, the minimum the floor. Worth it once the reordered list has been
-  tried in a demo and Status still out of view is felt.
+  tried in a demo and Status still out of view is felt. A column's named size (`width`: narrow, normal, or wide, issue
+  #1855) is the first step: it is the preferred width, and where a dragged width would start. Phones are a reason too:
+  the conference demo is visited on them, and keeps to three columns, its id's narrow.
 - **Columns a person resizes** *(#1666, deferred here 2026-11-17).* A person drags a column's edge to widen or narrow
   it, and double-clicks it for the default, and the list remembers it. Built with columns a user chooses: widths are
   the same person's preference for the listing, so they belong where those are stored, not in the browser now and per

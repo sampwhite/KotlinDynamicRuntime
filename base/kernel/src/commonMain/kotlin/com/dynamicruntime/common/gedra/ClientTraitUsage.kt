@@ -57,6 +57,12 @@ class ClientTraitUsage(
      * query parameters.
      */
     val columnId: String? = null,
+    /**
+     * How much room the column wants in the forms list (issue #1855), as a named size rather than pixels, so a client
+     * says what the column needs and the page decides what that is on its screen: an id needs less than a title. Null
+     * is [ColumnWidth.normal].
+     */
+    val width: ColumnWidth? = null,
 ) {
     /**
      * The column's machine name (issue #1490): [columnId], else the trait id. What its search parameters are named
@@ -82,6 +88,7 @@ fun ClientTraitUsage.toRuleMap(includeDisplay: Boolean = true): Map<String, Any?
     put(CCT.substring, substring)
     presentation?.let { put(CCT.presentation, it) }
     columnId?.let { put(CCT.columnId, it) }
+    width?.let { put(CCT.width, it.name) }
 }
 
 /**
@@ -97,6 +104,7 @@ fun usageFromRuleMap(map: Map<String, Any?>): ClientTraitUsage = ClientTraitUsag
     substring = map[CCT.substring] as? Boolean ?: false,
     presentation = map[CCT.presentation].toOptStr()?.ifBlank { null },
     columnId = map[CCT.columnId].toOptStr()?.ifBlank { null },
+    width = ColumnWidth.entries.firstOrNull { it.name == map[CCT.width].toOptStr() },
 )
 
 /**
@@ -113,6 +121,13 @@ const val columnIdPattern = "^[A-Za-z][A-Za-z0-9_]*$"
 enum class UsageKind { string, number, date, boolean }
 
 /**
+ * How much room a column of the forms list wants (issue #1855): a named size, which the page turns into a width.
+ * [normal] is every column's when none is said; [narrow] suits a short value such as an id, and [wide] a long one.
+ */
+@Suppress("EnumEntryName")
+enum class ColumnWidth { narrow, normal, wide }
+
+/**
  * The field names of one **computed** display value on a stored-row's wire map (issue #537) -- what the list
  * and read endpoints attach per row under [GDF.displayValues], and the forms table reads to build its columns.
  */
@@ -126,6 +141,9 @@ object UF {
 
     /** The column header, from the usage's label. */
     const val label = "label"
+
+    /** How much room the column wants ([ColumnWidth]), on the listing's summary of a column; absent for `normal`. */
+    const val width = "width"
 
     /**
      * The column's value, already evaluated from the usage's `display`; empty when the row carries no such trait. What

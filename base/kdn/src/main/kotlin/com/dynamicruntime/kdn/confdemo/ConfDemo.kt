@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.content.ComponentImageDef
 import com.dynamicruntime.common.content.componentImage
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.ListingDef
@@ -191,6 +192,12 @@ object ConfDemo {
     const val needsLaptops = "needsLaptops"
     const val setup = "setup"
 
+    // The talk's id (issue #1855): a counter, and the trait whose one field takes its ids.
+    const val talkCounter = "talk"
+    const val submission = "submission"
+    const val submissionEntry = "SubmissionEntry"
+    const val talkId = "talkId"
+
     /** Where the documentation lives in the repository, and the prefix its pages take as doc ids. */
     const val docsDir = "docs/demo-client"
     const val docIdPrefix = "demo-client-"
@@ -237,6 +244,7 @@ fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("create-talk", "Conference demo: creating a talk", "The demo's creation workflow."),
     confDemoDoc("talk-core-details", "Conference demo: talk core details", "The demo's core details workflow, its first traits, and " +
         "the columns of its forms list."),
+    confDemoDoc("numbering", "Conference demo: numbering talks", "The counter that gives every talk its id, and the trait that holds it."),
     confDemoDoc("abstract", "Conference demo: the abstract", "The demo's first normal workflow: a trait with a list, a multi-select, trimming, and custom errors."),
     confDemoDoc("committee-review", "Conference demo: committee review", "A workflow gated on the talk's core details, with a field " +
         "only administrators see and a review task."),
@@ -471,12 +479,25 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
             }
             presentWhen(ConfDemo.setup, on = ConfDemo.needsLaptops, value = true)
         }
+        // The talk's id (issue #1855): a field the counter below fills, collected by the creation workflow.
+        trait(ConfDemo.submissionEntry, ConfDemo.submission, setOf(GedraDataType.formDoc), "The talk's id, given when it is submitted.") {
+            title = "Talk id"
+            property(ConfDemo.talkId, "The talk's id, given by the conference's counter.", required = true) {
+                title = "Id"
+                counter = ConfDemo.talkCounter
+            }
+        }
+        // What numbers the talks, in the order they are submitted, for the whole call for talks.
+        counter(ConfDemo.talkCounter, "T-", digits = 3, description = "Numbers the talks, in the order they are submitted.")
 
         // The forms listing's columns (issue #1138). A client that declares any replaces the default name column, so
-        // the name is declared here too. The questionnaire's column is named for its search (issue #1490).
+        // the name is declared here too. Three, since phones visit the demo (issue #1855): the id's column is narrow,
+        // and is named for its search (issue #1490).
         traitUsage(GT.name, "Talk", $$"${name}", substring = true)
+        traitUsage(
+            ConfDemo.submission, "Talk id", $$"${talkId}", substring = true, columnId = ConfDemo.talkId, width = ColumnWidth.narrow,
+        )
         traitUsage(ConfDemo.session, "Track", $$"${track}")
-        traitUsage(ConfDemo.questionnaire, "Audience", $$"${audienceLevel}", columnId = "audience")
         // Every workflow link in one cell (issue #1686): a speaker never reviews, so the split layout's To review column
         // was always empty for one, and its width is what a narrow screen lacks.
         listing(ListingDef(workflowLayout = WorkflowLayout.combined))
@@ -506,11 +527,14 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
 fun confDemoCreateTalk(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
     gedraConfig(cxt, ConfDemo.createTalkConfig, clientNamespace(client), client) {
         workflow(ConfDemo.createTalkWorkflow, WfEntry.creation) {
-            comment = "Runs once, when a speaker starts a submission. It asks only for the title; the rest comes later."
+            comment = "Runs once, when a speaker starts a submission. It asks for the title, and collects the talk's id, " +
+                "which the form fills from the counter; the rest comes later."
             label = "Start a talk submission"
             task(ConfDemo.nameTalkTask, "Name your talk") {
                 comment = "A creation workflow has exactly one task, with exactly one save."
                 trait(GT.name)
+                // Filled by the page, never typed, and not required, so a program creating a talk need not ask for it.
+                trait(ConfDemo.submission, required = false)
                 save(ConfDemo.createSave, "Create the talk", WfSaveKind.create)
             }
         }
@@ -694,6 +718,8 @@ fun confDemoReports(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
             column("review", "Review", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.category}")
             column("callToAction", "Call to action", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.ctaKeyword}")
             column(ConfDemo.minutesColumn, "Minutes", "$form.${ConfDemo.abstract}.${ConfDemo.durationMinutes}", rollup = ReportCombine.sum)
+            // The talk's id (issue #1855), last, so the roster's earlier columns keep their places.
+            column(ConfDemo.talkId, "Talk id", "$form.${ConfDemo.submission}.${ConfDemo.talkId}")
             groupBy = listOf(ConfDemo.trackColumn)
         }
         report(ConfDemo.questionnaireSummary, "Questionnaire summary") {

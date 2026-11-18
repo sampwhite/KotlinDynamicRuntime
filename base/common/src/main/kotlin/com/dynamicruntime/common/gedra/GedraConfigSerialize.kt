@@ -253,7 +253,7 @@ fun reassembleGedraConfig(
     entriesBySlot[CCT.traitDef]?.forEach { reassembleTrait(it) }
     entriesBySlot[CCT.usageDef]?.forEach { e ->
         val usage = usageFromRuleMap(e)
-        traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId)
+        traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId, usage.width)
     }
     entriesBySlot[CCT.workflowDef]?.forEach { e ->
         // An overlay of a code workflow (issue #1657) is read over the code's.

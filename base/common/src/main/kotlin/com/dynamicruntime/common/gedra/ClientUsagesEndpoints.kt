@@ -119,8 +119,8 @@ internal fun SchModuleBuilder.clientUsagesEndpoints() {
             field(
                 CUS.column,
                 "The column as it should be stored: `${CCT.traitId}`, `${CCT.label}` (its heading), `${CCT.display}` (a " +
-                    "string script for its value), and optionally `${CCT.kind}`, `${CCT.substring}`, and " +
-                    "`${CCT.presentation}`. A `${CCT.columnId}` given is ignored.",
+                    "string script for its value), and optionally `${CCT.kind}`, `${CCT.substring}`, `${CCT.presentation}`, " +
+                    "and `${CCT.width}`. A `${CCT.columnId}` given is ignored.",
                 required = true,
             ) { type = SCT.kObject }
             field(CUS.previousLabel, "The heading of the column of its trait this changes; absent for a new column.")

@@ -396,6 +396,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(UF.label, "The column header.", required = true)
         property(UF.kind, "What the column's value is, and so how it sorts and searches.", required = true) { options(UsageKind.entries) }
         property(UF.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through. Absent shows the value -- relative to now for a date.")
+        property(UF.width, "How much room the column wants (issue #1855): `narrow` or `wide`. Absent is `normal`.") { options(ColumnWidth.entries) }
         property(
             UF.choices,
             "What the column's value can be (issue #1500), in order, when it is a single field that offers choices or is a " +

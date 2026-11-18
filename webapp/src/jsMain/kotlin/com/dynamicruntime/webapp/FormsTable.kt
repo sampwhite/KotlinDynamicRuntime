@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import react.ChildrenBuilder
 import react.FC
@@ -230,7 +231,7 @@ val FormsTable = FC<FormsTableProps> { props ->
             // endpoint is the column's dataIndex -- namespaced for a display column, `updated`/`created` for a date.
             displayCols.forEach {
                 // Drawn as a time column is (issue #1323): the presented text, with the value behind it on hover.
-                add(timeColumn(sortableColumn(it.label, displayColKey(it.columnId), displayColumnWidth, props.sortColumn, props.sortDescending)))
+                add(timeColumn(sortableColumn(it.label, displayColKey(it.columnId), displayColumnWidthOf(it.width), props.sortColumn, props.sortDescending)))
             }
             // What lists the form's parts. With no display column it is the row's identity, so it comes first, as the
             // column pinned left; otherwise it follows the columns a reader acts in.
@@ -624,6 +625,16 @@ private const val containsMinWidth = 160
 
 /** A display column's width, in px: trimmed from 160 (issue #1599), as the listing gained its Your turn column. */
 private const val displayColumnWidth = 144
+
+/**
+ * A display column's width for the size its client named (issue #1855), in px: [displayColumnWidth] for `normal`, room
+ * for a short id for `narrow`, and room for a long value for `wide`. Pure, and covered under `jsNodeTest`.
+ */
+fun displayColumnWidthOf(width: ColumnWidth): Int = when (width) {
+    ColumnWidth.narrow -> 96
+    ColumnWidth.normal -> displayColumnWidth
+    ColumnWidth.wide -> 224
+}
 
 /**
  * The table's minimum width as an antd `scroll` config: every declared column width plus [containsMinWidth]

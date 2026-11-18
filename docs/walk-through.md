@@ -55,8 +55,8 @@ Speaker]**. The menu and your home page are now the conference demo's.
 
 ### Submit a talk
 
-Open **My forms** from the menu, and choose **Create a form**. The form that opens is **Start a talk submission**,
-and it asks for one thing:
+Open **My forms** from the menu, and choose **Create a form**. The form that opens is **Start a talk submission**.
+It shows the talk's id, such as **T-007**, which the conference gives it, and asks for one thing:
 
 <!-- kdr-walk: workflow=createTalk -->
 | Field | What to type |

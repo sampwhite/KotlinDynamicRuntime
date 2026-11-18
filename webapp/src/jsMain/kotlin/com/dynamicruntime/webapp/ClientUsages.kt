@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.ClientTraitUsage
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.sandboxParentOf
@@ -135,9 +136,11 @@ data class UsageDraft(
     val substring: Boolean,
     /** How the cell reads, a string script with the value as `value`; blank for none. */
     val presentation: String,
+    /** How much room the column wants (issue #1855); null for `normal`. */
+    val width: ColumnWidth? = null,
 ) {
     fun toUsage(): ClientTraitUsage =
-        ClientTraitUsage(traitId, label.trim(), display.trim(), kind, substring, presentation.trim().ifBlank { null })
+        ClientTraitUsage(traitId, label.trim(), display.trim(), kind, substring, presentation.trim().ifBlank { null }, width = width)
 
     /**
      * This draft reading [field]: its value `${field}`, its kind the field's, and its heading the field's when it has none
@@ -156,7 +159,7 @@ fun newUsageDraft(catalog: UsageCatalogView): UsageDraft =
 
 /** The draft of [column] as it stands. */
 fun usageDraftOf(column: UsageColumnView): UsageDraft = with(column.usage) {
-    UsageDraft(traitId, label, display, kind, substring, presentation.orEmpty())
+    UsageDraft(traitId, label, display, kind, substring, presentation.orEmpty(), width)
 }
 
 /**
@@ -177,6 +180,14 @@ fun usageOptionsInForce(draft: UsageDraft, trait: UsageTraitView?): List<String>
     if (draft.display.isNotBlank() && usageField(draft.display, trait) == null) add("value written by hand")
     draft.kind?.let { if (usageField(draft.display, trait) == null) add("reads as ${usageKindText(it).lowercase()}") }
     if (draft.presentation.isNotBlank()) add("presentation")
+    draft.width?.let { add("${usageWidthText(it).lowercase()} column") }
+}
+
+/** What a person calls a column's [width]. */
+fun usageWidthText(width: ColumnWidth): String = when (width) {
+    ColumnWidth.narrow -> "Narrow"
+    ColumnWidth.normal -> "Normal"
+    ColumnWidth.wide -> "Wide"
 }
 
 /**
@@ -199,7 +210,7 @@ fun usageDraftProblems(draft: UsageDraft, catalog: UsageCatalogView, editing: Us
 fun usageDraftChanged(draft: UsageDraft, column: UsageColumnView?): Boolean =
     column == null || draft.toUsage().toRuleMap() != column.usage.copyWithoutColumnId().toRuleMap()
 
-private fun ClientTraitUsage.copyWithoutColumnId() = ClientTraitUsage(traitId, label, display, kind, substring, presentation)
+private fun ClientTraitUsage.copyWithoutColumnId() = ClientTraitUsage(traitId, label, display, kind, substring, presentation, width = width)
 
 /**
  * The save's request: the column as it should be stored, the heading of the one it changes ([previousLabel], null for
@@ -216,7 +227,9 @@ fun usageSaveRequest(
     put(CLD.client, clientId)
     val usage = draft.toUsage()
     val text = usageDraftReadsAs(draft, trait) == UsageKind.string
-    val sent = ClientTraitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring && text, usage.presentation)
+    val sent = ClientTraitUsage(
+        usage.traitId, usage.label, usage.display, usage.kind, usage.substring && text, usage.presentation, width = usage.width,
+    )
     put(CUS.column, sent.toRuleMap())
     previousLabel?.let { put(CUS.previousLabel, it) }
     put(CPY.mode, expected)

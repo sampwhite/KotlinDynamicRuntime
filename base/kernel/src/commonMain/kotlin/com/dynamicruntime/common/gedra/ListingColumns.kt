@@ -25,6 +25,8 @@ class ListingColumn(
     val presentation: String?,
     /** The choices its field offers ([ColumnSearchShape.choices]), in their declared order; empty when there are none. */
     val choices: List<SchOption> = emptyList(),
+    /** How much room it wants (issue #1855). */
+    val width: ColumnWidth = ColumnWidth.normal,
 ) {
     /** This column on the wire, keyed by [UF]: the presentation and the choices only when there are some. */
     fun toMap(): Map<String, Any?> = buildMap {
@@ -34,12 +36,16 @@ class ListingColumn(
         put(UF.kind, kind.name)
         presentation?.let { put(UF.presentation, it) }
         if (choices.isNotEmpty()) put(UF.choices, choices.map { mapOf(UF.value to it.value, UF.label to it.label) })
+        if (width != ColumnWidth.normal) put(UF.width, width.name)
     }
 
     companion object {
         /** The listing column [column] draws. */
         fun of(column: UsageColumn): ListingColumn =
-            ListingColumn(column.columnKey, column.traitId, column.label, column.kind, column.usage.presentation, column.choices)
+            ListingColumn(
+                column.columnKey, column.traitId, column.label, column.kind, column.usage.presentation, column.choices,
+                column.usage.width ?: ColumnWidth.normal,
+            )
 
         /** The columns of a listing's [GDF.columns], in order; a kind the kernel does not know reads as text. */
         fun listFrom(wire: Any?): List<ListingColumn> = wire.toJsonListOfMaps().map { m ->
@@ -52,6 +58,7 @@ class ListingColumn(
                 choices = m[UF.choices].toJsonListOfMaps().mapNotNull { c ->
                     c[UF.value].toOptStr()?.let { value -> SchOption(value, c[UF.label].toOptStr() ?: value) }
                 },
+                width = ColumnWidth.entries.firstOrNull { it.name == m[UF.width].toOptStr() } ?: ColumnWidth.normal,
             )
         }
     }

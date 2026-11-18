@@ -62,4 +62,5 @@ fun SchTypeBuilder.usageRuleFields(includeDisplay: Boolean = true) {
     property(CCT.substring, "Whether a string column also offers a contains search.", required = true) { type = SCT.boolean }
     property(CCT.presentation, "How the column's cell reads: a string script over the trait's data, with the column's value as `value`.")
     property(CCT.columnId, "The column's own name, when it is not the trait id (issue #1490).")
+    property(CCT.width, "How much room the column wants, when not `normal` (issue #1855).") { options(ColumnWidth.entries) }
 }

@@ -216,6 +216,7 @@ Keyed by `traitId` and `label`.
 | `substring` | boolean |  | For a string value, whether the search also offers a substring match. |
 | `presentation` | string |  | A string script over the trait's data, with the column's value as `value`, that the cell reads through. |
 | `columnId` | string |  | The column's name in its search parameters and its sort, when it is not the trait id: needed on a second column of the same trait. Letters, digits, and underscores, starting with a letter. |
+| `width` | one of `narrow`, `normal`, `wide` |  | How much room the column wants: `narrow` for a short value such as an id, `wide` for a long one. Absent is `normal`. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:workflowDef

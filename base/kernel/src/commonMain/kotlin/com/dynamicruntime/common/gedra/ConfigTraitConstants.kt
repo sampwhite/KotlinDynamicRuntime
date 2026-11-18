@@ -86,6 +86,9 @@ object CCT {
     const val presentation = "presentation"
     const val columnId = "columnId"
 
+    /** On a usage rule (issue #1855): how much room its column wants, a `ColumnWidth`. */
+    const val width = "width"
+
     const val workflowId = "workflowId"
     const val definition = "definition"
 

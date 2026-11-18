@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.UsageKind
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -442,6 +443,22 @@ val UsageColumnEditor = FC<UsageColumnEditorProps> { props ->
                 className = ClassName("type-hint")
                 +($$"Use this when a cell should read differently from what is searched: ${value} min, or a currency. " +
                     "The column still searches and sorts by its value.")
+            }
+            choiceRow("Width") {
+                Select {
+                    value = (draft.width ?: ColumnWidth.normal).name
+                    options = choiceOptions(ColumnWidth.entries.map { usageWidthText(it) to it.name })
+                    disabled = busy
+                    style = js("({ minWidth: 200 })")
+                    onChange = { v ->
+                        val width = ColumnWidth.entries.firstOrNull { it.name == v.toString() }
+                        draft = draft.copy(width = width.takeIf { it != ColumnWidth.normal })
+                    }
+                }
+            }
+            p {
+                className = ClassName("type-hint")
+                +"Use this when the column's values are much shorter than most, such as an id, or much longer."
             }
         }
         if (problems.isNotEmpty()) {
