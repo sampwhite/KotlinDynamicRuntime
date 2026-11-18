@@ -5,6 +5,8 @@ import com.dynamicruntime.common.content.FragmentMapBuilder
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.counter.CounterDef
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.FileRefDef
@@ -329,6 +331,11 @@ class GedraConfig(
      */
     val fileRefs: List<FileRefDef> = emptyList(),
     /**
+     * The counters this config declares (issue #1849): what numbers its client's counter fields. A list rather than a
+     * map by id, as [fileRefs] is, so a row edited by hand to hold one id twice still reassembles and the load says so.
+     */
+    val counters: List<CounterDef> = emptyList(),
+    /**
      * The listing-wide settings this config declares for its client (issue #1599), when it declares them: how its
      * forms listing draws each row's workflows, for now. At most one, as [client] is. What the client runs with is
      * resolved across its configs, stored over code (`GedraConfigCollector.listingFor`).
@@ -415,6 +422,7 @@ class GedraConfig(
         reports: Map<String, ClientReport> = this.reports,
         workflowParams: Map<String, WfParams> = this.workflowParams,
         fileRefs: List<FileRefDef> = this.fileRefs,
+        counters: List<CounterDef> = this.counters,
         listing: ListingDef? = this.listing,
         origin: GedraConfigOrigin = this.origin,
         inheritedFrom: String? = this.inheritedFrom,
@@ -424,7 +432,7 @@ class GedraConfig(
         defs = defs, client = client, customers = customers, cfacts = cfacts, fragments = fragments, uiBlocks = uiBlocks,
         workflows = workflows, usages = usages, reports = reports, unreadReports = unreadReports,
         unreadWorkflows = unreadWorkflows, shadowedTypes = shadowedTypes, workflowParams = workflowParams,
-        fileRefs = fileRefs, listing = listing, origin = origin, inheritedFrom = inheritedFrom, contributesTo = contributesTo,
+        fileRefs = fileRefs, counters = counters, listing = listing, origin = origin, inheritedFrom = inheritedFrom, contributesTo = contributesTo,
         overridesCode = overridesCode, codeOverlays = codeOverlays,
     )
 
@@ -587,6 +595,29 @@ class GedraConfigBuilder(
         fileRefs.add(FileRefDef.fromEntry(entry, configName = stampName, stored = isStored))
     }
 
+    /** The counters declared in this block (issue #1849); see [counter]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val counters: MutableList<CounterDef> = mutableListOf()
+
+    /**
+     * Declares a counter (issue #1849) -- see [GedraConfig.counters]: ids [prefix] (a template over the day) and then a
+     * count padded to [digits], the count starting again at 1 each day when [reset] is `daily`.
+     */
+    fun counter(
+        counterId: String,
+        prefix: String,
+        digits: Int = CTR.defaultDigits,
+        reset: String = CTR.resetNever,
+        description: String? = null,
+    ) {
+        counters.add(CounterDef(counterId, prefix, digits, reset, description = description, configName = stampName, stored = isStored))
+    }
+
+    /** A counter from its stored entry, stamped with this config's name and origin; see [CounterDef.fromEntry]. */
+    fun counterFromMap(entry: Map<String, Any?>) {
+        counters.add(CounterDef.fromEntry(entry, configName = stampName, stored = isStored))
+    }
+
     /** The client this config defines, if it declared one; see [defineClient]. */
     var clientDef: ClientDef? = null
         private set
@@ -684,8 +715,9 @@ class GedraConfigBuilder(
         substring: Boolean = false,
         presentation: String? = null,
         columnId: String? = null,
+        width: ColumnWidth? = null,
     ) {
-        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation, columnId))
+        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation, columnId, width))
     }
 
     /**
@@ -731,6 +763,7 @@ class GedraConfigBuilder(
             usages = overCodeColumns && built.usages.isNotEmpty(),
             reports = built.reports.keys.filter { it in overCodeNames }.toSet(),
             fileRefs = built.fileRefs.map { it.refId }.filter { it in overCodeNames }.toSet(),
+            counters = built.counters.map { it.counterId }.filter { it in overCodeNames }.toSet(),
         )
     }
 
@@ -1163,6 +1196,7 @@ fun gedraConfig(
         unreadWorkflows = builder.unreadWorkflows.toMap(),
         workflowParams = builder.workflowParams.toMap(),
         fileRefs = builder.fileRefs.toList(),
+        counters = builder.counters.toList(),
         listing = builder.listingDef,
         origin = origin,
         contributesTo = contributesTo,

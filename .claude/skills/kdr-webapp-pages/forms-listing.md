@@ -333,6 +333,25 @@ Within the caller's read scope, like every listing, and `review=mine` too: a rev
 nor an editor cannot list other people's forms, so their reviews do not show here (`deferred-work.md`).
 
 
+## A counter's id is shown before the form is saved (issue #1849)
+
+A field a client's counter fills (`g-counter`) is drawn read-only on every form page, with no required mark, since
+nobody types it (`SchemaForm`). A page asks `/gedra/counter/issue` for the field's id itself (`CounterIds.kt`), and the
+save sends the ids' tokens in `counterTokens`, which no page draws (`formCreateOmittedFields`):
+
+- **The workflow form** (`WorkflowForm`) asks, while the form can be saved -- as a create opens, or as an edit starts on
+  a form whose counter field is empty -- for every counter field of its tasks' traits still lacking an id
+  (`counterSlotsToFill`). Keyed by those fields, so a view read again in place that adds one asks for it. A create for
+  another client asks that client's copy of the endpoint.
+- **The trait picker** (`NewFormPage`) and **the create for another user** (`CreateForUserPage`) ask as a section of
+  such a trait is added (`useCounterIds`, over `counterSlotsInEntries`), keyed by the sections still lacking one so
+  typing asks nothing, and put each id in the first section of its trait without one (`withCounterId`). The create for
+  another user asks the picked user's client.
+- **The raw editor** asks for none: an empty counter field stays empty there.
+
+Every ask uses up an id: a page left without saving, a refresh, or a section removed is a gap in the count, which is the
+intended trade (the issue). A failed ask says "Couldn't get this form's id." under the form, and the field stays empty.
+
 ## A file field uploads a file, then holds its id (issue #1840)
 
 A trait field of format `gedra-file` (`dataFile(...)` in the DSL) draws `DataFileField` wherever a form is filled in --

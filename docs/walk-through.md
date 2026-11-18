@@ -20,7 +20,7 @@ then it is lost when the server stops.
 
 Another site may also lack three things this page uses. Part 1 needs the conference demo to be offered for joining,
 which a test site does when it runs with the `reference` deployment flavor. The invitation in Part 2 reaches you only
-if the site sends its mail for real, where a developer's server usually keeps it instead. The workflow assistant in
+if the site sends its mail for real, where a developer's server usually keeps it instead. The configuration assistant in
 Part 3 needs a key for Anthropic's API, and either an operator who switches it on for your client or a site that lets
 the clients its visitors make switch it on themselves, as this one does; without it, Part 3 has you make the same
 changes by hand. Everything else works on any site you can sign in to.
@@ -55,8 +55,8 @@ Speaker]**. The menu and your home page are now the conference demo's.
 
 ### Submit a talk
 
-Open **My forms** from the menu, and choose **Create a form**. The form that opens is **Start a talk submission**,
-and it asks for one thing:
+Open **My forms** from the menu, and choose **Create a form**. The form that opens is **Start a talk submission**.
+It shows the talk's id, such as **T-007**, which the conference gives it, and asks for one thing:
 
 <!-- kdr-walk: workflow=createTalk -->
 | Field | What to type |
@@ -418,7 +418,7 @@ the sandbox is not there: it belongs to the sandbox.
 ![Part 3: JSON, assistant, try it, approval, publish, API key, a program, and revoke](images/walk-part3.svg)
 
 Every workflow is stored as JSON, and every page you used is built on the site's API. In this part you have the site's
-workflow assistant write the JSON for a workflow in your Book Club, and say what it does, before anything is saved. You
+configuration assistant write the JSON for a workflow in your Book Club, and say what it does, before anything is saved. You
 try the workflow, then have the assistant add a step to it that only an administrator may take. Each change can be made
 by hand instead, from the JSON on this page. Last, you make an API key, and make a third change from a program.
 
@@ -487,11 +487,11 @@ It has one step, **Your review**, which collects the trait by its id, and a butt
 Build it one of the two ways below, not both: the second would be refused, since the trait's id and the workflow's
 would already be taken.
 
-### Ask the workflow assistant for it
+### Ask the configuration assistant for it
 
-The workflow assistant is an AI that writes your client's configuration for you, as a draft in its sandbox. It is
+The configuration assistant is an AI that writes your client's configuration for you, as a draft in its sandbox. It is
 switched on from the client itself, so start as your administrator in Book Club, where the bar offers **Open
-sandbox**. Open **Workflow assistant** from the menu. If it is not on yet, the page says what is sent to Anthropic,
+sandbox**. Open **Configuration assistant** from the menu. If it is not on yet, the page says what is sent to Anthropic,
 whose AI it is, and offers **Switch on the assistant**: choose it, and **Switch on** to confirm. Your client's
 **Getting started** checklist has the same step.
 
@@ -552,7 +552,8 @@ JSON in the bundle editor, and try it again.
 ### Add an approval
 
 Once the review is saved, the workflow is done. The second change makes a review wait for an administrator to approve
-it. Open **Workflow assistant** again, from inside the sandbox, and your conversation is where you left it. Type this, and choose **Send**:
+it. Open **Configuration assistant** again, from inside the sandbox, and your conversation is where you left it. Type
+this, and choose **Send**:
 
 ```text
 Add a second step to Review the book, "Approve the review", that only an administrator may take: a button, "Approve

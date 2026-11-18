@@ -48,8 +48,8 @@ class HomeCardsTest {
         val cards = homeCardsFrom(
             listOf(
                 mapOf(
-                    HFLD.id to ASST.homeCard, HCARD.title to "Workflow assistant", HCARD.text to "Describe it.",
-                    UIB.action to ASST.page, HCARD.actionLabel to "Open the workflow assistant", HCARD.kind to ASST.cardKind,
+                    HFLD.id to ASST.homeCard, HCARD.title to "Configuration assistant", HCARD.text to "Describe it.",
+                    UIB.action to ASST.page, HCARD.actionLabel to "Open the configuration assistant", HCARD.kind to ASST.cardKind,
                 ),
                 administer,
                 // No id: nothing an overlay could name, so not a card.
@@ -59,7 +59,7 @@ class HomeCardsTest {
         assertEquals(listOf(ASST.homeCard, HCARD.administer), cards.map { it.id })
         val assistant = cards[0]
         assertEquals(ASST.page, assistant.actionPage)
-        assertEquals("Open the workflow assistant", assistant.actionLabel)
+        assertEquals("Open the configuration assistant", assistant.actionLabel)
         assertEquals(ASST.cardKind, assistant.kind)
         val admin = cards[1]
         assertNull(admin.actionPage)
@@ -129,7 +129,7 @@ class HomeCardsTest {
             listOf(
                 mapOf(
                     HFLD.id to ASST.homeCard, UIB.action to ASST.page, HCARD.actionLabel to "Open it",
-                    HCARD.offerLabel to "Switch on the assistant", HCARD.jumpLabel to "Workflow assistant",
+                    HCARD.offerLabel to "Switch on the assistant", HCARD.jumpLabel to "Configuration assistant",
                     HCARD.kind to ASST.cardKind,
                 ),
                 // Not named in the row: no jump label.
@@ -137,8 +137,8 @@ class HomeCardsTest {
             ),
         )
         val assistantId = homeCardElementId(ASST.homeCard)
-        assertEquals(listOf("Workflow assistant" to assistantId), homeCardJumpLinks(cards, null))
-        assertEquals(listOf("Workflow assistant" to assistantId), homeCardJumpLinks(cards, AssistantView.on))
+        assertEquals(listOf("Configuration assistant" to assistantId), homeCardJumpLinks(cards, null))
+        assertEquals(listOf("Configuration assistant" to assistantId), homeCardJumpLinks(cards, AssistantView.on))
         // Off, and the person may switch it on: the link says so, as the button does.
         assertEquals(listOf("Switch on the assistant" to assistantId), homeCardJumpLinks(cards, AssistantView.switchOn))
     }
@@ -153,7 +153,7 @@ class HomeCardsTest {
                     HFLD.id to HCARD.register, UIB.action to HMENU.pageRegister, HCARD.actionLabel to "Register",
                     HCARD.jumpLabel to "Register", HCARD.actionFirst to true,
                 ),
-                mapOf(HFLD.id to ASST.homeCard, HCARD.jumpLabel to "Workflow assistant", HCARD.kind to ASST.cardKind),
+                mapOf(HFLD.id to ASST.homeCard, HCARD.jumpLabel to "Configuration assistant", HCARD.kind to ASST.cardKind),
                 administer,
             ),
         )
@@ -163,24 +163,24 @@ class HomeCardsTest {
         val noAction = homeCardsFrom(listOf(mapOf(HFLD.id to "nowhere", HCARD.jumpLabel to "Nowhere", HCARD.actionFirst to true)))
         assertEquals(emptyList(), homeCardJumpButtons(noAction))
         assertEquals(listOf("Nowhere" to homeCardElementId("nowhere")), homeCardJumpLinks(noAction, null))
-        assertEquals(listOf("Workflow assistant" to homeCardElementId(ASST.homeCard)), homeCardJumpLinks(cards, null))
+        assertEquals(listOf("Configuration assistant" to homeCardElementId(ASST.homeCard)), homeCardJumpLinks(cards, null))
     }
 
     @Test
     fun cardLinksJoinTheCopysRowInItsOwnStyle() {
-        val links = listOf("Workflow assistant" to "home.card.assistant")
+        val links = listOf("Configuration assistant" to "home.card.assistant")
         // After a list, as list items -- the shipped copy, and the reference flavor's "Start here" before it.
         assertEquals(
-            "- [Start here](/docs/start-here.md)\n- [Workflow assistant](#home.card.assistant)",
+            "- [Start here](/docs/start-here.md)\n- [Configuration assistant](#home.card.assistant)",
             jumpRowLinks("- [Start here](/docs/start-here.md)\n", links),
         )
         // After a row written on one line, separated as it is.
         assertEquals(
-            "[Start here](/docs/start-here.md) · [Workflow assistant](#home.card.assistant)",
+            "[Start here](/docs/start-here.md) · [Configuration assistant](#home.card.assistant)",
             jumpRowLinks("[Start here](/docs/start-here.md)", links),
         )
         // With no copy, the links alone; with no links, the copy as it was.
-        assertEquals("- [Workflow assistant](#home.card.assistant)", jumpRowLinks(null, links))
+        assertEquals("- [Configuration assistant](#home.card.assistant)", jumpRowLinks(null, links))
         assertEquals("- [A](#x)", jumpRowLinks("- [A](#x)", emptyList()))
         // A label's brackets cannot break the link.
         assertEquals("- [Odd \\[1\\]](#home.card.x)", jumpRowLinks(null, listOf("Odd [1]" to "home.card.x")))

@@ -44,7 +44,7 @@ private const val panelDrafts = "assistant-drafts"
 private const val panelAllowance = "assistant-allowance"
 
 /**
- * The workflow assistant (issue #1527): a client administrator says what they want, and the assistant drafts it in the
+ * The configuration assistant (issue #1527): a client administrator says what they want, and the assistant drafts it in the
  * client's sandbox, for them to try there and publish from the Clients page. Panels: the sandbox, when the client has
  * none (the assistant drafts in it); the conversation; the drafts this conversation made, each to try or publish; and the
  * month's allowance. Nothing here publishes.
@@ -368,12 +368,13 @@ val AssistantPage = FC<Props> {
 
     div {
         className = ClassName("card wide")
-        h1 { +"Workflow assistant" }
+        h1 { +"Configuration assistant" }
         p {
             className = ClassName("subtitle")
             +(
-                "Say what workflow you want, and the assistant drafts it in your sandbox: try it there, then publish it from " +
-                    "the Clients page. It never publishes anything itself."
+                "Say what you want of your client: a workflow, a form that asks for more, plainer wording, a menu item, a " +
+                    "column in the forms list, or a report. The assistant drafts it in your sandbox, for you to try there " +
+                    "and publish from the sandbox's Clients page. It never publishes anything itself."
             )
         }
         val current = status
@@ -384,13 +385,13 @@ val AssistantPage = FC<Props> {
                 val name = current!!.clientName
                 p {
                     +(
-                        "The workflow assistant is not on for $name yet, and you can switch it on. It works within a monthly " +
+                        "The configuration assistant is not on for $name yet, and you can switch it on. It works within a monthly " +
                             "allowance, which this page shows once it is on."
                     )
                 }
                 p { +current.dataNotice }
                 Popconfirm {
-                    title = "Switch on the workflow assistant for $name?"
+                    title = "Switch on the configuration assistant for $name?"
                     description = "What you write to it, and what it reads for you, is sent to Anthropic."
                     okText = "Switch on"
                     cancelText = "Cancel"
@@ -406,11 +407,11 @@ val AssistantPage = FC<Props> {
             AssistantView.switchOnFromClient -> p {
                 className = ClassName("subtitle")
                 val name = current!!.clientName
-                +"The workflow assistant is not on for $name yet. Leave the sandbox to switch it on from $name itself."
+                +"The configuration assistant is not on for $name yet. Leave the sandbox to switch it on from $name itself."
             }
             AssistantView.off -> p {
                 className = ClassName("subtitle")
-                +"The workflow assistant is not on for ${current!!.clientName}. A deployment operator switches it on for a client."
+                +"The configuration assistant is not on for ${current!!.clientName}. A deployment operator switches it on for a client."
             }
             // Outside the sandbox of a client with one (issue #1824): the way in, and no conversation here.
             // A way somewhere, changing nothing here: a view, with no "take effect immediately" line.
@@ -498,7 +499,8 @@ val AssistantPage = FC<Props> {
                         value = text
                         disabled = sending || blocked != null
                         placeholder = if (conversationId == null) {
-                            "Describe the workflow you want: who fills in what, who reviews it, and when."
+                            "Describe what you want: a workflow (who fills in what, who reviews it, and when), or a change " +
+                                "to your forms, wording, menu, or reports."
                         } else {
                             "Ask for a change, or say what to do next."
                         }

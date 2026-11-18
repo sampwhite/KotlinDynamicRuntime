@@ -79,6 +79,20 @@ class ListingColumnsTest {
         val level = ListingColumn("level", "q", "Level", UsageKind.string, null, levels)
         assertEquals(levels, ListingColumn.listFrom(listOf(level.toMap())).single().choices)
         assertEquals(null, columns[0].toMap()[UF.choices])
+        // A width travels when it is not normal (issue #1855), and a column says normal when it is absent.
+        val id = ListingColumn("talkId", "submission", "Talk id", UsageKind.string, null, width = ColumnWidth.narrow)
+        assertEquals(ColumnWidth.narrow, ListingColumn.listFrom(listOf(id.toMap())).single().width)
+        assertEquals(null, columns[0].toMap()[UF.width])
+        assertEquals(ColumnWidth.normal, read[0].width)
+    }
+
+    @Test
+    fun aUsageRulesWidthRoundTripsItsStoredEntry() {
+        val usage = ClientTraitUsage("submission", "Talk id", $$"${talkId}", width = ColumnWidth.narrow)
+        assertEquals(ColumnWidth.narrow, usageFromRuleMap(usage.toRuleMap()).width)
+        // Absent is none: a column of the normal width stores nothing for it.
+        assertEquals(null, ClientTraitUsage("t", "T", $$"${x}").toRuleMap()[CCT.width])
+        assertEquals(ColumnWidth.normal, ListingColumn.of(resolveUsageColumn(ClientTraitUsage("t", "T", $$"${x}"), null)).width)
     }
 
     private val levels = listOf(SchOption("beginner", "Beginners"), SchOption("advanced", "Experts"))

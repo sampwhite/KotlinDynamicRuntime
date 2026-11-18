@@ -489,8 +489,8 @@ table for a new one. Simple first: **Trait** (fixed once saved), **Heading**, **
 `${field}` as the value, keeps no kind of its own (the field decides, #1508), and fills an empty heading
 (`UsageDraft.withField`) -- with a sentence on how the column reads (`usageReadsAsText`) and, for a text column,
 **Search by part of the text**. **More options** (`MoreOptions`, its summary naming what is set, `usageOptionsInForce`)
-hold a hand-written **Value**, how such a value **Reads as**, and a **Presentation**, each with a "Use this when"
-hint. What is wrong is listed as typed (`usageDraftProblems`: a heading its trait already has, a value or presentation
+hold a hand-written **Value**, how such a value **Reads as**, a **Presentation**, and a **Width** (issue #1855: Narrow,
+Normal, or Wide, a named size the forms list draws at `displayColumnWidthOf`), each with a "Use this when" hint. What is wrong is listed as typed (`usageDraftProblems`: a heading its trait already has, a value or presentation
 that does not parse) and Save waits. **The server decides where it lands** (`ClientUsageEdit`): a new column in the
 definition's configuration, a change where the column is stored -- a heading renamed replaces the entry in place, since
 the heading is part of the key (#1490) -- and makes a `columnId` from the heading when the trait already has a column;

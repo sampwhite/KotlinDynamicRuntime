@@ -776,9 +776,12 @@ private fun ChildrenBuilder.renderProperties(
                 // response demonstrates by carrying it.
                 name, prop,
                 // Or required on this form by its layout (issue #1022): drawn here, so the schema offers it now.
-                (name in type.required || name in alsoRequired || copy?.entry?.required == true) && !prop.valueType.derived,
+                (name in type.required || name in alsoRequired || copy?.entry?.required == true) && !prop.valueType.derived &&
+                    prop.valueType.counter == null,
                 values[name], seen,
-                editable && !prop.valueType.derived,
+                // A counter's field (issue #1849) holds the id the page asked for, which nobody types: drawn read-only,
+                // and never marked required, for the reason a derived one is not.
+                editable && !prop.valueType.derived && prop.valueType.counter == null,
                 childPath(path, name), errors,
                 // A removal has to drop the key, not null it: a null against an object/array type fails the plain
                 // type check (they do not coerce), so "removed" would read as "present but wrong".

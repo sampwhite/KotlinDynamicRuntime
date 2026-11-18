@@ -4,7 +4,7 @@
 A client is configuration: bundles of JSON, each holding entries in slots (the
 [client configuration reference](client-configuration.md) lists every slot). Anything in it can be changed by writing
 JSON, with a bundle patch. Most kinds of change also have an **editor**: a panel of the Clients page, Design View on a
-form, or the Reports page, each with an endpoint behind it, and a tool the workflow assistant uses. This page says, for
+form, or the Reports page, each with an endpoint behind it, and a tool the configuration assistant uses. This page says, for
 each kind of change, which to use.
 
 ## Why an editor, where there is one
@@ -29,7 +29,7 @@ each kind of change, which to use.
 - **A workflow's parameters** (its time windows, who sees it, and whether it is on) are the exception: they are in force
   at once and never drafted. Set in the sandbox, they are the sandbox's own, and the client's are set in the client.
 - **A dry run** checks a change as its save would, and stores nothing. Each endpoint below marked "yes" takes one
-  (`dryRun: true`), and the workflow assistant always takes it before it saves, since a save that can be refused
+  (`dryRun: true`), and the configuration assistant always takes it before it saves, since a save that can be refused
   or can reach stored forms is better seen first.
 - **The assistant** works as the person's own user in the client's sandbox, so every change it makes to the configuration
   is a draft, and it cannot publish. A workflow's parameters it sets are the sandbox's own, in force there at once. It
@@ -48,6 +48,8 @@ each kind of change, which to use.
 | Which of the platform's traits it includes | Clients page, **Forms and data**, **Traits** | `POST /clientAdmin/client/traits/set` | `set_included_traits` | No |
 | A trait of its own, made or changed: its fields, their kinds, and their choices | Clients page, **Forms and data**, **Traits** | `POST /clientAdmin/client/traits/design` | `design_trait` | Yes |
 | One of the platform's traits narrowed: fields hidden or required, choices kept, a name of its own | Clients page, **Forms and data**, **Traits** | `POST /clientAdmin/client/traits/narrow` | `narrow_trait` | Yes |
+| A counter, made or changed: a form's ids, a prefix and then a zero-padded count (`kdr:counterDef`) | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
+| A field that takes its ids from a counter (`g-counter` in its trait's `dataSchema`), or a trait holding one | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
 
 ## A workflow's form
 
@@ -132,7 +134,7 @@ cards are written as described in [Menu and home cards](menu-and-home-cards.md),
 ## About this file
 
 **Everything above this section is generated.** A running server makes its tables from the editors' endpoints and the
-workflow assistant's tools as the code names them, and the assistant's tests hold each of its tools to a row, so the
+configuration assistant's tools as the code names them, and the assistant's tests hold each of its tools to a row, so the
 page cannot name an endpoint or a tool that does not exist. Read it on the server's **Documents** page, under
 **Reference**, then **Making changes**, where anyone may open it without signing in. On the public reference site it is
 at [dynamicruntime.org/wa/docs/making-changes](https://dynamicruntime.org/wa/docs/making-changes).

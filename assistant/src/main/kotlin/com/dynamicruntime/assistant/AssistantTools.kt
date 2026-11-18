@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.ClientPresentationFields
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.WorkflowLayout
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
@@ -214,7 +215,7 @@ object AssistantTools {
 
     /** The scope the seam holds every call to: exactly the endpoints the tools name. */
     val scope: InProcessScope by lazy {
-        InProcessScope.of("the workflow assistant", all.mapNotNull { t -> t.path?.let { t.method!!.name to it } }.toSet())
+        InProcessScope.of("the configuration assistant", all.mapNotNull { t -> t.path?.let { t.method!!.name to it } }.toSet())
     }
 
     /** The tool definitions, as the model is sent them. */
@@ -664,6 +665,15 @@ object AssistantTools {
             CCT.display to stringSchema($$"The column's value: a field of the trait as ${field}, or an expression."),
             CCT.kind to stringSchema("How the value is compared and sorted, such as 'number' or 'date'; absent for text."),
             CCT.presentation to stringSchema($$"How the value reads in the list, an expression over ${value}; absent as it is."),
+            // Each of these is the column's too (issues #1491, #1855): a save writes the column whole, so one left out is
+            // reset, and the tool says to restate them.
+            CCT.substring to mapOf("type" to "boolean", "description" to "For a text column, true to let a search match part of the value."),
+            CCT.width to mapOf(
+                "type" to "string",
+                "enum" to ColumnWidth.entries.map { it.name },
+                "description" to "How much room the column needs: 'narrow' for a short value such as an id, 'wide' for a " +
+                    "long one; absent is 'normal'.",
+            ),
             required = listOf(CCT.traitId, CCT.label, CCT.display),
         )
         return listOf(
@@ -687,8 +697,10 @@ object AssistantTools {
                 "Adds a column to the client's forms list, or changes one, as a draft. A column is known by its trait and " +
                     "its heading: to change one, give the heading it has now as '${CUS.previousLabel}'. Its trait is " +
                     "fixed once saved. A column whose value does not resolve on its trait is refused. Read the columns " +
-                    "and the fields a column may show with ${ATOOL.readFormsList}. **Dry run first**, then save in a " +
-                    "later step.",
+                    "and the fields a column may show with ${ATOOL.readFormsList}. A save writes the column whole: a field " +
+                    "left out goes back to its default, so when changing a column, restate its '${CCT.kind}', " +
+                    "'${CCT.substring}', '${CCT.presentation}', and '${CCT.width}' as ${ATOOL.readFormsList} gave them, " +
+                    "unless the change is to them. **Dry run first**, then save in a later step.",
                 objectSchema(
                     CUS.column to column,
                     CUS.previousLabel to stringSchema("The heading of the column this changes; absent for a new column."),

@@ -6,8 +6,12 @@ import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.datafile.dataFileSchema
 import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.DebugTagDef
+import com.dynamicruntime.common.counter.CounterClaimHook
+import com.dynamicruntime.common.counter.CounterService
+import com.dynamicruntime.common.counter.counterTables
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
+import com.dynamicruntime.common.gedra.valueClaimTables
 import com.dynamicruntime.common.gedra.workflow.OwnerOnlyGuard
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.gedra.EditorDeleteGuard
@@ -207,8 +211,11 @@ class CommonComponent : ComponentDefinition {
         collector.addSchemaFunction(ComputeValueCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the core details save) keep core details state fresh.
-        // The links between forms and the data files their fields name (issue #1838), first: the next hook rebinds the
-        // write's context to the form's owner, and a file newly linked must be one the caller may use.
+        // A counter's field holds only an id issued to the writer, stored once and never changed (issue #1849). First, so
+        // a write it refuses fails before the work below is done for nothing; it reads only who is acting.
+        collector.addWriteHook(CounterClaimHook)
+        // The links between forms and the data files their fields name (issue #1838), before the state hook: that hook
+        // rebinds the write's context to the form's owner, and a file newly linked must be one the caller may use.
         collector.addWriteHook(DataFileLinkHook)
         collector.addWriteHook(DerivedStateWriteHook)
         // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
@@ -328,6 +335,10 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(reportHistoryTables(cxt), appOnly)
         // A workflow's parameters, its time windows first (issue #1356): set per client, in force at once.
         collector.addTables(workflowParamsTables(cxt), appOnly)
+        // Counters (issue #1849): the counts, in a topic of their own, and the values a form claims -- a counter's id
+        // first -- written with a form's data.
+        collector.addTables(counterTables(cxt), appOnly)
+        collector.addTables(valueClaimTables(cxt), appOnly)
         // Per-gedra job failures (issue #871), in the same topic.
         collector.addTables(jobExceptionTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)
@@ -482,6 +493,8 @@ class CommonComponent : ComponentDefinition {
             // A client's file refs (issue #1153), read from its configuration and served under the static root.
             // Application-only, as the file store is.
             service(::FileRefService, roles = setOf(BOOT.app)),
+            // A client's counters (issue #1849), read from its configuration: what numbers a field's ids.
+            service(::CounterService, roles = setOf(BOOT.app)),
             // Resolves UiBlocks for a caller (issue #457). A regular service, so the startup tier's
             // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
             // compiled by the time this initializes.

@@ -70,6 +70,7 @@ names one thing in the whole client, whichever bundle holds it. The slots a clie
 | `$${CCT.fragmentDef}` | Its wording: changes to the platform's copy, key by key. |
 | `$${CCT.uiBlockDef}` | Its changes to the menu and Home's cards ([Menu and home cards](menu-and-home-cards.md)). |
 | `$${CCT.fileRefDef}` | The named images its copy shows. |
+| `$${CCT.counterDef}` | Its counters, which number a field of its forms: a prefix, then a count. |
 
 The [client configuration reference](client-configuration.md) lists every slot, every field of their entries, and how
 an edit of one is written. A bundle is the unit of publishing: a workflow kept in a bundle of its own can be published
@@ -97,7 +98,7 @@ its forms; and the images it uploads.
 What a client's people see is put together from layers, the later winning:
 
 1. **The platform's core:** its traits, its menu and Home's cards, its pages, and its wording.
-2. **The deployment's modules:** what each adds to the core, such as the workflow assistant's cards on Home.
+2. **The deployment's modules:** what each adds to the core, such as the configuration assistant's cards on Home.
 3. **The deployment's flavor:** a variant of the deployment, such as the public reference site, which sets the
    deployment's own switches and may reword copy.
 4. **The template** a configured client is built on, whose traits, workflows, and wording it inherits.

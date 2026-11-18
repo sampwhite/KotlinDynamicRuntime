@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -220,7 +221,7 @@ class GedraConfigTest : StringSpec({
         val config = coreConfigTraits(cxt)
         config.configTraits.keys.toList() shouldContainExactly listOf(
             CCT.clientDef, CCT.customerDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
-            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef, CCT.listingDef,
+            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef, CCT.listingDef, CCT.counterDef,
         )
         config.traits.isEmpty() shouldBe true
         // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/usage slots by trait id,
@@ -240,6 +241,8 @@ class GedraConfigTest : StringSpec({
         ConfigSlotShapes.primaryKey(cxt, CCT.fileRefDef) shouldBe listOf(CCT.refId)
         // The listing settings are single-instance, as the client is (issue #1599).
         ConfigSlotShapes.primaryKey(cxt, CCT.listingDef) shouldBe emptyList()
+        // A counter by its counter id (issue #1849).
+        ConfigSlotShapes.primaryKey(cxt, CCT.counterDef) shouldBe listOf(CTR.counterId)
     }
 
     "the referenced slots point at the canonical shapes, and the schema-doc slots parse their body" {

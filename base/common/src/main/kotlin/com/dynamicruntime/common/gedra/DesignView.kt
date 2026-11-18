@@ -877,7 +877,7 @@ class DesignSave(val stamp: String, val configName: String, val draftImpact: Imp
 }
 
 /**
- * The fields a Design View edit's result adds for the workflow assistant (issue #1765): the bundle it landed in, whether
+ * The fields a Design View edit's result adds for the configuration assistant (issue #1765): the bundle it landed in, whether
  * it was a dry run, and a draft's impact.
  */
 private fun SchTypeBuilder.designDryRunProperties() {

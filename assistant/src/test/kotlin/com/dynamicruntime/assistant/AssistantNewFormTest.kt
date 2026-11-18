@@ -8,18 +8,23 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CUS
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.toRuleMap
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -34,6 +39,7 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
@@ -121,6 +127,18 @@ class AssistantNewFormTest : StringSpec({
         AssistantPrompt.versionFor(configured, "one line") shouldNotBe AssistantPrompt.versionFor(configured, "another line")
         AssistantPrompt.versionOf(cxt, configured) shouldBe
             AssistantPrompt.versionFor(configured, AssistantPrompt.clientLine(cxt, configured))
+    }
+
+    // Issue #1855: a column's save writes it whole, so the tool must offer every field a stored column has, or a change
+    // made through it resets one it does not know -- as it did a column's width and its contains search.
+    "the forms list's column tool offers every field a stored column has, but the id the server makes" {
+        val usage = ClientTraitUsage(
+            "t", "T", $$"${x}", UsageKind.string, substring = true, presentation = $$"${value}", columnId = "c",
+            width = ColumnWidth.narrow,
+        )
+        val offered = AssistantTools.byName.getValue(ATOOL.saveFormsListColumn).inputSchema[SCH.properties]
+            .toJsonMapOrEmpty()[CUS.column].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty().keys
+        (usage.toRuleMap().keys - CCT.columnId - offered) shouldBe emptySet()
     }
 
     "a scripted turn changes what a starter New form asks for, as a draft the sandbox runs" {

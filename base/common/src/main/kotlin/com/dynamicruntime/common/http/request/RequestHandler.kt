@@ -732,7 +732,7 @@ class RequestHandler : WebRequest {
             else -> 0L to 0L
         }
         // A call made in this process has no wire to stream to, so what it is sent is held whole: refused past a bound
-        // rather than read into memory, since an in-process caller -- the workflow assistant -- may ask for any file.
+        // rather than read into memory, since an in-process caller -- the configuration assistant -- may ask for any file.
         if (jettyResponse == null && length > maxCapturedStreamBytes) {
             throw KdrException(
                 "$length bytes of $method:$uri cannot be sent to a call made in this process, which holds what it is " +
@@ -939,7 +939,7 @@ class RequestHandler : WebRequest {
 
         /**
          * The most bytes of a streamed response a call made in this process is sent (issue #1836), which it holds
-         * whole: a test's, or the workflow assistant's ([InProcessCaller]). A larger range is refused, never read.
+         * whole: a test's, or the configuration assistant's ([InProcessCaller]). A larger range is refused, never read.
          */
         const val maxCapturedStreamBytes = 32 * 1024 * 1024
 

@@ -43,7 +43,9 @@ private val formScope = MainScope()
 val NewFormPage = FC<Props> {
     var endpoint by useState<EndpointInfo?>(null)
     var catalog by useState<Catalog?>(null)
-    var values by useState<Map<String, Any?>>(emptyMap())
+    val valuesState = useState<Map<String, Any?>>(emptyMap())
+    var values by valuesState
+    val updateValues = valuesState.component2()
     var failures by useState<List<SchFailure>?>(null)
     // Set when a field is edited after a check, so the page can say what is on screen predates the last check --
     // the same three-state honesty the catalog keeps (never / checked-clean / checked-then-edited).
@@ -88,6 +90,9 @@ val NewFormPage = FC<Props> {
     }
 
     useFocusOnFailure(focusRequest, failures)
+
+    // A counter's field (issue #1849): given its id as its section is added.
+    val counterIds = useCounterIds(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, values, updateValues)
 
     div {
         className = ClassName("card wide")
@@ -178,7 +183,9 @@ val NewFormPage = FC<Props> {
                                     try {
                                         // Create for the picked user when an admin chose one (issue #727); absent
                                         // is the ordinary self-create.
-                                        val body = pickedUser?.let { formForUserBody(it.primaryId, payload) } ?: payload
+                                        // With the tokens of the ids the page asked for (issue #1849).
+                                        val sent = withCounterTokens(payload, counterIds.tokens)
+                                        val body = pickedUser?.let { formForUserBody(it.primaryId, sent) } ?: sent
                                         val response = SchemaCatalogApi.invoke(ep, body)
                                         // Back to the listing (issue #663), flashing the new row -- the same
                                         // confirmation the edit form's save gives (issue #592) -- rather than an
@@ -222,6 +229,7 @@ val NewFormPage = FC<Props> {
                     )
                 }
 
+                counterIds.error?.let { errorText("Couldn't get this form's id.", it) }
                 runError?.let { errorText("Couldn't create the form.", it) }
             }
         }

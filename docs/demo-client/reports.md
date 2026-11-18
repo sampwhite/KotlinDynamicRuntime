@@ -42,7 +42,8 @@ Here is the whole `reports` bundle:
             "label": "Minutes",
             "path": "form.abstract.durationMinutes",
             "rollup": "sum"
-          }
+          },
+          {"columnId": "talkId", "label": "Talk id", "path": "form.submission.talkId"}
         ],
         "groupBy": ["track"]
       }
@@ -143,7 +144,8 @@ Grouped, **Submissions by track** is a table of **Track**, **Forms**, and **Minu
 many talks it has, and their durations added up. A rolled-up column's heading says its rollup. Under the table a
 line says how many groups there are and how many forms were read. Run per form, the table has a row per talk,
 starting with an **Open** link to it, then **Track**, **Talk**, **Speaker**, **Status**, **Review**, **Call to
-action**, and **Minutes**. A talk with no abstract yet shows a dash for its minutes. A track shows as the form labels
+action**, **Minutes**, and **Talk id** ([Numbering talks](numbering.md)). A talk with no abstract yet shows a dash for
+its minutes, and one created without an id a dash for its id. A track shows as the form labels
 it, *Kotlin*, with its stored value, `kotlin`, when you hover over the cell. The downloaded file holds the stored
 values. The **Call to action** column works the same way: a talk in the committee review and not yet accepted
 shows *Needs review*, with `review` when you hover, and every other talk shows a dash.

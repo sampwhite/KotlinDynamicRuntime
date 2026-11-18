@@ -5,6 +5,10 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.datafile.DataFileLinks
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.counter.CounterService
+import com.dynamicruntime.common.counter.CounterTokens
+import com.dynamicruntime.common.counter.counterTokensShape
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -163,6 +167,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         needsClientConfig = true,
     ) { c, request ->
         val entries = request[GDF.entries].toJsonListOfMaps()
+        // Before the owner's context is made from `c`, so it has them (issue #1849).
+        CounterTokens.bind(c, request[CTR.counterTokens])
         // On-behalf create (issue #727): when `user` names someone else, an admin creates the form for them,
         // owned in their scope, the caller left as the actor; absent or self, this is `c` unchanged.
         val ownerCxt = createForUserCxt(c, request)
@@ -390,6 +396,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(UF.label, "The column header.", required = true)
         property(UF.kind, "What the column's value is, and so how it sorts and searches.", required = true) { options(UsageKind.entries) }
         property(UF.presentation, "A string script over the trait's data, with the column's value as `value`, that the cell reads through. Absent shows the value -- relative to now for a date.")
+        property(UF.width, "How much room the column wants (issue #1855): `narrow` or `wide`. Absent is `normal`.") { options(ColumnWidth.entries) }
         property(
             UF.choices,
             "What the column's value can be (issue #1500), in order, when it is a single field that offers choices or is a " +
@@ -829,11 +836,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 "Override the workflow trait locks these edits touch, for this reason (recorded). Only for a caller " +
                     "each lock allows to override; absent means no override is asked.",
             )
+            field(CTR.counterTokens, CounterTokens.hint) { counterTokensShape() }
         },
         publicApi = true,
         needsClientConfig = true,
     ) { c, request ->
         val gedraService = GedraService.get(c)
+        CounterTokens.bind(c, request[CTR.counterTokens])
         // An override (issue #857) is asked of every target in the patch: the lock guard applies it per gedra.
         val overrideReason = request[GPF.overrideReason].toOptStr()
         val byKind = LinkedHashMap<GedraDataType, List<GedraPatchTarget>>()
@@ -1364,6 +1373,35 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         property(GDF.gedraId, "When saved by an edit: the form it updated. Its new state is read from the workflow view.")
     }
 
+    type(GEP.counterIdType) {
+        type = SCT.kObject
+        description = "An id a counter issued, and the token a write sends back with it."
+        property(CTR.value, "The id, as the field holds it: the counter's prefix, then its count padded with zeroes.", required = true)
+        property(CTR.token, "The sealed proof the id was issued to you, sent back in '${CTR.counterTokens}' with the write that stores it.", required = true) {
+            sensitive = true
+        }
+    }
+
+    // A counter's next id (issue #1849), asked for by a page as it opens a form that has a counter's field, so the
+    // person sees the id before the form is saved. Each call uses up an id; one never stored is a gap.
+    generalEndpoint(
+        GEP.counterIssue,
+        "Issues the next id of one of the client's counters, with the token a write sends back to store it. Each call " +
+            "uses up an id, so one that is never stored is a gap. A daily counter's count starts again at 1 on each of " +
+            "the client's days.",
+        HttpMethod.POST,
+        outputRef = GEP.counterIdType,
+        inputFields = {
+            field(CTR.counter, "The counter to issue the next id of, by its id.", required = true)
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val counterId = request[CTR.counter].toOptStr() ?: throw KdrException.mkInput("A '${CTR.counter}' is required.")
+        val issued = CounterService.get(c).issue(c, c.client, counterId)
+        mapOf(CTR.value to issued.value, CTR.token to issued.token)
+    }
+
     // Saves the entries a workflow task collected, with the workflow's gate (issue #535). A refused save is a
     // **result** -- `saved` false, the unmet required traits named -- not an error, so a page can point at the
     // fields to finish; a mistake (unknown task/save, a trait the task does not collect) is a loud 400.
@@ -1386,10 +1424,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // The on-behalf create (issue #727): applies to a `create` save only -- an admin makes the new form
             // for the named user; ignored on an edit save, which acts on the form named by gedraId.
             field(EI.user, GedraDataRow.createForUserHint)
+            field(CTR.counterTokens, CounterTokens.hint) { counterTokensShape() }
         },
         publicApi = true,
         needsClientConfig = true,
     ) { c, request ->
+        CounterTokens.bind(c, request[CTR.counterTokens])
         val workflowId = request[GDF.workflowId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
         val declared = WorkflowPhases.liveFor(c, WorkflowService.get(c).forClient(c.client), workflowId)
@@ -1966,9 +2006,11 @@ fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.admin
                 items { type = SCT.kObject }
             }
             field(GDF.allowAdditionalTraits, GedraDataRow.additionalTraitsHint) { type = SCT.boolean }
+            field(CTR.counterTokens, CounterTokens.hint) { counterTokensShape() }
         },
         needsClientConfig = true,
     ) { c, request ->
+        CounterTokens.bind(c, request[CTR.counterTokens])
         val ref = request[EI.user].toOptStr()?.trim()?.ifEmpty { null }
             ?: throw KdrException.mkInput("A '${EI.user}' (numeric id or email) is required.")
         // Unrestricted, since the `admin` section already confines the caller to `allClients`: the user may be in

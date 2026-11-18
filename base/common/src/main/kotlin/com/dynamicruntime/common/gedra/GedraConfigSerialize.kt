@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -106,6 +107,8 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     // One entry an id: a slot holds one entry per key, and a row edited by hand to hold an id twice would otherwise
     // be unwritable until one was removed. The first is the one a load keeps, so it is the one written back.
     out[CCT.fileRefDef] = config.fileRefs.distinctBy { it.refId }.map { it.toEntry() }
+    // One entry an id, for the reason a file ref's is (issue #1849).
+    out[CCT.counterDef] = config.counters.distinctBy { it.counterId }.map { it.toEntry() }
     config.listing?.let { out[CCT.listingDef] = listOf(it.toEntry()) }
     // Each entry the config marks to stand over code (issue #1634) carries the mark, as the stored entry says it.
     if (!config.overridesCode.isEmpty) markOverCode(out, config.overridesCode)
@@ -126,6 +129,7 @@ private fun markOverCode(out: MutableMap<String, List<Map<String, Any?>>>, keys:
     marked(CCT.workflowDef) { it[CCT.workflowId] in keys.workflows }
     marked(CCT.reportDef) { it[CCT.reportId] in keys.reports }
     marked(CCT.fileRefDef) { it[CCT.refId] in keys.fileRefs }
+    marked(CCT.counterDef) { it[CTR.counterId] in keys.counters }
     if (keys.usages) marked(CCT.usageDef) { true }
 }
 
@@ -249,7 +253,7 @@ fun reassembleGedraConfig(
     entriesBySlot[CCT.traitDef]?.forEach { reassembleTrait(it) }
     entriesBySlot[CCT.usageDef]?.forEach { e ->
         val usage = usageFromRuleMap(e)
-        traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId)
+        traitUsage(usage.traitId, usage.label, usage.display, usage.kind, usage.substring, usage.presentation, usage.columnId, usage.width)
     }
     entriesBySlot[CCT.workflowDef]?.forEach { e ->
         // An overlay of a code workflow (issue #1657) is read over the code's.
@@ -281,6 +285,8 @@ fun reassembleGedraConfig(
     }
     // Forgiving, as a report is: a ref that is no good costs only itself, and it is the load that says so.
     entriesBySlot[CCT.fileRefDef]?.forEach { fileRefFromMap(it) }
+    // Forgiving too (issue #1849): a counter with a bad field costs only itself, and the load says so.
+    entriesBySlot[CCT.counterDef]?.forEach { counterFromMap(it) }
     // One entry (issue #1599), read leniently: a value this release does not know is the default.
     entriesBySlot[CCT.listingDef]?.firstOrNull()?.let { listing(ListingDef.fromEntry(it)) }
 }.let { config ->

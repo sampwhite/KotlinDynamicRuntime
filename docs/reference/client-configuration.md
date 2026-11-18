@@ -130,6 +130,7 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 | [`kdr:cfactDef`](#kdrcfactdef) | `name` | One cfact name this configuration declares exists (declaration only), keyed by name. |
 | [`kdr:fileRefDef`](#kdrfilerefdef) | `refId` | One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file store's are named by their `hash`; a local file's by a `root` and a `path` under it, and by no hash. |
 | [`kdr:listingDef`](#kdrlistingdef) | one entry | The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the one its code or template declares. |
+| [`kdr:counterDef`](#kdrcounterdef) | `counterId` | One counter of this client -- what numbers a field's ids, a prefix and then a zero-padded count -- keyed by its counter id. A field names it with `g-counter`. |
 
 ### kdr:clientDef
 
@@ -215,6 +216,7 @@ Keyed by `traitId` and `label`.
 | `substring` | boolean |  | For a string value, whether the search also offers a substring match. |
 | `presentation` | string |  | A string script over the trait's data, with the column's value as `value`, that the cell reads through. |
 | `columnId` | string |  | The column's name in its search parameters and its sort, when it is not the trait id: needed on a second column of the same trait. Letters, digits, and underscores, starting with a letter. |
+| `width` | one of `narrow`, `normal`, `wide` |  | How much room the column wants: `narrow` for a short value such as an id, `wide` for a long one. Absent is `normal`. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ### kdr:workflowDef
@@ -316,6 +318,22 @@ A bundle holds one entry in this slot.
 | Field | Type | Required | What it is |
 |---|---|---|---|
 | `workflowLayout` | one of `split`, `combined` |  | How each row's workflows are drawn: `split` (the default) or `combined`. |
+
+### kdr:counterDef
+
+One counter of this client -- what numbers a field's ids, a prefix and then a zero-padded count -- keyed by its counter id. A field names it with `g-counter`.
+
+Keyed by `counterId`.
+
+| Field | Type | Required | What it is |
+|---|---|---|---|
+| `counterId` | string | yes | The counter's id within its client, which a field's `g-counter` names: letters, digits, and underscores, starting with a letter, at most 64 characters. |
+| `prefix` | string | yes | A string-script template for the text before the count. It reads `${day}`, the client's day the id is issued on (2026-11-17), and `${compactDay}`, the same day without its dashes (20261117). Empty for ids that are the count alone. |
+| `digits` | integer |  | How many digits the count is padded to with zeroes: 2 to 8, and 4 when left out. A count that outgrows them widens. |
+| `reset` | one of `never`, `daily` |  | When the count starts again at 1: `never` (the default) or `daily`, on each of the client's days. |
+| `enabled` | boolean |  | Whether new ids are issued; true when left out. Disable a counter rather than remove it, so its ids still mean something. |
+| `description` | string |  | What the counter numbers, in the administrator's words. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ## The types the slots refer to
 

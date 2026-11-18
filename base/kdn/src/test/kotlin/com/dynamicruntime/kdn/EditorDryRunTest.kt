@@ -46,7 +46,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 /**
- * The dry runs of the Clients page's editors the workflow assistant uses (issue #1766): the trait designer, a workflow
+ * The dry runs of the Clients page's editors the configuration assistant uses (issue #1766): the trait designer, a workflow
  * made from a template and its removal, a workflow's parameters, and report making. Each dry run is judged as its save
  * would be and answers `dryRun: true`, and stores nothing -- no configuration, no trait, no workflow, no parameter, no
  * report. (Narrowing a global trait is `ClientTraitNarrowTest`'s, over its instance with a global trait to narrow.) A

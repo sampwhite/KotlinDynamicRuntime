@@ -708,7 +708,7 @@ class AssistantTurnsTest : StringSpec({
         for ((method, path) in excluded + more) {
             val refused = call(method, path)
             refused.status shouldBe EXC.notAuthorized
-            refused.errorMessage.shouldNotBeNull() shouldContain "not open to the workflow assistant"
+            refused.errorMessage.shouldNotBeNull() shouldContain "not open to the configuration assistant"
         }
         // A client's own copy of a permitted endpoint is not that endpoint: the scope names paths exactly.
         for (path in listOf("/clientOperator/$client/cfacts", "/gedra/$client/workflow/view")) {

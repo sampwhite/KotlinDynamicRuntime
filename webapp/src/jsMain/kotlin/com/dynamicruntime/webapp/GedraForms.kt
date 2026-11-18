@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.gedra.branchDisplayName
 import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
@@ -322,7 +323,7 @@ fun formsArrivalNote(hp: Map<String, String>, appliedSearch: Map<String, Any?>, 
  * into a box. One list for both create pages: #762 was the two lists drifting, one page drawing the `user`
  * field and asking again for the user it was opened for. Covered under `jsNodeTest`.
  */
-val formCreateOmittedFields: List<String> = listOf(GDF.allowAdditionalTraits, EI.user)
+val formCreateOmittedFields: List<String> = listOf(GDF.allowAdditionalTraits, EI.user, CTR.counterTokens)
 
 /**
  * The body of an on-behalf create (issues #727, #762): the form's [payload] with the picked user [userRef]

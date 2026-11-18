@@ -123,7 +123,7 @@ class AssistantService : ServiceInitializer {
                 if (key == null) {
                     missingSecret = s.keySecret
                     reason = "No Anthropic API key: the secret '${s.keySecret}' is not in ${SecretsUtil.secretsPath}."
-                    LogStartup.info(cxt, "The workflow assistant is unavailable on this node. ${reason.orEmpty()}")
+                    LogStartup.info(cxt, "The configuration assistant is unavailable on this node. ${reason.orEmpty()}")
                 } else {
                     model = AnthropicModel(key).also { InstanceRegistry.registerForShutdown(it) }
                 }
@@ -153,8 +153,7 @@ class AssistantService : ServiceInitializer {
     fun isOn(cxt: KdrCxt, client: String): Boolean {
         if (model == null) return false
         val payer = payerOf(client)
-        val cache = clientCache
-        if (cache == null) return clientRow(cxt, payer)?.get(PF.enabled) == true
+        val cache = clientCache ?: return clientRow(cxt, payer)?.get(PF.enabled) == true
         cache.checkRefresh(cxt)
         return cache.snapshot.get(cache.idOf(payer)) != null
     }
@@ -215,7 +214,7 @@ class AssistantService : ServiceInitializer {
     /** The refusal of a switch-on where the assistant is not offered. */
     @KdrPrivate
     fun notOffered(client: String): KdrException = AssistantTurns.refused(
-        "The workflow assistant is not offered to '$client' to switch on; an operator switches it on.",
+        "The configuration assistant is not offered to '$client' to switch on; an operator switches it on.",
         EXC.notAuthorized, ACNV.notOfferedCode,
     )
 
@@ -487,7 +486,7 @@ class AssistantService : ServiceInitializer {
 /** What the operator acknowledges when switching the assistant on for a client. */
 @Suppress("ConstPropertyName")
 object DATA {
-    const val notice = "When this client's administrators use the workflow assistant, what they write, the conversation " +
+    const val notice = "When this client's administrators use the configuration assistant, what they write, the conversation " +
         "so far, and what the assistant reads for them through this deployment's endpoints -- the client's configuration, " +
         "workflows, traits, and the documentation -- are sent to Anthropic to produce each answer. The assistant reads " +
         "no form data, users, or keys, and it only drafts in the client's sandbox: a person publishes."

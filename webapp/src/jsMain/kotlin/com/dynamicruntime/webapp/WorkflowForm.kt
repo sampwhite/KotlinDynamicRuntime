@@ -193,6 +193,32 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val valuesState = useState(seeded)
     var valuesByTrait by valuesState
     val updateValues = valuesState.component2()
+    // The ids a counter issued for this form (issue #1849), asked for while the form can be saved -- as a create opens,
+    // or as an edit starts on a form whose counter field is empty -- so the person sees them before saving, and the
+    // tokens the save sends back to store them. Keyed by the fields still lacking one, so a view read again in place
+    // that adds one asks for it, and typing asks nothing. Each ask uses up an id.
+    val counterTokensState = useState<List<String>>(emptyList())
+    val counterTokens by counterTokensState
+    val updateCounterTokens = counterTokensState.component2()
+    var counterError by useState<DisplayError?>(null)
+    val counterSlots = if (isEdit && !editing) {
+        emptyList()
+    } else {
+        counterSlotsToFill(wf.tasks.flatMap { it.traits }.filterNot { it.traitId in wf.lockedTraits }.map { it.traitId to it.type }) { valuesByTrait[it] ?: emptyMap() }
+    }
+    useEffect(counterSlots.joinToString { "${it.traitId}.${it.field}" }) {
+        if (counterSlots.isEmpty()) return@useEffect
+        try {
+            // Every id asked for before any lands, so one landing does not start the ask over (see `useCounterIds`).
+            val issued = counterSlots.map { it to CounterApi.issue(it.counterId, props.client) }
+            updateValues { current ->
+                issued.fold(current) { acc, (slot, id) -> acc + (slot.traitId to (acc[slot.traitId].orEmpty() + (slot.field to id.value))) }
+            }
+            updateCounterTokens { it + issued.map { (_, id) -> id.token } }
+        } catch (e: Throwable) {
+            counterError = userFacingError(e)
+        }
+    }
     // Which supplied `filled` defaults are still suggestions (issue #710), by trait: seeded from the view's
     // filled defaults, a field leaving the set the first time it is touched (below) and a "reset" putting it
     // back. `offer` defaults are not seeded here -- they are not shown until applied, so they are never
@@ -343,7 +369,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // A create save may be for another user (issue #727) when an admin picked one; an edit ignores it.
         val forUserRef = if (isEdit) null else pickedUser?.primaryId
         val save = saveFor(task) ?: return
-        val body = workflowSaveBody(wf.workflowId, task.id, save.id, entries, gedraId, forUserRef)
+        val body = workflowSaveBody(wf.workflowId, task.id, save.id, entries, gedraId, forUserRef, counterTokens)
         // What this save sends, by trait, as the working values held it at the click -- what "stored" becomes for them.
         val savedTraitIds = task.traits.map { it.traitId }.toSet()
         val sent = valuesByTrait.filterKeys { it in savedTraitIds }
@@ -1002,6 +1028,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 +"Some required sections are empty — they are marked above."
             }
         }
+        counterError?.let { errorText("Couldn't get this form's id.", it) }
         runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
         refreshError?.let { errorText("Saved, but couldn't reload the form, so what it shows may be out of date.", it) }
         designSession?.let { session ->

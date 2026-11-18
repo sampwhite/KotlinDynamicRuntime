@@ -184,7 +184,7 @@ fun budgetDollarsOf(text: String): Double? {
 
 private val budgetPattern = Regex("""\d+(\.\d+)?""")
 
-/** The calls behind the workflow assistant's page and the operator's (issue #1527). */
+/** The calls behind the configuration assistant's page and the operator's (issue #1527). */
 object AssistantApi {
     suspend fun status(): AssistantStatus = parseAssistantStatus(Http.getApi(ACNV.statusPath)[EP.results].toJsonMapOrEmpty())
 

@@ -3,7 +3,8 @@
 # Creating a talk
 
 A **creation workflow** runs when someone starts a new form. In the demo, a speaker starts a talk submission, and the
-creation workflow asks for one thing: the talk's title.
+creation workflow asks for one thing: the talk's title. It also collects the talk's id, which the form fills in by
+itself, and [Numbering talks](numbering.md) explains it.
 
 Here is the whole `createTalk` bundle:
 
@@ -16,14 +17,14 @@ Here is the whole `createTalk` bundle:
       "definition": {
         "workflowId": "createTalk",
         "entry": "creation",
-        "$comment": "Runs once, when a speaker starts a submission. It asks only for the title; the rest comes later.",
+        "$comment": "Runs once, when a speaker starts a submission. It asks for the title, and collects the talk's id, which the form fills from the counter; the rest comes later.",
         "label": "Start a talk submission",
         "tasks": [
           {
             "id": "nameTalk",
             "$comment": "A creation workflow has exactly one task, with exactly one save.",
             "label": "Name your talk",
-            "traits": [{ "traitId": "kdr:name", "required": true }],
+            "traits": [{ "traitId": "kdr:name", "required": true }, { "traitId": "submission", "required": false }],
             "saves": [{ "id": "create", "label": "Create the talk", "kind": "create" }]
           }
         ]
@@ -56,7 +57,7 @@ A **task** is one step of a workflow: the traits it collects, and the buttons th
   "id": "nameTalk",
   "$comment": "A creation workflow has exactly one task, with exactly one save.",
   "label": "Name your talk",
-  "traits": [{ "traitId": "kdr:name", "required": true }],
+  "traits": [{ "traitId": "kdr:name", "required": true }, { "traitId": "submission", "required": false }],
   "saves": [{ "id": "create", "label": "Create the talk", "kind": "create" }]
 }
 ```
@@ -65,7 +66,7 @@ A **task** is one step of a workflow: the traits it collects, and the buttons th
 | --- | --- |
 | `id` | The task's id, unique within the workflow. |
 | `label` | The task's name. A workflow with several tasks lists them by name. A workflow with one task, like this one, does not show it. |
-| `traits` | The traits the task collects. Here there is one, `kdr:name`, the shared trait the client includes in its `base` bundle (see [Client](client.md)). Its `required: true` means the task is not complete until the form has a name. |
+| `traits` | The traits the task collects. Here there are two. The first, `kdr:name`, is the shared trait the client includes in its `base` bundle (see [Client](client.md)), and its `required: true` means the task is not complete until the form has a name. The second, `submission`, holds the talk's id, and is not required, since the form fills it by itself (see [Numbering talks](numbering.md)). |
 | `saves` | The task's buttons. Each has a `label`, the button's text, and a `kind`, what the button does. A save of kind `create` creates the form. |
 
 A creation workflow has exactly one task, and that task has exactly one save, of kind `create`. A definition that
@@ -108,9 +109,10 @@ See [Field layouts](reference.md#field-layouts) for the rest of what a layout ca
 
 ## What the speaker sees
 
-The speaker sees a page titled **Start a talk submission**, with one section, **Talk title**, and one button,
-**Create the talk**.
-Under the heading is the line from the layout, with its icon, and then one field, **Title**.
+The speaker sees a page titled **Start a talk submission**, with two sections, **Talk title** and **Talk id**, and one
+button, **Create the talk**.
+Under the first heading is the line from the layout, with its icon, and then one field, **Title**. The second section
+shows the talk's id, which the speaker cannot change (see [Numbering talks](numbering.md#what-the-speaker-sees)).
 
 The field's description, *What to call it.*, comes from the trait's own schema, which every client shares, since the
 layout gives the field a label and nothing else.

@@ -41,7 +41,7 @@ object CHKL {
     const val firstForm = "firstForm"
 
     /**
-     * The workflow assistant switched on. Not in the read: added by the webapp, from the assistant's status it already
+     * The configuration assistant switched on. Not in the read: added by the webapp, from the assistant's status it already
      * reads, only where the menu offers the assistant -- core never asks the assistant module.
      */
     const val assistant = "assistant"

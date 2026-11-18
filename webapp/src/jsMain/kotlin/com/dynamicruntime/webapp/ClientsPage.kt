@@ -267,7 +267,7 @@ val ClientsPage = FC<Props> {
     }
 
     // A self-serve client opens on what to do next (issue #1700): its checklist, read as Home's card reads it, with the
-    // workflow assistant's step where the menu offers the assistant. Whether Home's card is hidden does not matter here
+    // configuration assistant's step where the menu offers the assistant. Whether Home's card is hidden does not matter here
     // (issue #1757): this panel is where the list stays, and where it is brought back to Home from.
     val nextStepsWanted = openId != null && across == false && clientOpensOnNextSteps(openId, acrossClients = false)
     val checklistOwner = openId?.let { sandboxParentOf(it) ?: it }

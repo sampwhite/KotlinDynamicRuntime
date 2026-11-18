@@ -14,7 +14,7 @@ import com.dynamicruntime.common.user.UADEP
 
 /**
  * One way to make one kind of change to a client (issue #1807): where a person makes it, the endpoint behind that, the
- * workflow assistant's tool for it, and whether a save is dry-run first. A row of the making-changes guide
+ * configuration assistant's tool for it, and whether a save is dry-run first. A row of the making-changes guide
  * ([makingChangesMarkdown]).
  */
 class ChangeWay(
@@ -73,6 +73,15 @@ val changeGroups: List<ChangeGroup> = listOf(
             ChangeWay(
                 "One of the platform's traits narrowed: fields hidden or required, choices kept, a name of its own",
                 traitsPanel, UADEP.clientTraitNarrow, ATOOL.narrowTrait, dryRun = true,
+            ),
+            // No editor offers counters yet (issue #1849): a counter, and a field taking its ids, are written as JSON.
+            ChangeWay(
+                "A counter, made or changed: a form's ids, a prefix and then a zero-padded count (`${CCT.counterDef}`)",
+                bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
+            ),
+            ChangeWay(
+                "A field that takes its ids from a counter (`g-counter` in its trait's `dataSchema`), or a trait holding one",
+                bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
             ),
         ),
     ),
@@ -222,7 +231,7 @@ val changeGroups: List<ChangeGroup> = listOf(
 
 /**
  * The **making-changes guide** (issue #1807): for each kind of change to a client, the editor to make it with, the
- * endpoint behind that editor, and the workflow assistant's tool -- and why an editor is preferred to writing the
+ * endpoint behind that editor, and the configuration assistant's tool -- and why an editor is preferred to writing the
  * configuration by hand. A Markdown document served on the Documents page to anyone, and readable by the assistant's
  * `read_doc`.
  *
@@ -238,7 +247,7 @@ fun makingChangesMarkdown(): String =
 A client is configuration: bundles of JSON, each holding entries in slots (the
 [client configuration reference](client-configuration.md) lists every slot). Anything in it can be changed by writing
 JSON, with a bundle patch. Most kinds of change also have an **editor**: a panel of the Clients page, Design View on a
-form, or the Reports page, each with an endpoint behind it, and a tool the workflow assistant uses. This page says, for
+form, or the Reports page, each with an endpoint behind it, and a tool the configuration assistant uses. This page says, for
 each kind of change, which to use.
 
 ## Why an editor, where there is one
@@ -263,7 +272,7 @@ each kind of change, which to use.
 - **A workflow's parameters** (its time windows, who sees it, and whether it is on) are the exception: they are in force
   at once and never drafted. Set in the sandbox, they are the sandbox's own, and the client's are set in the client.
 - **A dry run** checks a change as its save would, and stores nothing. Each endpoint below marked "yes" takes one
-  (`$${CFEP.dryRun}: true`), and the workflow assistant always takes it before it saves, since a save that can be refused
+  (`$${CFEP.dryRun}: true`), and the configuration assistant always takes it before it saves, since a save that can be refused
   or can reach stored forms is better seen first.
 - **The assistant** works as the person's own user in the client's sandbox, so every change it makes to the configuration
   is a draft, and it cannot publish. A workflow's parameters it sets are the sandbox's own, in force there at once. It

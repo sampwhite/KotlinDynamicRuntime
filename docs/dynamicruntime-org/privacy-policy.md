@@ -41,7 +41,7 @@ only to run the site:
 - **Linode (Akamai)** hosts the server, its database, and the files you upload, in the United States.
 - **Mailgun** sends the emails the site sends: sign-in codes and invitations.
 - **Google** confirms who you are when you sign in with Google.
-- **Anthropic**, only if you use the **workflow assistant** in a client you created. The assistant is off until that
+- **Anthropic**, only if you use the **configuration assistant** in a client you created. The assistant is off until that
   client's administrator switches it on, after a notice saying what is sent. When you use it, your messages to it and
   the parts of your client's configuration it works on are sent to Anthropic to produce its answers. Nothing is sent
   to Anthropic if you never use the assistant.

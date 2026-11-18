@@ -172,7 +172,7 @@ object HP {
     const val reportChart = "chart"
     const val reportMeasure = "measure"
 
-    /** Workflow assistant page (issue #1527): the conversation open, so a reload or Back reopens it; absent for a new one. */
+    /** Configuration assistant page (issue #1527): the conversation open, so a reload or Back reopens it; absent for a new one. */
     const val conversation = "cv"
 
     /**

@@ -41,7 +41,7 @@ numbered in the order they are written, 100 apart. The platform's own two are th
 ### Adding to another component's block
 
 A component adds to a block it does not own with `uiBlockOverlay`, naming each item it adds and its `displayOrder`,
-since an overlay's items are not numbered for it. The workflow assistant puts its page beside Reports and its cards on
+since an overlay's items are not numbered for it. The configuration assistant puts its page beside Reports and its cards on
 Home this way, in `uiBlocks` in
 [`AssistantComponent.kt`](../../assistant/src/main/kotlin/com/dynamicruntime/assistant/AssistantComponent.kt). Its
 items name a fact that exists only while its module is loaded, which is why they are its own and not the platform's.
