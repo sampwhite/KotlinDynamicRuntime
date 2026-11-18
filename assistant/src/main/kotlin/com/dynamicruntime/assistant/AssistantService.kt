@@ -153,8 +153,7 @@ class AssistantService : ServiceInitializer {
     fun isOn(cxt: KdrCxt, client: String): Boolean {
         if (model == null) return false
         val payer = payerOf(client)
-        val cache = clientCache
-        if (cache == null) return clientRow(cxt, payer)?.get(PF.enabled) == true
+        val cache = clientCache ?: return clientRow(cxt, payer)?.get(PF.enabled) == true
         cache.checkRefresh(cxt)
         return cache.snapshot.get(cache.idOf(payer)) != null
     }

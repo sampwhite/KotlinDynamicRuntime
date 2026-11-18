@@ -74,7 +74,7 @@ object AENV {
     val monthlyBudget = EnvVarDef(
         "KDR_ASSISTANT_MONTHLY_BUDGET", group = ENVGRP.assistant, defaultDoc = "$defaultMonthlyBudget",
         description = "A client's monthly budget in weighted tokens (input 1, cache write 1.25, cache read 0.1, output 5, " +
-            "at Sonnet's prices: 500,000 to the dollar, so the default is about \$20), when an operator has set none of " +
+                $$"at Sonnet's prices: 500,000 to the dollar, so the default is about $20), when an operator has set none of " +
             "its own. A sandbox counts against its parent's.",
     )
     val selfServe = EnvVarDef(
@@ -87,7 +87,7 @@ object AENV {
     val selfServeBudget = EnvVarDef(
         "KDR_ASSISTANT_SELF_SERVE_BUDGET", group = ENVGRP.assistant, defaultDoc = "$defaultSelfServeBudget",
         description = "A self-serve client's monthly budget in weighted tokens, when its administrator switches the " +
-            "assistant on (KDR_ASSISTANT_SELF_SERVE): the default is about \$5. An operator may change it after.",
+                $$"assistant on (KDR_ASSISTANT_SELF_SERVE): the default is about $5. An operator may change it after.",
     )
     val keySecret = EnvVarDef(
         ASST.keySecretEnvVar, group = ENVGRP.assistant, defaultDoc = defaultKeySecret,
