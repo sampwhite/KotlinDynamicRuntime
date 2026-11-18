@@ -13,7 +13,7 @@ Adding the core details workflow takes three pieces of configuration, and this p
 - [three columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
 - [the core details workflow itself](#core-details-workflow), in the `talkCoreDetails` bundle.
 
-The traits and the columns are the `base` bundle's first additions beyond the client itself. The
+The traits and the columns add to the `base` bundle, as the previous page's counter and `submission` trait did. The
 [client page](client.md#what-the-bundle-holds) lists everything the bundle holds, as the pages add to it.
 
 ## Traits
@@ -140,11 +140,11 @@ in the `kdr:usageDef` slot of its `base` bundle.
 ```json
 [
   { "traitId": "kdr:name", "label": "Talk", "display": "${name}", "substring": true },
-  { "traitId": "session", "label": "Track", "display": "${track}", "substring": false },
   {
-    "traitId": "questionnaire", "label": "Audience", "display": "${audienceLevel}", "substring": false,
-    "columnId": "audience"
-  }
+    "traitId": "submission", "label": "Talk id", "display": "${talkId}", "substring": true,
+    "columnId": "talkId", "width": "narrow"
+  },
+  { "traitId": "session", "label": "Track", "display": "${track}", "substring": false }
 ]
 ```
 
@@ -155,11 +155,13 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | `display` | The column's value: a template over the trait's data, in which `${track}` is the `track` field's value. The column sorts and searches by it, and shows it unless the column has a presentation. |
 | `kind` | Optional, and left out of the demo's columns. How a search treats the value: as text, a number, or a date. Without it, a column that shows one field takes it from that field, so a number field is searched by a range. A column that computes its value is text unless it says otherwise. A date column with no presentation reads relative to now, such as `in 3h`. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
-| `columnId` | The column's name in a search, when it is not the trait's id. The Audience column is searched with `audience`. |
+| `columnId` | The column's name in a search, when it is not the trait's id. The Talk id column is searched with `talkId`. |
+| `width` | Optional. How much room the column needs: `narrow`, `normal` (the default), or `wide`. The Talk id column is `narrow`, since an id such as `T-007` needs far less room than a talk's title. |
 
-In this example, the demo promotes three fields to be columns: `name`, from the built-in `kdr:name` trait, `track`,
-from its own `session` trait, and one answer from its `questionnaire` trait. A promoted value also becomes available
-for search.
+In this example, the demo promotes three fields to be columns: `name`, from the built-in `kdr:name` trait, the talk's
+id, from its `submission` trait (see [Creating a talk](create-talk.md#the-talks-id)), and `track`, from its own `session`
+trait. A promoted value also becomes available for search. The demo keeps to three, since people often visit it on a
+phone: the columns that follow them, which say where a talk stands in its workflows, are what a speaker acts on.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
 demo redeclares the name column too, but relabels the heading to be **Talk**.
 
@@ -170,13 +172,12 @@ searches by its value, so a formatted amount never sorts as text.
 
 One trait can give more than one column, each with its own heading. Every column of a trait after the first also
 needs a `columnId`: a name of letters, digits, and underscores. A column without a `columnId` is searched by its
-trait's id, so two of them from one trait would share a search. The demo's questionnaire gives only the Audience
-column, but the demo still names it `audience`, so a search for it says what it looks for rather than which trait it
+trait's id, so two of them from one trait would share a search. The demo's `submission` trait gives only the Talk id
+column, but the demo still names it `talkId`, so a search for it says what it looks for rather than which trait it
 reads.
 
-The Track and Audience columns each read a single field that offers choices, so each shows the choice's label, such
-as **Workshop (hands-on)** or **Beginners**, and sorts in the order the choices are listed. A search on either matches
-the stored value or the label. Its filter suggests the choices as soon as it is clicked, and anything else can still
+The Track column reads a single field that offers choices, so it shows the choice's label, such as **Workshop
+(hands-on)**, and sorts in the order the choices are listed. A search on it matches the stored value or the label. Its filter suggests the choices as soon as it is clicked, and anything else can still
 be typed. A column that reads a yes-or-no field shows **Yes** or **No**, and a dash until the field is answered. Its
 filter is a choice between Yes and No, and its search takes `true` or `false` (or `yes` or `no`). A column whose
 `display` does more than name one field, such as

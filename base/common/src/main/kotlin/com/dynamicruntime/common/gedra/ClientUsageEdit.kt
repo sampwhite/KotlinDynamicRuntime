@@ -211,7 +211,7 @@ object ClientUsageEdit {
             if (wanted.traitId in keys) keyFromLabel(label, keys + traits.map { it.traitId }, "column") else null
         }
         val presentation = wanted.presentation?.trim()?.ifBlank { null }
-        val usage = ClientTraitUsage(wanted.traitId, label, display, wanted.kind, wanted.substring, presentation, columnId)
+        val usage = ClientTraitUsage(wanted.traitId, label, display, wanted.kind, wanted.substring, presentation, columnId, wanted.width)
         if (before != null && usage.toRuleMap() == before.toRuleMap()) {
             throw KdrException.mkInput("Column '$label' is already so; nothing to save.")
         }

@@ -715,8 +715,9 @@ class GedraConfigBuilder(
         substring: Boolean = false,
         presentation: String? = null,
         columnId: String? = null,
+        width: ColumnWidth? = null,
     ) {
-        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation, columnId))
+        usages.add(ClientTraitUsage(traitId, label, display, kind, substring, presentation, columnId, width))
     }
 
     /**

@@ -13,7 +13,7 @@ These pages walk through that configuration, one piece of JSON at a time, starti
 
 1. [The conference demo](README.md), this page: how to try the demo, and how a client is stored.
 2. [Client](client.md): the client itself.
-3. [Creating a talk](create-talk.md): the workflow that creates a talk.
+3. [Creating a talk](create-talk.md): the workflow that creates a talk, and the counter that gives each talk its id.
 4. [Talk core details](talk-core-details.md): the traits every talk collects, the columns of the forms list, and the
    core details workflow.
 5. [Abstract](abstract.md): the first normal workflow, and a trait with a long text, a list, and a multi-select.

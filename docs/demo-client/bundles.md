@@ -255,15 +255,34 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
         },
         "type": "object"
       }
+    },
+    {
+      "description": "The talk's id, given when it is submitted.",
+      "traitId": "submission",
+      "typeName": "client.confdemo.SubmissionEntry",
+      "appliesTo": ["formDoc"],
+      "dataSchema": {
+        "title": "Submission",
+        "properties": {
+          "talkId": {
+            "description": "The talk's id, given by the conference's counter.",
+            "title": "Talk id",
+            "g-counter": "talk",
+            "type": "string"
+          }
+        },
+        "required": ["talkId"],
+        "type": "object"
+      }
     }
   ],
   "kdr:usageDef": [
     {"display": "${name}", "label": "Talk", "substring": true, "traitId": "kdr:name"},
-    {"display": "${track}", "label": "Track", "substring": false, "traitId": "session"},
     {
-      "columnId": "audience", "display": "${audienceLevel}", "label": "Audience", "substring": false,
-      "traitId": "questionnaire"
-    }
+      "columnId": "talkId", "display": "${talkId}", "label": "Talk id", "substring": true, "traitId": "submission",
+      "width": "narrow"
+    },
+    {"display": "${track}", "label": "Track", "substring": false, "traitId": "session"}
   ],
   "kdr:schemaDef": [
     {
@@ -317,6 +336,12 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
       "toFrontend": false
     }
   ],
+  "kdr:counterDef": [
+    {
+      "counterId": "talk", "prefix": "T-", "digits": 3, "reset": "never",
+      "description": "Numbers the talks, in the order they are submitted."
+    }
+  ],
   "kdr:listingDef": [
     {"workflowLayout": "combined"}
   ],
@@ -345,7 +370,7 @@ The creation workflow. Explained on [Creating a talk](create-talk.md).
     {
       "workflowId": "createTalk",
       "definition": {
-        "$comment": "Runs once, when a speaker starts a submission. It asks only for the title; the rest comes later.",
+        "$comment": "Runs once, when a speaker starts a submission. It asks for the title, and shows the talk's id; the rest comes later.",
         "entry": "creation",
         "label": "Start a talk submission",
         "workflowId": "createTalk",
@@ -355,7 +380,7 @@ The creation workflow. Explained on [Creating a talk](create-talk.md).
             "id": "nameTalk",
             "label": "Name your talk",
             "saves": [{"id": "create", "label": "Create the talk", "kind": "create"}],
-            "traits": [{"traitId": "kdr:name", "required": true}]
+            "traits": [{"traitId": "kdr:name", "required": true}, {"traitId": "submission", "required": false}]
           }
         ]
       }

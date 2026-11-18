@@ -1,10 +1,17 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.ComponentImageService
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.ListingColumn
 import com.dynamicruntime.common.gedra.formTraitName
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -54,5 +61,30 @@ class ConfDemoTalkNameTest : StringSpec({
         layout[SL.schemaFields].toJsonListOfMaps().single { it[SL.field] == GT.nameField }[SL.label] shouldBe "Title"
         // The icon the introduction names is one the deployment serves.
         ComponentImageService.get(cxt).served[ConfDemo.talkIcon] shouldNotBe null
+    }
+
+    // Issue #1855: the form's id, from the demo's counter, a narrow column of the forms list found by its search.
+    "a talk is given its id from the demo's counter, and the forms list shows it in a narrow column" {
+        val speaker = TestUser.create(cxt, "idspeaker@$client.example", userClient = client)
+        val issued = speaker.postData(GEP.counterIssue, mapOf(CTR.counter to ConfDemo.talkCounter))
+        val id = issued[CTR.value].toOptStr().orEmpty()
+        id shouldStartWith "T-"
+        id.length shouldBe 5
+        speaker.postData(
+            GEP.workflowSave,
+            mapOf(
+                WFD.workflowId to ConfDemo.createTalkWorkflow, GDF.taskId to ConfDemo.nameTalkTask, GDF.saveId to ConfDemo.createSave,
+                GDF.entries to listOf(
+                    mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Counting talks")),
+                    mapOf(GE.traitId to ConfDemo.submission, GE.data to mapOf(ConfDemo.talkId to id)),
+                ),
+                CTR.counterTokens to listOf(issued[CTR.token]),
+            ),
+        )
+        val listing = speaker.client.sendJsonGetRequest(clientPath(GEP.formDocs, client), mapOf(ConfDemo.talkId to id))
+        listing[EP.items].toJsonListOfMaps().size shouldBe 1
+        val columns = ListingColumn.listFrom(listing[EP.summary].toJsonMapOrEmpty()[GDF.columns])
+        columns.map { it.label } shouldBe listOf("Talk", "Talk id", "Track")
+        columns.single { it.columnId == ConfDemo.talkId }.width shouldBe ColumnWidth.narrow
     }
 })

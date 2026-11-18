@@ -125,6 +125,10 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             "The column's name in its search parameters and its sort, when it is not the trait id: needed on a second " +
                 "column of the same trait. Letters, digits, and underscores, starting with a letter.",
         ) { pattern = columnIdPattern }
+        // A named size, not pixels (issue #1855): the page decides what each is on its screen.
+        property(CCT.width, "How much room the column wants: `narrow` for a short value such as an id, `wide` for a long one. Absent is `normal`.") {
+            options(ColumnWidth.entries)
+        }
         overridesCodeProperty()
     }
     configTrait(
