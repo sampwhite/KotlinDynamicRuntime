@@ -13,7 +13,7 @@ Adding the core details workflow takes three pieces of configuration, and this p
 - [three columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
 - [the core details workflow itself](#core-details-workflow), in the `talkCoreDetails` bundle.
 
-The traits and the columns add to the `base` bundle, as the previous page's counter and `submission` trait did. The
+The traits and the columns are the `base` bundle's first additions beyond the client itself. The
 [client page](client.md#what-the-bundle-holds) lists everything the bundle holds, as the pages add to it.
 
 ## Traits
@@ -159,8 +159,8 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | `width` | Optional. How much room the column needs: `narrow`, `normal` (the default), or `wide`. The Talk id column is `narrow`, since an id such as `T-007` needs far less room than a talk's title. |
 
 In this example, the demo promotes three fields to be columns: `name`, from the built-in `kdr:name` trait, the talk's
-id, from its `submission` trait (see [Creating a talk](create-talk.md#the-talks-id)), and `track`, from its own `session`
-trait. A promoted value also becomes available for search. The demo keeps to three, since people often visit it on a
+id, from its `submission` trait (the next page, [Numbering talks](numbering.md), shows the trait), and `track`, from
+its own `session` trait. A promoted value also becomes available for search. The demo keeps to three, since people often visit it on a
 phone: the columns that follow them, which say where a talk stands in its workflows, are what a speaker acts on.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
 demo redeclares the name column too, but relabels the heading to be **Talk**.
@@ -298,4 +298,4 @@ a track and an answer, the talk becomes **Valid**, and the **Track** column show
 Complete core details have one more effect. The platform marks the form with a fact, `kdr:coreDetailsComplete`, and
 other workflows can test for it. The committee's review, on a later page, waits for that fact before it will start.
 
-Next: [Abstract](abstract.md).
+Next: [Numbering talks](numbering.md).

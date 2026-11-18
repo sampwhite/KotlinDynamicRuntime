@@ -114,8 +114,8 @@ bundle as a whole, kept current as the pages add to it.
 | Slot | What it holds | Explained on |
 | --- | --- | --- |
 | `kdr:clientDef` | The client's definition, above. | This page |
-| `kdr:traitDef` | Six traits: `session` and `questionnaire`, `abstract`, `review`, `logistics`, and `submission`. | [Talk core details](talk-core-details.md), [Abstract](abstract.md), [Committee review](committee-review.md), [Workshop logistics](workshop-logistics.md), [Creating a talk](create-talk.md#the-talks-id) |
-| `kdr:counterDef` | The counter that gives each talk its id, such as `T-007`. | [Creating a talk](create-talk.md#the-talks-id) |
+| `kdr:traitDef` | Six traits: `session` and `questionnaire`, `abstract`, `review`, `logistics`, and `submission`. | [Talk core details](talk-core-details.md), [Abstract](abstract.md), [Committee review](committee-review.md), [Workshop logistics](workshop-logistics.md), [Numbering talks](numbering.md) |
+| `kdr:counterDef` | The counter that gives each talk its id, such as `T-007`. | [Numbering talks](numbering.md) |
 | `kdr:usageDef` | The three columns of the forms list: Talk, Talk id, and Track. | [Talk core details](talk-core-details.md#columns-in-the-forms-list) |
 | `kdr:schemaDef` | The demo's name for the platform's `kdr:name` trait, and the shared `Speaker` type. | [Creating a talk](create-talk.md#the-traits-name), [Abstract](abstract.md#a-shared-type) |
 | `kdr:cfactDef` | The client's three facts, `isWorkshop`, `talkAccepted`, and `talkRecommended`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |

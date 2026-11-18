@@ -13,14 +13,15 @@ These pages walk through that configuration, one piece of JSON at a time, starti
 
 1. [The conference demo](README.md), this page: how to try the demo, and how a client is stored.
 2. [Client](client.md): the client itself.
-3. [Creating a talk](create-talk.md): the workflow that creates a talk, and the counter that gives each talk its id.
+3. [Creating a talk](create-talk.md): the workflow that creates a talk.
 4. [Talk core details](talk-core-details.md): the traits every talk collects, the columns of the forms list, and the
    core details workflow.
-5. [Abstract](abstract.md): the first normal workflow, and a trait with a long text, a list, and a multi-select.
-6. [Committee review](committee-review.md): a workflow only some talks may enter, and only some people may work on.
-7. [Workshop logistics](workshop-logistics.md): a workflow gated on a computed fact, and a layout that takes over.
-8. [Reports](reports.md): two reports over the talks, one a roster and one a summary.
-9. [Every bundle](bundles.md): the full JSON of every bundle, in one place.
+5. [Numbering talks](numbering.md): the counter that gives each talk its id, and the trait that holds it.
+6. [Abstract](abstract.md): the first normal workflow, and a trait with a long text, a list, and a multi-select.
+7. [Committee review](committee-review.md): a workflow only some talks may enter, and only some people may work on.
+8. [Workshop logistics](workshop-logistics.md): a workflow gated on a computed fact, and a layout that takes over.
+9. [Reports](reports.md): two reports over the talks, one a roster and one a summary.
+10. [Every bundle](bundles.md): the full JSON of every bundle, in one place.
 
 The [reference](reference.md) explains the things the pages have in common, such as choices and field layouts. The
 pages link to it as they go.

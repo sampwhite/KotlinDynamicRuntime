@@ -262,11 +262,11 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
       "typeName": "client.confdemo.SubmissionEntry",
       "appliesTo": ["formDoc"],
       "dataSchema": {
-        "title": "Submission",
+        "title": "Talk id",
         "properties": {
           "talkId": {
             "description": "The talk's id, given by the conference's counter.",
-            "title": "Talk id",
+            "title": "Id",
             "g-counter": "talk",
             "type": "string"
           }
@@ -370,7 +370,7 @@ The creation workflow. Explained on [Creating a talk](create-talk.md).
     {
       "workflowId": "createTalk",
       "definition": {
-        "$comment": "Runs once, when a speaker starts a submission. It asks for the title, and shows the talk's id; the rest comes later.",
+        "$comment": "Runs once, when a speaker starts a submission. It asks for the title, and collects the talk's id, which the form fills from the counter; the rest comes later.",
         "entry": "creation",
         "label": "Start a talk submission",
         "workflowId": "createTalk",
@@ -675,7 +675,8 @@ The two reports. Explained on [Reports](reports.md).
             "label": "Minutes",
             "path": "form.abstract.durationMinutes",
             "rollup": "sum"
-          }
+          },
+          {"columnId": "talkId", "label": "Talk id", "path": "form.submission.talkId"}
         ],
         "groupBy": ["track"]
       }

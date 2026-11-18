@@ -244,6 +244,7 @@ fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("create-talk", "Conference demo: creating a talk", "The demo's creation workflow."),
     confDemoDoc("talk-core-details", "Conference demo: talk core details", "The demo's core details workflow, its first traits, and " +
         "the columns of its forms list."),
+    confDemoDoc("numbering", "Conference demo: numbering talks", "The counter that gives every talk its id, and the trait that holds it."),
     confDemoDoc("abstract", "Conference demo: the abstract", "The demo's first normal workflow: a trait with a list, a multi-select, trimming, and custom errors."),
     confDemoDoc("committee-review", "Conference demo: committee review", "A workflow gated on the talk's core details, with a field " +
         "only administrators see and a review task."),
@@ -480,9 +481,9 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
         }
         // The talk's id (issue #1855): a field the counter below fills, collected by the creation workflow.
         trait(ConfDemo.submissionEntry, ConfDemo.submission, setOf(GedraDataType.formDoc), "The talk's id, given when it is submitted.") {
-            title = "Submission"
+            title = "Talk id"
             property(ConfDemo.talkId, "The talk's id, given by the conference's counter.", required = true) {
-                title = "Talk id"
+                title = "Id"
                 counter = ConfDemo.talkCounter
             }
         }
@@ -526,8 +527,8 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
 fun confDemoCreateTalk(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
     gedraConfig(cxt, ConfDemo.createTalkConfig, clientNamespace(client), client) {
         workflow(ConfDemo.createTalkWorkflow, WfEntry.creation) {
-            comment = "Runs once, when a speaker starts a submission. It asks for the title, and shows the talk's id; " +
-                "the rest comes later."
+            comment = "Runs once, when a speaker starts a submission. It asks for the title, and collects the talk's id, " +
+                "which the form fills from the counter; the rest comes later."
             label = "Start a talk submission"
             task(ConfDemo.nameTalkTask, "Name your talk") {
                 comment = "A creation workflow has exactly one task, with exactly one save."
@@ -717,6 +718,8 @@ fun confDemoReports(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
             column("review", "Review", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.category}")
             column("callToAction", "Call to action", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.ctaKeyword}")
             column(ConfDemo.minutesColumn, "Minutes", "$form.${ConfDemo.abstract}.${ConfDemo.durationMinutes}", rollup = ReportCombine.sum)
+            // The talk's id (issue #1855), last, so the roster's earlier columns keep their places.
+            column(ConfDemo.talkId, "Talk id", "$form.${ConfDemo.submission}.${ConfDemo.talkId}")
             groupBy = listOf(ConfDemo.trackColumn)
         }
         report(ConfDemo.questionnaireSummary, "Questionnaire summary") {

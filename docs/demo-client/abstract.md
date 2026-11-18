@@ -1,4 +1,4 @@
-[← Talk core details](talk-core-details.md) · [Contents](README.md#the-pages)
+[← Numbering talks](numbering.md) · [Contents](README.md#the-pages)
 
 # Abstract
 
