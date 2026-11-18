@@ -129,7 +129,10 @@ class FormCountersTest : StringSpec({
         val outcomes = try {
             // A success's answer has no status, a refusal's says it.
             (1..4).map { pool.submit<Int> { (clerk.client.sendJsonPostRequest(GEP.formDocCreate, body)[EP.status] as? Number)?.toInt() ?: 200 } }
-                .map { it.get() }
+                .map {
+                    @Suppress("BlockingMethodInNonBlockingContext")
+                    it.get()
+                }
         } finally {
             pool.shutdown()
         }

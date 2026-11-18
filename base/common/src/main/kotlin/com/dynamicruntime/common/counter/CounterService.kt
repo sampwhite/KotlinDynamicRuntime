@@ -59,7 +59,7 @@ class CounterToken(
         fun open(cxt: KdrCxt, sealed: String): CounterToken {
             val map = try {
                 NodeService.get(cxt).decryptString(sealed).jsonMap()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             } ?: throw KdrException.mkInput("A counter token was sent that this deployment did not issue, or that was changed after it was.")
             return CounterToken(
@@ -271,7 +271,7 @@ class CounterService : ServiceInitializer {
         }
         if (def.resetsDaily && first == second) {
             return "starts its count again each day, but its prefix ('$first') does not change with the day, so its ids would " +
-                "repeat. Put the day in the prefix, with \${${CTR.day}} or \${${CTR.compactDay}}."
+                    $$"repeat. Put the day in the prefix, with ${$${CTR.day}} or ${$${CTR.compactDay}}."
         }
         return null
     }

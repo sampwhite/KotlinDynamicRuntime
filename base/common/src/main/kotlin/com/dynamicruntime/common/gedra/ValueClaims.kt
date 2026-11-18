@@ -2,7 +2,6 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt

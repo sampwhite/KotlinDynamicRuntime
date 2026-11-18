@@ -24,6 +24,7 @@ import com.dynamicruntime.common.util.toOptStr
  * takes them ([bind]) and read by [CounterClaimHook] inside the write's transaction. On the context's `locals`, which a
  * sub context copies, so the transaction's context made from it has them.
  */
+@Suppress("ConstPropertyName")
 object CounterTokens {
     /** What a write's [CTR.counterTokens] field is, on every endpoint that takes it. */
     const val hint = "The tokens of the ids a counter issued that this write stores for the first time, each as it was " +
