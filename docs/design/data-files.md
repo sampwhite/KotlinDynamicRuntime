@@ -2,9 +2,9 @@
 
 A **data file** is a file uploaded for a form's data: a photograph of a site, a scanned document, a video of an
 inspection. A trait's field names it by its id, and the file itself is held by a record of its own. This note records
-what that record is, how a file reaches it, how a form names it, and who may read it. **Status: the record, the
-upload, serving, and the links between forms and files are built** (issues #1834 to #1838). The sweep and the form
-control are not yet (#1839, #1840).
+what that record is, how a file reaches it, how a form names it, who may read it, and what clears what uploads leave
+behind. **Status: built** -- the record, the upload, serving, the links between forms and files, the form control and
+the Files page, and the nightly sweep (issues #1834 to #1840, #1863).
 
 They are not a client's **named images** ([`config-file-refs.md`](config-file-refs.md)), which are part of its
 configuration. In code each keeps its own word: "file ref" for a named image, "data file" (`GedraDataType.dataFile`)
@@ -56,8 +56,8 @@ begin, one chunk, and its finish, run in one request, so it adds no path of its 
 refuses, or that any failure stops, is aborted, leaving nothing behind: nobody holds its id to resume it. **It is not
 safe to send again**: one whose answer was lost may have made the file, and a second would make another. So the webapp
 sends it again only after a 429, which the dispatcher answers before reading the body; for anything else it says so,
-and an extra file a person's own retry makes is unlinked, for the sweep (#1839). An image or a document is usually this size, and a
-resume would gain it nothing.
+and an extra file a person's own retry makes is unlinked, for the sweep (#1839). An image or a document is usually this
+size, and a resume would gain it nothing.
 
 A larger file -- a video, above all -- comes **in chunks, in order**, so a lost connection costs a chunk rather than the
 file:
@@ -232,9 +232,33 @@ added up and rounded up -- one being uploaded at the size it said, unless its up
 when an upload begins and again when it finishes, from the gedra cache's index of the client's rows, so it costs no
 query.
 
+## The sweep
+
+A nightly job (`dataFileSweep`, 04:00 UTC, `DataFileSweepJob.kt`, #1839) clears what uploads leave behind, every client
+in turn, one task per thing it removes. Each task **asks again** before it removes anything, since the list is made
+before the tasks run, and a dry run removes nothing and notes each in the trace.
+
+- **Uploads past their time** go at once: their staged parts, anything put together from them, their row, and their
+  record, which holds no bytes. One whose finish holds a fresh claim is left to finish.
+- **Files no form links** go once they are older than `KDR_FILE_ORPHAN_GRACE_HOURS` (a week by default): `ready`, named
+  by no link row at all. That is a file replaced in its field, or uploaded for a form never saved. A file only a deleted
+  form links stays, since restoring the form would want it back; purging those is in `deferred-work.md`. The removal is
+  a soft delete, and its guard checks again under the file's lock, so a form that links the file at the last moment
+  keeps it.
+- **Bytes nothing names** go once they are older than the same grace: an object under a client's `files/` that no live
+  record names -- of the client or its sandbox, whose bytes are its parent's -- and no upload whose parts are put
+  together and moving there (the upload's row records the hash the moment the store assembles the file,
+  `GDU.contentHash`). A file put together under `staging/` for an upload no longer under way goes after an upload's 24
+  hours. **Two records of one file share its bytes**, so a new upload of bytes the store already holds keeps them, however
+  old the object is.
+- **Staged uploads nothing holds** -- S3's multipart uploads, or a store's own -- go after an upload's 24 hours: begun
+  for an upload whose row never came, or went without them.
+
+What is left a narrow window: bytes the sweep found unnamed, which a new upload of exactly that file shares in the
+moment between the sweep asking again and removing them. The grace makes the bytes old; nothing makes that moment
+wide.
+
 ## What is not built
 
-- **The sweep** of expired uploads, files nothing links, and bytes no record names (#1839).
-- **The form control** that uploads in chunks and resumes (#1840).
 - **Converting a video**, HEAD on a file, presigned uploads straight to S3, and the rest, each in
   [`deferred-work.md`](../development/deferred-work.md) under its trigger (#1841).

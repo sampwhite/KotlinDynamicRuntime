@@ -267,6 +267,16 @@ object DataFileLinks {
     }
 
     /**
+     * The ids of [client]'s data files that any link row names (issue #1839), whatever its form's state: a file a
+     * deleted form links stays, since restoring the form would want it back.
+     */
+    fun linkedFileIds(cxt: KdrCxt, client: String): Set<String> =
+        queryLinks(cxt, mapOf(PF.client to client), ::byClientStmt).mapNotNull { it[GDL.fileId].toOptStr() }.toSet()
+
+    /** Whether any link row names [fileId], whatever its form's state: what the sweep asks again before a removal. */
+    fun hasLinks(cxt: KdrCxt, fileId: String): Boolean = queryLinks(cxt, mapOf(GDL.fileId to fileId), ::byFileStmt).isNotEmpty()
+
+    /**
      * The data file [fileId] when the caller may read it through a live form that links it, one their read scope
      * admits; null otherwise. What [DataFileService.viewable] falls back to after the caller's own scope: one query of
      * the links, and the forms from the cache, which holds only live ones.

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.JobHandling
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.datafile.DFSW
 import com.dynamicruntime.common.gedra.SRJ
 import com.dynamicruntime.common.gedra.report.RHJ
 import com.dynamicruntime.common.job.JOBEP
@@ -329,7 +330,7 @@ private fun jobChoiceListsTests() = stringSpec {
 
     "every jobType field offers the registered job types" {
         val opal = TestUser.createOperator(cxt, "choices-opal@example.com")
-        val expected = listOf("jcAlpha", "jcBeta", SRJ.jobType, RHJ.jobType).sorted()
+        val expected = listOf("jcAlpha", "jcBeta", SRJ.jobType, RHJ.jobType, DFSW.jobType).sorted()
         for (path in listOf(JOBEP.launch, JOBEP.status, JOBEP.abort, JOBEP.trace)) {
             values(inputField(opal, path, JOBF.jobType)[SCH.options]) shouldContainExactly expected
         }

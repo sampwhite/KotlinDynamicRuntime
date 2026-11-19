@@ -106,8 +106,8 @@ val FilesPage = FC<Props> {
             className = ClassName("subtitle")
             +(
                 (if (facts.seesClientForms == true) "Every file uploaded for your client's forms" else "The files you uploaded for forms") +
-                    ", and the forms that use each. A file no form uses can be removed here; one a form uses is taken out " +
-                    "of the form first."
+                    ", and the forms that use each. A file no form uses can be removed here, and is removed by itself after " +
+                    "a while; one a form uses is taken out of the form first."
             )
         }
         div {
