@@ -804,16 +804,15 @@ each file under its key (issue #1840).
   per entry, as the list's growing column of controls, with a way to add and remove keys. Not built because no trait
   holds one outside a test (`DataFileLinkTest`'s `rooms`). Trigger: a client whose trait does.
 
-## When deleted forms hold on to files nobody can see
+## When a deleted form can be restored
 
-A deleted form keeps its links to its data files (issue #1838), so restoring it brings its files back with it, and the
-nightly sweep (issue #1839) keeps any file a link row names, a deleted form's included. Such a file counts against its
-client's plan and is never removed.
+Nothing restores a deleted form today, so the nightly sweep of data files (issue #1839) treats a file that only deleted
+forms link as unused, and removes it a grace after the last of them was deleted. The deleted form keeps its link rows
+(issue #1838), which is what dates that deletion.
 
-- **Purge the links of long-deleted forms** *(#1839, deferred here 2026-11-19).* After a period no form is restored
-  within -- a month, say, as its own setting -- drop the link rows of a deleted form, so the sweep then removes the
-  files only it held. To decide first: whether forms are restored at all once deleted, and by whom. Trigger: a client
-  whose plan fills with files only deleted forms name.
+- **Keep a restorable form's files** *(#1839, deferred here 2026-11-19).* When forms can be restored, a restore must find
+  its files: either a restore within the grace, which already works, or the sweep keeping a deleted form's files for as
+  long as it may be restored, as its own setting. Trigger: a restore of deleted forms is built.
 
 ## When a client's file links grow too many to read for each listing
 

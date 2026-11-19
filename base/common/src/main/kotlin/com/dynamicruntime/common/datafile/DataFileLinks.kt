@@ -35,8 +35,10 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.humanizeFieldName
+import kotlin.time.Instant
 
 /**
  * The links between forms and the data files their fields name (issue #1838), kept in [GDT.gedraFileLinks]: one row
@@ -115,10 +117,14 @@ object DataFileLinks {
         val removes = storedAt.filter { (place, link) -> wanted[place]?.fileId != link[GDL.fileId].toOptStr() }
         val system = cxt.userProfile.authId == null
         val adds = LinkedHashMap<Place, DataFileUse>()
+        val linkedHere = stored.mapNotNull { it[GDL.fileId].toOptStr() }.toSet()
+        val newFiles = candidates.values.map { it.fileId }.filter { it !in linkedHere }.toSortedSet()
+        // A file this form stops naming everywhere (issue #1839): its record says when, which the sweep's grace runs from.
+        val stillNamed = wanted.values.map { it.fileId }.toSet()
+        val droppedFiles = removes.values.mapNotNull { it[GDL.fileId].toOptStr() }.filter { it !in stillNamed }.toSortedSet()
+        // One sorted pass over every file whose lock the write needs, so two forms never take them in opposite orders.
+        val locked = (newFiles + droppedFiles).toSortedSet().filter { lockFile(sqlCxt, it) }.toSet()
         if (candidates.isNotEmpty()) {
-            val linkedHere = stored.mapNotNull { it[GDL.fileId].toOptStr() }.toSet()
-            val newFiles = candidates.values.map { it.fileId }.filter { it !in linkedHere }.toSortedSet()
-            val locked = newFiles.filter { lockFile(sqlCxt, it) }.toSet()
             val files = candidates.values.map { it.fileId }.distinct().associateWith { readFileRow(cxt, sqlCxt, it) }
             val callerScope = if (system) null else ReadScopeRules.forCaller(cxt)
             for ((place, use) in candidates) {
@@ -134,6 +140,9 @@ object DataFileLinks {
         }
         for (place in removes.keys) {
             sqlCxt.sqlDb.executeStatement(cxt, deleteStmt(sqlCxt, table), placeData(holderId, place))
+        }
+        for (fileId in droppedFiles.filter { it in locked }) {
+            readFileRow(cxt, sqlCxt, fileId)?.let { DataFileService.stampUnlinked(cxt, sqlCxt, it) }
         }
         val insert = SqlTopicUtil.mkTableInsertStmt(sqlCxt, table)
         for ((place, use) in adds) {
@@ -267,14 +276,30 @@ object DataFileLinks {
     }
 
     /**
-     * The ids of [client]'s data files that any link row names (issue #1839), whatever its form's state: a file a
-     * deleted form links stays, since restoring the form would want it back.
+     * The ids of [client]'s data files that any link row names (issue #1839), whatever its form's state: the ones whose
+     * deleted forms' deletion the sweep asks when, since a deleted form keeps its link rows.
      */
     fun linkedFileIds(cxt: KdrCxt, client: String): Set<String> =
         queryLinks(cxt, mapOf(PF.client to client), ::byClientStmt).mapNotNull { it[GDL.fileId].toOptStr() }.toSet()
 
-    /** Whether any link row names [fileId], whatever its form's state: what the sweep asks again before a removal. */
-    fun hasLinks(cxt: KdrCxt, fileId: String): Boolean = queryLinks(cxt, mapOf(GDL.fileId to fileId), ::byFileStmt).isNotEmpty()
+    /**
+     * Where [fileId] stands with the forms that name it (issue #1839), read from SQL: [LinkState.live] when a live form
+     * links it, else when the last of the deleted forms that do was deleted ([LinkState.deletedAt]), null when none
+     * does. A deleted form keeps its link rows, and nothing restores a deleted form, so only a live one keeps a file.
+     */
+    fun linkState(cxt: KdrCxt, fileId: String): LinkState {
+        val holders = queryLinks(cxt, mapOf(GDL.fileId to fileId), ::byFileStmt).mapNotNull { it[GDL.holderId].toOptStr() }.distinct()
+        if (holders.isEmpty()) return LinkState(false, null)
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val select = SqlTopicUtil.mkTableSelectStmt(sqlCxt, GedraDataService.get(cxt).gedraDataTable(cxt))
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) { rows = holders.mapNotNull { sqlCxt.sqlDb.queryOneStatement(cxt, select, mapOf(GD.gedraId to it)) } }
+        if (rows.any { it[PF.enabled] == true }) return LinkState(true, null)
+        return LinkState(false, rows.mapNotNull { it[PF.updatedAt].toOptInstant() }.maxOrNull())
+    }
+
+    /** What [linkState] answers: whether a live form links a file, and else when the last form linking it was deleted. */
+    class LinkState(val live: Boolean, val deletedAt: Instant?)
 
     /**
      * The data file [fileId] when the caller may read it through a live form that links it, one their read scope

@@ -30,6 +30,12 @@ object DFILE {
     const val renditions = "renditions"
     const val uploadedAt = "uploadedAt"
 
+    /**
+     * On the record: when a form last stopped naming the file (issue #1839), which the sweep's grace is counted from
+     * when it is later than [uploadedAt], so a file replaced by mistake keeps its grace for the undo.
+     */
+    const val unlinkedAt = "unlinkedAt"
+
     // --- endpoint input and output ---
     /** The data file's id: its gedra id, `gd.df.<client>.<base>`. */
     const val fileId = "fileId"

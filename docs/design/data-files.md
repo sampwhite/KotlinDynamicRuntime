@@ -240,11 +240,13 @@ before the tasks run, and a dry run removes nothing and notes each in the trace.
 
 - **Uploads past their time** go at once: their staged parts, anything put together from them, their row, and their
   record, which holds no bytes. One whose finish holds a fresh claim is left to finish.
-- **Files no form links** go once they are older than `KDR_FILE_ORPHAN_GRACE_HOURS` (a week by default): `ready`, named
-  by no link row at all. That is a file replaced in its field, or uploaded for a form never saved. A file only a deleted
-  form links stays, since restoring the form would want it back; purging those is in `deferred-work.md`. The removal is
-  a soft delete, and its guard checks again under the file's lock, so a form that links the file at the last moment
-  keeps it.
+- **Files no live form links** go once they have been unused for longer than `KDR_FILE_ORPHAN_GRACE_HOURS` (a week by
+  default): `ready`, and linked by no live form -- replaced in its field, uploaded for a form never saved, or held only
+  by forms since deleted, which nothing restores. **Unused since** is the latest of its upload, the last time a form
+  stopped naming it (`unlinkedAt` on its record, written by the link hook under the file's lock), and the deletion of
+  the last deleted form that names it, so a file replaced or a form deleted by mistake keeps a whole grace for the undo,
+  however old the file. The removal is a soft delete, and its guard checks again under the file's lock, so a form that
+  links the file at the last moment keeps it.
 - **Bytes nothing names** go once they are older than the same grace: an object under a client's `files/` that no live
   record names -- of the client or its sandbox, whose bytes are its parent's -- and no upload whose parts are put
   together and moving there (the upload's row records the hash the moment the store assembles the file,
@@ -252,7 +254,11 @@ before the tasks run, and a dry run removes nothing and notes each in the trace.
   hours. **Two records of one file share its bytes**, so a new upload of bytes the store already holds keeps them, however
   old the object is.
 - **Staged uploads nothing holds** -- S3's multipart uploads, or a store's own -- go after an upload's 24 hours: begun
-  for an upload whose row never came, or went without them.
+  for an upload whose row never came, or went without them. The store is asked for them once a run, not once a client.
+
+**Each task asks again of its own thing only**: a file's record and links, an object's own date and whether its hash is
+named, a staged upload's token among the upload rows. A run's cost is the client's files and folder once, then a few
+reads a removal.
 
 What is left a narrow window: bytes the sweep found unnamed, which a new upload of exactly that file shares in the
 moment between the sweep asking again and removing them. The grace makes the bytes old; nothing makes that moment

@@ -24,6 +24,8 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.http.request.ContentData
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.job.JobCounts
 import com.dynamicruntime.common.job.JobLaunchKind
@@ -32,6 +34,7 @@ import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.test.ClockOp
 import com.dynamicruntime.common.test.TCLK
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.mkUniqueId
@@ -84,19 +87,23 @@ class DataFileSweepTest : StringSpec({
         handler.rptResponseData?.jsonMap().shouldNotBeNull()
 
     fun upload(user: TestUser, bytes: ByteArray): String {
-        val sent = envelope(user.client.sendRawBodyRequest(DFILE.uploadPath, mapOf(DFILE.name to "a.png", DFILE.mimeType to "image/png"), bytes))
+        val args = mapOf(DFILE.name to "a.png", DFILE.mimeType to "image/png")
+        val sent = envelope(user.client.sendRawBodyRequest(DFILE.uploadPath, args, bytes))
         sent[EP.status] shouldBe null
         return sent[EP.results].toJsonMapOrEmpty()[DFILE.fileId].toOptStr().shouldNotBeNull()
     }
 
     fun begin(user: TestUser): String =
-        user.postItem(DFILE.beginPath, mapOf(DFILE.mimeType to "image/png", DFILE.declaredSize to 5000))[DFILE.fileId].toOptStr().shouldNotBeNull()
+        user.postItem(DFILE.beginPath, mapOf(DFILE.mimeType to "image/png", DFILE.declaredSize to 5000))[DFILE.fileId].toOptStr()
+            .shouldNotBeNull()
 
     fun visit(photo: String?) = mapOf(GE.traitId to "visit", GE.data to listOfNotNull(photo?.let { "photo" to it }).toMap())
 
     fun createForm(user: TestUser, client: String, photo: String): String {
         val created = envelope(
-            user.client.sendEditRequest(clientPath(GEP.formDocCreate, client), null, mapOf(GDF.entries to listOf(visit(photo))), HttpMethod.POST),
+            user.client.sendEditRequest(
+                clientPath(GEP.formDocCreate, client), null, mapOf(GDF.entries to listOf(visit(photo))), HttpMethod.POST,
+            ),
         )
         created[EP.status] shouldBe null
         return created[EP.item].toJsonMapOrEmpty()[GDF.gedraId].toOptStr().shouldNotBeNull()
@@ -154,7 +161,7 @@ class DataFileSweepTest : StringSpec({
         }
     }
 
-    "a file no form links goes after the grace, then its bytes; a linked one and a deleted form's stay" {
+    "a file no live form links goes after the grace, then its bytes; a linked one stays, a deleted form's does not" {
         val client = "sweep1839o"
         defineClient(client)
         var pat = signIn(client)
@@ -164,7 +171,7 @@ class DataFileSweepTest : StringSpec({
         val deletedForms = upload(pat, png(9))
         val form = createForm(pat, client, replaced)
         setPhoto(pat, client, form, kept)
-        // A form deleted, which may yet be restored with its file.
+        // A form deleted: nothing restores one, so its file is no longer used.
         val gone = createForm(pat, client, deletedForms)
         envelope(pat.client.sendDeleteRequest(clientPath(GEP.formDoc, client), mapOf(GDF.gedraId to gone)))[EP.status] shouldBe null
         val folder = "${FNAME.clientKeyPrefix(client)}files/"
@@ -173,18 +180,88 @@ class DataFileSweepTest : StringSpec({
             sweep(client).completed shouldBe 0L
             advanceHours(DSW_GRACE + 1L)
             pat = signIn(client)
-            sweep(client).completed shouldBe 2L
+            sweep(client).completed shouldBe 3L
             exists(pat, replaced) shouldBe false
             exists(pat, never) shouldBe false
+            exists(pat, deletedForms) shouldBe false
             exists(pat, kept) shouldBe true
-            exists(pat, deletedForms) shouldBe true
             // The removed files' bytes go the next night, nothing naming them.
-            sweep(client).completed shouldBe 2L
+            sweep(client).completed shouldBe 3L
             val stored = store.objects(cxt, DFILE.bucket, folder).map { it.name }
-            stored shouldNotContain "$folder${png(5).sha256Hex()}"
-            stored shouldNotContain "$folder${png(7).sha256Hex()}"
+            for (seed in listOf(5, 7, 9)) stored shouldNotContain "$folder${png(seed).sha256Hex()}"
             stored shouldContain "$folder${png(3).sha256Hex()}"
-            stored shouldContain "$folder${png(9).sha256Hex()}"
+        } finally {
+            resetClock()
+        }
+    }
+
+    "a file's grace runs from when a form last stopped naming it, not from its upload" {
+        val client = "sweep1839g"
+        defineClient(client)
+        var pat = signIn(client)
+        val old = upload(pat, png(19))
+        val form = createForm(pat, client, old)
+        try {
+            // A month on, the photo is replaced -- by mistake, say.
+            advanceHours(30 * 24L)
+            pat = signIn(client)
+            setPhoto(pat, client, form, upload(pat, png(21)))
+            sweep(client).completed shouldBe 0L
+            exists(pat, old) shouldBe true
+            // Its whole grace later, with no undo, it goes.
+            advanceHours(DSW_GRACE + 1L)
+            pat = signIn(client)
+            sweep(client).completed shouldBe 1L
+            exists(pat, old) shouldBe false
+        } finally {
+            resetClock()
+        }
+    }
+
+    "a sandbox's bytes, kept in its parent's folder, are named by its records and stay" {
+        val parent = "sweep1839b"
+        val setup = cxt.mkSubContext("setup", parent).also { it.userId = 18391L }
+        GedraConfigService.get(cxt).writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(parent), parent) {
+                defineClient(
+                    ClientDef(
+                        clientId = parent, name = parent, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                    ),
+                )
+                trait("VisitEntry", "visit", setOf(GedraDataType.formDoc), "A site visit.") {
+                    property("photo", "A photograph of the site.") { dataFile(FKIND.png) }
+                }
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        chief.postData(AEP.openSandbox, emptyMap())
+        val inSandbox = upload(chief, png(23))
+        val sandbox = inSandbox.split('.')[2]
+        createForm(chief, sandbox, inSandbox)
+        val bytes = "${FNAME.clientKeyPrefix(parent)}files/${png(23).sha256Hex()}"
+        try {
+            advanceHours(DSW_GRACE + 1L)
+            // The parent's sweep walks its folder, where the sandbox's bytes are.
+            sweep(parent)
+            store.objects(cxt, DFILE.bucket, bytes).map { it.name } shouldContain bytes
+        } finally {
+            resetClock()
+        }
+    }
+
+    "a file put together under staging/ for an upload no longer under way goes after an upload's hours" {
+        val client = "sweep1839l"
+        defineClient(client)
+        val key = "${FNAME.clientKeyPrefix(client)}staging/leftover"
+        FileStoreService.get(cxt).forOwner(cxt, client).put(cxt, DFILE.bucket, key, ContentData(png(25), "image/png"))
+        try {
+            sweep(client).completed shouldBe 0L
+            advanceHours(DFILE.uploadHours + 1L)
+            sweep(client).completed shouldBe 1L
+            store.objects(cxt, DFILE.bucket, key).shouldBeEmpty()
         } finally {
             resetClock()
         }

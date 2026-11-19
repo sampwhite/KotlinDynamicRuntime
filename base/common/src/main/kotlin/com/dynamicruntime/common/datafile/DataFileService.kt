@@ -17,6 +17,7 @@ import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.StagedPart
+import com.dynamicruntime.common.filestore.StagedUpload
 import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GDT
 import com.dynamicruntime.common.gedra.GDU
@@ -569,24 +570,37 @@ object DataFileService {
     }
 
     /**
-     * The ids of [client]'s files no form links (issue #1839): [DFSTAT.ready], uploaded before [cutoff], and named by no
-     * link row at all -- not even a deleted form's, which may yet be restored with it.
+     * The ids of [client]'s files no live form links (issue #1839), [DFSTAT.ready] and unused since before [cutoff]
+     * ([unusedSince]). A deleted form's link does not keep a file: nothing restores a deleted form.
      */
     @KdrInternal
     fun unlinkedFiles(cxt: KdrCxt, client: String, cutoff: Instant): List<String> {
-        val linked = DataFileLinks.linkedFileIds(cxt, client)
-        return liveFiles(cxt, client).filter { unlinkedBefore(it, cutoff) && it.gedraId.fullId !in linked }
+        val live = DataFileLinks.liveFormCounts(cxt, client).keys
+        val anyLink = DataFileLinks.linkedFileIds(cxt, client)
+        return liveFiles(cxt, client)
+            .filter { fileOf(it)[DFILE.status] == DFSTAT.ready && it.gedraId.fullId !in live }
+            // Only a file a deleted form still names asks SQL when that form went.
+            .filter { row ->
+                val deletedAt = if (row.gedraId.fullId in anyLink) DataFileLinks.linkState(cxt, row.gedraId.fullId).deletedAt else null
+                unusedSince(row, deletedAt)?.let { it < cutoff } == true
+            }
             .map { it.gedraId.fullId }.sorted()
     }
 
-    private fun unlinkedBefore(row: GedraDataRow, cutoff: Instant): Boolean {
+    /**
+     * Since when [row]'s file has been unused (issue #1839): the latest of its upload, the last time a form stopped
+     * naming it ([DFILE.unlinkedAt]), and [deletedAt], when the last deleted form that named it went. The grace runs from
+     * it, so a file replaced or a form deleted by mistake keeps a whole grace for the undo, however old the file is.
+     */
+    private fun unusedSince(row: GedraDataRow, deletedAt: Instant?): Instant? {
         val file = fileOf(row)
-        return file[DFILE.status] == DFSTAT.ready && file[DFILE.uploadedAt].toOptInstantOrNull()?.let { it < cutoff } == true
+        val uploaded = file[DFILE.uploadedAt].toOptInstantOrNull()
+        return listOfNotNull(uploaded, file[DFILE.unlinkedAt].toOptInstantOrNull(), deletedAt).maxOrNull()
     }
 
     /**
-     * Removes [fileId], a file no form links, uploaded before [cutoff] (issue #1839): soft-deleted as any removal is,
-     * its bytes left for [sweepObject] once nothing names them. Asked again here -- the record, then any link row -- and
+     * Removes [fileId], a file no live form links, unused since before [cutoff] (issue #1839): soft-deleted as any removal
+     * is, its bytes left for [sweepObject] once nothing names them. Asked again here -- the record, then its links -- and
      * once more under the file's lock by the removal's own guard ([DataFileDeleteGuard]), so a form that linked it since
      * it was listed keeps it. Whether it did, or with [dryRun] would.
      */
@@ -594,7 +608,9 @@ object DataFileService {
     fun sweepUnlinked(cxt: KdrCxt, fileId: String, cutoff: Instant, dryRun: Boolean): Boolean {
         val data = GedraDataService.get(cxt)
         val row = data.queryGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted) ?: return false
-        if (!unlinkedBefore(row, cutoff) || DataFileLinks.hasLinks(cxt, fileId)) return false
+        if (fileOf(row)[DFILE.status] != DFSTAT.ready) return false
+        val links = DataFileLinks.linkState(cxt, fileId)
+        if (links.live || unusedSince(row, links.deletedAt)?.let { it < cutoff } != true) return false
         if (dryRun) return true
         return try {
             data.deleteGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted)
@@ -649,34 +665,45 @@ object DataFileService {
     }
 
     /**
-     * Removes the object at [key] in [owner]'s folder when nothing needs it still (issue #1839), asked again here from the
-     * records and uploads as they are now and from the object's own date. Whether it did, or with [dryRun] would.
+     * Removes the object at [key] in [owner]'s folder when nothing needs it still (issue #1839), asked again here of this
+     * object alone: its own date, and whether a record or an upload names it now. Whether it did, or with [dryRun] would.
      */
     @KdrInternal
     fun sweepObject(cxt: KdrCxt, owner: String, key: String, filesCutoff: Instant, stagingCutoff: Instant, dryRun: Boolean): Boolean {
-        if (key !in unnamedObjects(cxt, owner, filesCutoff, stagingCutoff).toSet()) return false
+        // The object and its metadata are all a listing from its own key holds.
+        val written = FileStoreService.get(cxt).store.objects(cxt, DFILE.bucket, key).firstOrNull { it.name == key }?.modifiedAt
+            ?: return false
+        val unneeded = if (key.startsWith("${FNAME.clientKeyPrefix(owner)}files/")) {
+            written < filesCutoff && key.substringAfterLast('/') !in namedHashes(cxt, owner)
+        } else {
+            written < stagingCutoff && key !in stagingKeys(cxt, owner)
+        }
+        if (!unneeded) return false
         if (dryRun) return true
         return FileStoreService.get(cxt).forOwner(cxt, owner).delete(cxt, DFILE.bucket, key)
     }
 
     /**
-     * The file store's staged uploads in [owner]'s folder that no upload under way holds (issue #1839), begun before
-     * [cutoff]: a begin stopped between the store and its row, or an upload whose row went without its parts. Each its
-     * key and token.
+     * Of [staged], the store's staged uploads of the whole bucket (listed once for a run, since the listing does not depend
+     * on the client), those in [owner]'s folder that no upload under way holds (issue #1839), begun before [cutoff]: a
+     * begin stopped between the store and its row, or an upload whose row went without its parts.
      */
     @KdrInternal
-    fun strayStaged(cxt: KdrCxt, owner: String, cutoff: Instant): List<Pair<String, String>> {
+    fun strayStaged(cxt: KdrCxt, owner: String, staged: List<StagedUpload>, cutoff: Instant): List<StagedUpload> {
         val folder = FNAME.clientKeyPrefix(owner)
         val held = stagingTokens(cxt, owner)
-        return FileStoreService.get(cxt).store.stagedUploads(cxt, DFILE.bucket)
-            .filter { it.key.startsWith(folder) && it.startedAt < cutoff && it.token !in held }
-            .map { it.key to it.token }.sortedBy { it.first }
+        return staged.filter { it.key.startsWith(folder) && it.startedAt < cutoff && it.token !in held }.sortedBy { it.key }
     }
 
-    /** Aborts the staged upload [token] at [key] when it is still a stray ([strayStaged]). Whether it did, or would. */
+    /**
+     * Aborts the staged upload [token] at [key], begun at [startedAt], when it is still a stray: begun before [cutoff], and
+     * held by no upload row now -- which is all that can have changed since it was listed. Whether it did, or would.
+     */
     @KdrInternal
-    fun sweepStaged(cxt: KdrCxt, owner: String, key: String, token: String, cutoff: Instant, dryRun: Boolean): Boolean {
-        if ((key to token) !in strayStaged(cxt, owner, cutoff).toSet()) return false
+    fun sweepStaged(
+        cxt: KdrCxt, owner: String, key: String, token: String, startedAt: Instant, cutoff: Instant, dryRun: Boolean,
+    ): Boolean {
+        if (startedAt >= cutoff || token in stagingTokens(cxt, owner)) return false
         if (dryRun) return true
         return FileStoreService.get(cxt).forOwner(cxt, owner).abortStaged(cxt, DFILE.bucket, key, token)
     }
@@ -855,6 +882,25 @@ object DataFileService {
         changeProgress(cxt, fileId) { progress ->
             if (progress[GDU.finishingBy] != claim) null else progress - GDU.finishingAt - GDU.finishingBy
         }
+    }
+
+    /**
+     * Records on [file]'s record, inside the open transaction [sqlCxt] of a form's write that holds the file's lock, that a
+     * form stopped naming it now (issue #1839): what the sweep's grace counts from ([DFILE.unlinkedAt]).
+     */
+    @KdrInternal
+    fun stampUnlinked(cxt: KdrCxt, sqlCxt: SqlCxt, file: GedraDataRow) {
+        val data = GedraDataService.get(cxt)
+        val table = data.gedraDataTable(cxt)
+        val id = file.gedraId.fullId
+        val current = sqlCxt.sqlDb.queryOneEnabled(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), mapOf(GD.gedraId to id)) ?: return
+        val stored = current[GD.data].toJsonMapOrEmpty()
+        val record = stored[DFILE.file].toJsonMapOrEmpty() + (DFILE.unlinkedAt to cxt.instanceNow().formatDate())
+        val bind = mutableMapOf<String, Any?>(GD.gedraId to id, GD.data to stored + (DFILE.file to record))
+        SqlTopicUtil.prepForStdUpdate(cxt, table, bind, current)
+        val update =
+            data.mkScopedGedraUpdate(sqlCxt, table, ReadScope.unrestricted, "uDataFileUnlinked", "c:${GD.data} = :${GD.data}", bind)
+        sqlCxt.sqlDb.executeStatement(cxt, update, bind)
     }
 
     /**

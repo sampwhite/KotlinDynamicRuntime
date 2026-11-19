@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.filestore.StagedUpload
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.job.JobDef
 import com.dynamicruntime.common.job.JobProfile
@@ -33,7 +34,7 @@ object DFSW {
     /** An object of an owner's folder nothing names: the owner and its key. */
     const val objectKind = "object"
 
-    /** A staged upload nothing holds: the owner, its key, and its token. */
+    /** A staged upload nothing holds: the owner, its key, its token, and when it began, in epoch milliseconds. */
     const val staged = "staged"
 
     /** What parts a task key. */
@@ -60,9 +61,10 @@ fun fileOrphanGraceHours(cxt: KdrCxt): Int =
  *
  * - **Uploads past their time** ([DFSW.upload]): their parts, anything put together from them, their row, and their
  *   record, which held no bytes yet -- at once, since an upload past its time takes no more chunks.
- * - **Files no form links** ([DFSW.unlinked]): ready, uploaded more than [fileOrphanGraceHours] ago, and named by no link
- *   row -- one replaced in its field, or uploaded for a form never saved. Soft-deleted, as a removal is; a file only a
- *   deleted form links is kept, since restoring the form would want it.
+ * - **Files no live form links** ([DFSW.unlinked]): ready, and unused for more than [fileOrphanGraceHours] -- counted
+ *   from the latest of its upload, the last time a form stopped naming it, and the deletion of the last deleted form
+ *   that names it, so an undo within the grace finds the file. One replaced in its field, uploaded for a form never
+ *   saved, or held by forms since deleted, which nothing restores. Soft-deleted, as a removal is.
  * - **Objects nothing names** ([DFSW.objectKind]): bytes under a client's `files/` that no live record, and no upload
  *   finishing, names, written more than the grace ago; and a file put together under `staging/` for an upload no longer
  *   under way, written more than an upload's hours ago. Per owner: a sandbox's bytes are in its parent's folder.
@@ -104,13 +106,33 @@ private fun sweepTasks(run: JobRunCxt, client: String): List<String> {
     DataFileService.unlinkedFiles(cxt, client, graceCutoff(cxt)).forEach { keys.add(key(DFSW.unlinked, it)) }
     // A folder is its owner's: a sandbox's bytes are in its parent's, swept with the parent.
     if (!isSandboxClient(client)) {
-        DataFileService.unnamedObjects(cxt, client, graceCutoff(cxt), uploadCutoff(cxt)).forEach { keys.add(key(DFSW.objectKind, client, it)) }
-        DataFileService.strayStaged(cxt, client, uploadCutoff(cxt)).forEach { (k, token) -> keys.add(key(DFSW.staged, client, k, token)) }
+        DataFileService.unnamedObjects(cxt, client, graceCutoff(cxt), uploadCutoff(cxt)).forEach {
+            keys.add(key(DFSW.objectKind, client, it))
+        }
+        DataFileService.strayStaged(cxt, client, stagedFor(run), uploadCutoff(cxt)).forEach {
+            keys.add(key(DFSW.staged, client, it.key, it.token, it.startedAt.toEpochMilliseconds().toString()))
+        }
     }
     return keys
 }
 
 private fun key(vararg parts: String): String = parts.joinToString(DFSW.sep)
+
+/**
+ * The store's staged uploads of the whole bucket, listed once for [run]'s launch rather than once for each client: the
+ * listing does not depend on the client, and on S3 it costs a request for each upload under way. The last launch's
+ * listing is kept, and a new launch replaces it.
+ */
+private fun stagedFor(run: JobRunCxt): List<StagedUpload> {
+    val launch = "${run.launch.jobType}/${run.launch.name}"
+    stagedListing?.let { (of, listing) -> if (of == launch) return listing }
+    val listing = FileStoreService.get(run.cxt).store.stagedUploads(run.cxt, DFILE.bucket)
+    stagedListing = launch to listing
+    return listing
+}
+
+@Volatile
+private var stagedListing: Pair<String, List<StagedUpload>>? = null
 
 /** Runs the task [taskKey]: removes what it names when that still holds, or with a dry run says it would. */
 private fun sweepOne(run: JobRunCxt, taskKey: String): JobTaskResult {
@@ -121,7 +143,9 @@ private fun sweepOne(run: JobRunCxt, taskKey: String): JobTaskResult {
         DFSW.upload -> DataFileService.sweepUpload(cxt, parts[1], dry)
         DFSW.unlinked -> DataFileService.sweepUnlinked(cxt, parts[1], graceCutoff(cxt), dry)
         DFSW.objectKind -> DataFileService.sweepObject(cxt, parts[1], parts[2], graceCutoff(cxt), uploadCutoff(cxt), dry)
-        DFSW.staged -> DataFileService.sweepStaged(cxt, parts[1], parts[2], parts[3], uploadCutoff(cxt), dry)
+        DFSW.staged -> DataFileService.sweepStaged(
+            cxt, parts[1], parts[2], parts[3], Instant.fromEpochMilliseconds(parts[4].toLong()), uploadCutoff(cxt), dry,
+        )
         else -> throw KdrException("The data-file sweep has no task of the kind '${parts.first()}' ('$taskKey').")
     }
     if (!removed) return JobTaskResult.nothingToDo
