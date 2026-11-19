@@ -144,6 +144,14 @@ except as a public test deployment (`$${PTD.publicTestDeploymentEnvVar.name}`), 
 On any deployment, a session with env auth switched to debug has the diagnostic tags, debug pages, and error detail
 too, but not the test only endpoints.
 
+**A deployment behind the env gate** (`$${EGATE.envGateEnvVar.name}`) needs env access for everything, whatever a
+section's rule says. A visit to the web app without it goes straight to Google's sign-in and back to the page asked for,
+and any other request is refused (401) until then; only `health` still answers. The Google sign-in is the env access,
+and only for an account on the admin domain (`$${ADMR.adminEmailDomainEnvVar.name}`), where Google is authoritative for
+it. It also signs the person in as their user. Its env access lasts a set time (12 hours by default), after which the
+next visit goes back through Google. Any other sign-in, a code sent to the same address included, gives no env access
+there.
+
 ## API keys and access tokens
 
 An API key acts as its user, with that user's roles and read scope as they are at each request: a role taken away

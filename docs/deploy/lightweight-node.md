@@ -548,6 +548,25 @@ If you put something else in front of the application, it too must always set `X
 would carry env auth and could read the operator pages. And anything that runs on the node itself can reach the
 application, and carries env auth too, which is fine on a node that does nothing else.
 
+## Putting the whole node behind Google
+
+A deployment that keeps real data, and is for your own people, can put everything behind a Google sign-in instead,
+with Google standing in for a VPN: `KDR_ENV_GATE=googleChallenge`. A visit to `/wa` then goes straight to Google's
+sign-in, with no page of the application's first, and comes back to the page that was asked for. Only an account on
+your admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) gets through, which needs that domain to be a Google Workspace domain. The
+sign-in grants env access for 12 hours and signs the person in as their user. Every other request without it is
+refused, except `/kda/health`.
+
+It needs:
+
+- `KDR_GOOGLE_CLIENT_ID`, and the client's **secret** in `~/kdr/private/secrets.properties` as `googleClientSecret`.
+  Unlike the id, the secret must never be in a target file.
+- `KDR_PUBLIC_URL`, the address visitors use, such as `https://dynamicruntime.com`.
+- In Google Cloud Console, `<KDR_PUBLIC_URL>/kda/auth/envGate/callback` registered as an **Authorized redirect URI**
+  for the client.
+- `KDR_TRUST_ENV_AUTH_HEADER=false`, and not `KDR_ENV_AUTH_FROM_ADMIN_LOGIN`: on a gated node, env access is the Google
+  sign-in's alone. The node refuses to start otherwise, or without any of the above.
+
 ## Mail and sign-in
 
 A **public test deployment** treats people in two ways.

@@ -422,8 +422,15 @@ class AuthFormHandler(
         if (!rateLimiter.allow("goog:$ip", RL.pwPerIpMax, RL.pwWindowMs, cxt.now().toEpochMilliseconds())) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyLoginAttempts), code = EXC.tooManyRequests)
         }
-        val token = verifier.verify(cxt, credential)
+        return loginByGoogleToken(cxt, verifier.verify(cxt, credential))
+    }
 
+    /**
+     * Signs in as the person a **verified** Google ID token names: the Google sign-in's own path after the token is
+     * checked, shared by [loginByGoogle] and the env gate's redirect flow (`EnvGate`, issue #1865), so the two find
+     * and make users alike. The gate checks its own admission rules before calling this.
+     */
+    fun loginByGoogleToken(cxt: KdrCxt, token: GoogleIdToken): Map<String, Any?> {
         // An identity we have seen before: the link is the answer, and the email is not consulted at all.
         userService.queryLinkedIdentity(cxt, LSRC.google, token.subject)?.let { linked ->
             return completeLogin(cxt, googleUserOf(cxt, linked), byCode = false)

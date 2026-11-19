@@ -99,6 +99,12 @@ The environment name -- `local`, `unit`, `prod`. Drives environment-specific beh
 
 On a public test deployment with **no edge** -- an ephemeral instance, whose database is refreshed or discarded -- a signed-in user is env-authed when their address is on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) and they hold `allClients`, read live (issue #1150). Such an address may also sign in, and is mailed its codes for real, whatever `KDR_PUBLIC_SIGN_IN` says. Refused unless `KDR_PUBLIC_TEST_DEPLOYMENT` is on, `KDR_TRUST_ENV_AUTH_HEADER` is off (there is no edge to strip it), and the admin domain is set and is not a consumer mail domain, every address of which would be an administrator's.
 
+### `KDR_ENV_GATE`
+
+**Default when unset:** none
+
+Puts the whole deployment behind a Google sign-in (issue #1865): `googleChallenge` sends a visit to the web app without env access straight into Google's sign-in, with no page of ours first, and back to the page asked for; any other request without env access is refused. Only an account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for it, gets through, and that sign-in both grants env access and signs the person in as their user. Google stands in for a VPN and SSO. `none` (the default) leaves the node as its sections say. Needs `KDR_GOOGLE_CLIENT_ID`, the client secret in the secrets file, and `KDR_PUBLIC_URL`. The `envGate` config option wins over this.
+
 ### `KDR_FLAVOR_DIR`
 
 **Default when unset:** `flavor-overlays` under the workspace

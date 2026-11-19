@@ -20,6 +20,7 @@ import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.SessionLifetime
 import com.dynamicruntime.common.user.EnvAuthRules
+import com.dynamicruntime.common.user.EnvGate
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.util.crc32Hex
@@ -520,9 +521,17 @@ class RequestService : ServiceInitializer {
             directAccess, handler.forwardedFor, handler.getRequestHeader(DirectAccess.forwardedHeader), handler.peerAddress,
         )
         extractAuth(cxt, handler)
+        // On a gated request (issue #1865), env access comes only with a Google sign-in: none assumed for a local request.
+        EnvGate.dropAssumption(cxt, handler)
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
-        // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
+        // (issue #1150), and a gated node's from the gate's Google sign-in (issue #1865), so it is known only now that
+        // the session is restored -- and before the gates below.
         EnvAuthRules.fromAdminLogin(cxt)
+        // The env gate (issue #1865): a caller without env access is sent to Google, or refused, before anything else.
+        if (EnvGate.check(cxt, handler, focus)) {
+            handler.logSuccess(cxt, EXC.ok)
+            return
+        }
         // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its
         // owner may do: refused here, before the gate, so no section -- and no content page -- can forget to. The one
         // endpoint that exchanges the key (issue #1403) says so itself, and only under the API root. A call made in this
@@ -1072,9 +1081,11 @@ class RequestService : ServiceInitializer {
         // #1372); a sign-in starts one.
         val signedInMs = cxt.restoredSession?.takeIf { req.sessionChange }?.signedInEpochMs ?: nowMs
         val expireMs = SessionLifetime.issuedEnd(cxt, profile.client, signedInMs, nowMs)
+        // The env gate's stamp (issue #1865) is the gate sign-in's alone: a switch to another of the person's users drops
+        // it, as env access from a login is keyed on the user signed in.
         val cookie = UserAuthCookie(
             profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona,
-            signedInEpochMs = signedInMs, issuedEpochMs = nowMs,
+            signedInEpochMs = signedInMs, issuedEpochMs = nowMs, envGateUntilEpochMs = req.envGateUntilMs,
         )
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
 
@@ -1114,7 +1125,7 @@ class RequestService : ServiceInitializer {
         val expireMs = SessionLifetime.issuedEnd(cxt, profile.client, renewing.signedInEpochMs, nowMs)
         val cookie = UserAuthCookie(
             profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona,
-            signedInEpochMs = renewing.signedInEpochMs, issuedEpochMs = nowMs,
+            signedInEpochMs = renewing.signedInEpochMs, issuedEpochMs = nowMs, envGateUntilEpochMs = renewing.envGateUntilEpochMs,
         )
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(NodeService.get(cxt)), Instant.fromEpochMilliseconds(expireMs))
     }

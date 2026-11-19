@@ -822,6 +822,14 @@ Both send `X-Kdr-Env-Email: fixtures@unit.invalid`, which a test instance trusts
 (`TestHttpServer` + `KdrHttpClient`) passes that header itself, or boots with `ACFG.assumeEnvAuth` to be shaped like a
 developer's local server, as `ProbeSessionTest` does.
 
+**The env gate, simulated (issue #1865).** A deployment behind the env gate (`KDR_ENV_GATE`) needs a Google sign-in for
+everything. A local server simulates it on a host label containing `admin` under `.localhost`: open
+`admin.kd4.localhost:<port>/wa/...` and you land on that page signed in, with env access, as the JVM's `user.name` at
+`KDR_ADMIN_EMAIL_DOMAIN` (which must be set), with no Google screen. `kd4.localhost` stays ungated, so the two views sit
+side by side, each with its own cookies. Assumed env auth does not count on a gated request. In a test, boot with
+`EGATE.simulate` and `EGATE.simulatedAddress` and send that `Host`; for the real flow, `EGATE.codeExchange` and
+`GOOG.googleKeySource` stand in for Google, as `EnvGateTest` does.
+
 This works in unit tests because `env == unit` allows test endpoints. Test-only endpoints (marked
 `forTestingOnly` on the builder) are dropped from the store unless a deployment allows them
 (`KdrInstanceConfig.isTestInstance` — an explicit config entry decides it either way, otherwise inferred as

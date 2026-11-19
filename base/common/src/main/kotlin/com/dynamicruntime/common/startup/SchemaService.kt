@@ -3,6 +3,7 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.EnvGate
 import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.SandboxAccess
@@ -242,6 +243,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         // public test deployment in `dev`, whose env auth the same check hardens (issue #1150).
         val isTestInstance = cxt.instanceConfig.isTestInstance
         PublicTestDeployment.checkBoot(cxt.instanceConfig)
+        EnvGate.checkBoot(cxt.instanceConfig)
         val availableEndpoints =
             if (isTestInstance) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
 
