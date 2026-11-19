@@ -50,7 +50,8 @@ object EGATE {
     val envGateEnvVar = EnvVarDef(
         "KDR_ENV_GATE", group = ENVGRP.application, defaultDoc = EnvGateMode.none.name,
         description = "Puts the whole deployment behind a Google sign-in (issue #1865): `${EnvGateMode.googleChallenge}` " +
-            "sends a visit to the web app without env access straight into Google's sign-in, with no page of ours " +
+            "sends a visit to a page (the web app's or the portal's) without env access straight into Google's " +
+            "sign-in, with no page of ours " +
             "first, and back to the page asked for; any other request without env access is refused. Only an " +
             "account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for it, gets " +
             "through. Its env access is kept apart from the user signed in, and with nobody signed in the sign-in " +
@@ -123,7 +124,11 @@ object EGATE {
      */
     const val accessCookie = "kdrEnvGate"
 
-    /** The short-lived cookie holding a sign-in's `state`, `nonce`, and where to return, encrypted. */
+    /**
+     * The prefix of the short-lived cookie holding a sign-in's `state`, `nonce`, and where to return, encrypted. The
+     * cookie is named by its state (`kdrEnvGateState-<state>`), so sign-ins started at once in one browser -- several
+     * tabs whose env access lapsed together -- each keep their own and each return to their own page.
+     */
     const val stateCookie = "kdrEnvGateState"
 
     /** How long a sign-in has to come back from Google, in milliseconds (10 minutes). */
@@ -202,7 +207,7 @@ class GoogleTokenEndpoint(private val clientId: String, private val clientSecret
  *
  * **Simulated** for development and tests: on a node that may ([maySimulate], [EGATE.simulate]), a host label
  * containing [EGATE.adminHostWord] under `.localhost` forces the gate and skips only the trip to Google. Everything
- * after it runs for real -- the domain checks, finding or making the user, the stamp, the return.
+ * after it runs for real -- the domain checks, the env access cookie, finding or making the user, the return.
  *
  * The gate's place in a request is `RequestService.dispatch`, after the session is restored: [resolve], then [check].
  *
@@ -210,6 +215,12 @@ class GoogleTokenEndpoint(private val clientId: String, private val clientSecret
  */
 object EnvGate {
     private val random = SecureRandom()
+
+    /** What a sign-in that cannot go on says: the way forward is a fresh start. */
+    private const val startOver = "That sign-in could not be completed. Open the app again to start over."
+
+    /** What a sign-in says when Google's answer does not hold up. */
+    private const val uncheckable = "Google's answer could not be checked. Open the app again to start over."
 
     /** The configured [EnvGateMode]: the config option, else [EGATE.envGateEnvVar], else `none`. */
     fun mode(config: KdrInstanceConfig): EnvGateMode {
@@ -299,6 +310,11 @@ object EnvGate {
                     "(as '${clientSecretName(config)}').",
             )
         }
+        // Google returns to an address it must have registered; built from a request's headers it is whatever the caller or
+        // a proxy says. A test instance, reached directly, may build it so.
+        if (config.getEnvVar(INVITE.publicUrl)?.trim()?.ifEmpty { null } == null && !config.isTestInstance) {
+            refuse("${EGATE.envGateEnvVar} is '$mode', but ${INVITE.publicUrl} is not set: Google must be told where to return.")
+        }
         // Only trust stated outright: behind the gate it defaults off, a test instance's included (EnvAuthRules.isTrusted).
         if (EnvAuthRules.explicitTrust(config) == true) {
             refuse(
@@ -307,7 +323,10 @@ object EnvGate {
             )
         }
         if (config.getEnvBool(PTD.envAuthFromAdminLoginEnvVar) == true) {
-            refuse("${EGATE.envGateEnvVar} is '$mode', so ${PTD.envAuthFromAdminLoginEnvVar} must be off: a code sign-in must not grant env access.")
+            refuse(
+                "${EGATE.envGateEnvVar} is '$mode', so ${PTD.envAuthFromAdminLoginEnvVar} must be off: a code sign-in must " +
+                    "not grant env access.",
+            )
         }
         if (config.bootRole == BOOT.edge) {
             refuse("${EGATE.envGateEnvVar} is for an application node; an edge has a sign-in of its own.")
@@ -319,10 +338,11 @@ object EnvGate {
      * wrote there, while it lasts and is still on the admin domain. Any other source is dropped -- env access the node
      * **assumed** for a local request (`KDR_ASSUME_ENV_AUTH`), or a trusted header, which a simulated request on a test
      * instance may still have -- and the session's user has no bearing on it. A request the gate does not apply to is
-     * left as `EnvAuthRules.resolve` made it.
+     * left as `EnvAuthRules.resolve` made it. [applies] is [EnvGate.applies] for the request, worked out once by the
+     * dispatcher for this and [check].
      */
-    fun resolve(cxt: KdrCxt, handler: RequestHandler) {
-        if (!applies(cxt.instanceConfig, handler)) return
+    fun resolve(cxt: KdrCxt, handler: RequestHandler, applies: Boolean) {
+        if (!applies) return
         val access = handler.getRequestCookies()[EGATE.accessCookie]?.let { EnvGateAccess.decode(NodeService.get(cxt), it) }
         cxt.envAuthEmail = access
             ?.takeIf { cxt.now().toEpochMilliseconds() <= it.expireEpochMs && AddressRules.isAdminDomain(cxt, it.email) }
@@ -334,15 +354,18 @@ object EnvGate {
      * or the request is one the gate always lets through. Its own two paths are answered here whatever the caller
      * has: [EGATE.startPath] and [EGATE.callbackPath].
      *
+     * A page visit (a GET or HEAD under the web app's or the portal's root) goes to Google; any other request is refused
+     * with the 401 the web app follows. Static resources are among the second: a page asks for them once it is let in.
+     *
      * Env access *available* is enough, not *effective*: a person who has turned their env access off to preview the
      * ordinary view is still the person Google vouched for, and challenging them would loop.
      *
      * A call made in this process for a user (the configuration assistant) passes: the person it acts for already
      * passed the gate to ask for it.
      */
-    fun check(cxt: KdrCxt, handler: RequestHandler, focus: ContextFocus): Boolean {
+    fun check(cxt: KdrCxt, handler: RequestHandler, focus: ContextFocus, applies: Boolean): Boolean {
         val config = cxt.instanceConfig
-        if (!applies(config, handler) || handler.inProcessPrincipal != null) return false
+        if (!applies || handler.inProcessPrincipal != null) return false
         if (focus == ContextFocus.api) {
             when (handler.appPath) {
                 EGATE.startPath -> {
@@ -358,7 +381,9 @@ object EnvGate {
         }
         if (cxt.envAuthEmail != null) return false
         if (focus == ContextFocus.api && handler.section == EGATE.openSection) return false
-        if (focus == ContextFocus.app && handler.method == "GET") {
+        // A page -- the web app's or the portal's, the documents among them -- is a visit a browser makes, so it goes to
+        // Google; anything else is answered with the 401 a page's own code follows.
+        if ((focus == ContextFocus.app || focus == ContextFocus.content) && (handler.method == "GET" || handler.method == "HEAD")) {
             start(cxt, handler, requestedPath(handler))
             return true
         }
@@ -381,15 +406,23 @@ object EnvGate {
     /** The web app's root, `/wa`: where a sign-in returns when nothing valid was asked for. */
     private fun appRoot(config: KdrInstanceConfig): String = "/" + ((config.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa)
 
+    /** The portal's root, `/cp`. */
+    private fun contentRoot(config: KdrInstanceConfig): String =
+        "/" + ((config.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp)
+
     /**
-     * Where a sign-in returns: [raw] when it is a same-origin path under the web app's root, else the root itself.
-     * Replaced rather than refused, as the edge's `EnvAuthReturn` does, since somebody signing in should land
-     * somewhere; never another site, so the gate cannot be used to send anyone elsewhere.
+     * Where a sign-in returns: [raw] when it is a same-origin path under the web app's root or the portal's -- the
+     * pages a visit is sent to Google from -- else the web app's root. Replaced rather than refused, as the edge's
+     * `EnvAuthReturn` does, since somebody signing in should land somewhere; never another site, so the gate cannot be
+     * used to send anyone elsewhere.
      */
     fun returnPath(config: KdrInstanceConfig, raw: String?): String {
-        val root = appRoot(config)
-        val path = sameOriginPath(raw) ?: return root
-        return if (path == root || path.startsWith("$root/") || path.startsWith("$root?") || path.startsWith("$root#")) path else root
+        val fallback = appRoot(config)
+        val path = sameOriginPath(raw) ?: return fallback
+        val under = listOf(fallback, contentRoot(config)).any { root ->
+            path == root || path.startsWith("$root/") || path.startsWith("$root?") || path.startsWith("$root#")
+        }
+        return if (under) path else fallback
     }
 
     /**
@@ -419,7 +452,7 @@ object EnvGate {
                 subject = "simulated:$address", email = address, emailVerified = true, displayName = null,
                 hostedDomain = AdminRules.adminEmailDomain(config), nonce = null,
             )
-            signIn(cxt, handler, token, returnTo)
+            signIn(cxt, handler, token, returnTo, simulated = true)
             return
         }
         val clientId = GoogleAuthConfig.clientId(config)
@@ -430,7 +463,7 @@ object EnvGate {
         }
         val state = GateState(randomToken(), randomToken(), returnTo, cxt.now().toEpochMilliseconds() + EGATE.stateMillis)
         handler.addResponseCookie(
-            EGATE.stateCookie, state.encode(NodeService.get(cxt)), Instant.fromEpochMilliseconds(state.expireEpochMs),
+            stateCookieName(state.state), state.encode(NodeService.get(cxt)), Instant.fromEpochMilliseconds(state.expireEpochMs),
         )
         handler.sendRedirect(authorizeUrl(clientId, redirectUri(cxt, handler), state, domain, selectAccount))
     }
@@ -468,14 +501,20 @@ object EnvGate {
     private fun callback(cxt: KdrCxt, handler: RequestHandler) {
         val config = cxt.instanceConfig
         val node = NodeService.get(cxt)
-        val state = handler.getRequestCookies()[EGATE.stateCookie]?.let { GateState.decode(node, it) }
-        // Spent whether it succeeds or not: a state is good for one return.
-        handler.addResponseCookie(EGATE.stateCookie, "", Instant.fromEpochMilliseconds(0))
         val params = handler.queryParams
-        val sentState = params[EGATE.stateParam] as? String
-        if (state == null || sentState == null || sentState != state.state || cxt.now().toEpochMilliseconds() > state.expireEpochMs) {
+        // Only a state this node made has a cookie name to look up: one Google echoes back is a random token, and
+        // anything else names no cookie.
+        val sentState = (params[EGATE.stateParam] as? String)?.takeIf { it.isNotEmpty() && it.all(::isTokenChar) }
+        val state = sentState?.let { sent ->
+            val name = stateCookieName(sent)
+            handler.getRequestCookies()[name]?.let { GateState.decode(node, it) }.also {
+                // Spent whether it succeeds or not: a state is good for one return.
+                handler.addResponseCookie(name, "", Instant.fromEpochMilliseconds(0))
+            }
+        }
+        if (state == null || sentState != state.state || cxt.now().toEpochMilliseconds() > state.expireEpochMs) {
             LogAuth.info(cxt) { "Env gate sign-in refused: the state is missing, expired, or does not match." }
-            refusePage(handler, EXC.badInput, "That sign-in could not be completed. Open the app again to start over.", offerAnother = false)
+            refusePage(handler, EXC.badInput, startOver, offerAnother = false)
             return
         }
         (params[EGATE.errorParam] as? String)?.let { error ->
@@ -487,19 +526,30 @@ object EnvGate {
         val verifier = GoogleAuthConfig.mkVerifier(config)
         val exchange = codeExchangeFor(config)
         if (code == null || verifier == null || exchange == null) {
-            refusePage(handler, EXC.badInput, "That sign-in could not be completed. Open the app again to start over.", offerAnother = false)
+            refusePage(handler, EXC.badInput, startOver, offerAnother = false)
+            return
+        }
+        // The exchange is a call out to Google and the check RSA work, both for a caller nobody has vouched for yet: held
+        // to the per-IP ceiling the Google sign-in has, under the same key, so the two together cannot be used to send
+        // Google a flood of requests from this node.
+        if (!UserService.get(cxt).authFormHandler.allowGoogleAttempt(cxt, handler.forwardedFor ?: handler.peerAddress)) {
+            LogAuth.info(cxt) { "Env gate sign-in refused: too many attempts from this address." }
+            refusePage(
+                handler, EXC.tooManyRequests, "Too many sign-in attempts. Wait a few minutes, then open the app again.",
+                offerAnother = false,
+            )
             return
         }
         val token = try {
             verifier.verify(cxt, exchange.idTokenFor(cxt, code, redirectUri(cxt, handler)))
         } catch (e: KdrException) {
             LogAuth.info(cxt) { "Env gate sign-in refused: ${e.message}" }
-            refusePage(handler, EXC.authNeeded, "Google's answer could not be checked. Open the app again to start over.", offerAnother = false)
+            refusePage(handler, EXC.authNeeded, uncheckable, offerAnother = false)
             return
         }
         if (token.nonce != state.nonce) {
             LogAuth.info(cxt) { "Env gate sign-in refused: the ID token's nonce does not match the one sent." }
-            refusePage(handler, EXC.authNeeded, "Google's answer could not be checked. Open the app again to start over.", offerAnother = false)
+            refusePage(handler, EXC.authNeeded, uncheckable, offerAnother = false)
             return
         }
         signIn(cxt, handler, token, state.returnTo)
@@ -511,8 +561,11 @@ object EnvGate {
      * user is found or made, so an outside account gets nothing on this node. Then the env access is written to
      * [EGATE.accessCookie]; when nobody is signed in, the person is signed in as their own user too; and the browser is
      * sent to [returnTo]. Somebody already signed in stays as they are.
+     *
+     * A [simulated] sign-in signs in by the address alone, linking no Google account: its subject is made up, and a link
+     * would outlast it in a developer's database as a Google account the person never connected.
      */
-    private fun signIn(cxt: KdrCxt, handler: RequestHandler, token: GoogleIdToken, returnTo: String) {
+    private fun signIn(cxt: KdrCxt, handler: RequestHandler, token: GoogleIdToken, returnTo: String, simulated: Boolean = false) {
         val email = token.email?.normalizeEmail()
         val admitted = token.emailVerified && email != null && AddressRules.isAdminDomain(cxt, email) &&
             AddressRules.isGoogleAuthoritative(cxt, token.hostedDomain)
@@ -535,7 +588,7 @@ object EnvGate {
         if (signsIn) {
             // The sign-in completes as any other does (AuthFormHandler.completeLogin), which reads the request it is in.
             cxt.request = KdrRequest(cxt, emptyMap(), null, handler)
-            UserService.get(cxt).authFormHandler.loginByGoogleToken(cxt, token)
+            UserService.get(cxt).authFormHandler.loginByGoogleToken(cxt, token, link = !simulated)
             RequestService.get(cxt).checkAddAuthCookies(cxt, handler)
         }
         LogAuth.info(cxt) {
@@ -555,12 +608,16 @@ object EnvGate {
     ) {
         val another = if (offerAnother) {
             val next = HttpUtil.encodeArgs(mapOf(EP.envAuthNextParam to (returnTo ?: "")))
-            """<p><a href="/${ContextRoot.apiOf(handler.instanceConfig)}${EGATE.startPath}?$next&amp;${EGATE.promptParam}=${EGATE.selectAccount}">Use another Google account</a></p>"""
+            val start = "/${ContextRoot.apiOf(handler.instanceConfig)}${EGATE.startPath}"
+            val href = "$start?$next&amp;${EGATE.promptParam}=${EGATE.selectAccount}"
+            """<p><a href="$href">Use another Google account</a></p>"""
         } else {
             ""
         }
-        val html = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign-in</title></head>""" +
-            """<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem"><p>${escapeHtml(message)}</p>$another</body></html>"""
+        val html = """<!doctype html><html lang="en"><head><meta charset="utf-8">""" +
+            """<meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign-in</title></head>""" +
+            """<body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem">""" +
+            """<p>${escapeHtml(message)}</p>$another</body></html>"""
         handler.sendStringResponse(html, status, "text/html; charset=utf-8")
     }
 
@@ -586,6 +643,12 @@ object EnvGate {
 
     /** 128 random bits, URL-safe. */
     private fun randomToken(): String = ByteArray(16).also { random.nextBytes(it) }.base64Encode()
+
+    /** Whether [c] can be in a [randomToken]: URL-safe base64, which a cookie name may also hold. */
+    private fun isTokenChar(c: Char): Boolean = c.isLetterOrDigit() || c == '-' || c == '_' || c == '='
+
+    /** The state cookie for the sign-in whose state is [state]. */
+    private fun stateCookieName(state: String): String = "${EGATE.stateCookie}-$state"
 
     /**
      * A gate sign-in's env access, in [EGATE.accessCookie]: the address Google vouched for, and when the access ends.
@@ -616,7 +679,9 @@ object EnvGate {
      */
     private class GateState(val state: String, val nonce: String, val returnTo: String, val expireEpochMs: Long) {
         fun encode(node: NodeService): String =
-            node.encryptString(mapOf(K_STATE to state, K_NONCE to nonce, K_RETURN to returnTo, K_EXPIRE to expireEpochMs).toJsonStr(compact = true))
+            node.encryptString(
+                mapOf(K_STATE to state, K_NONCE to nonce, K_RETURN to returnTo, K_EXPIRE to expireEpochMs).toJsonStr(compact = true),
+            )
 
         companion object {
             private const val K_STATE = "s"

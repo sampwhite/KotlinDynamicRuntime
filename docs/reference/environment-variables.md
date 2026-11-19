@@ -103,7 +103,7 @@ On a public test deployment with **no edge** -- an ephemeral instance, whose dat
 
 **Default when unset:** none
 
-Puts the whole deployment behind a Google sign-in (issue #1865): `googleChallenge` sends a visit to the web app without env access straight into Google's sign-in, with no page of ours first, and back to the page asked for; any other request without env access is refused. Only an account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for it, gets through. Its env access is kept apart from the user signed in, and with nobody signed in the sign-in signs the person in as their own user too. Google stands in for a VPN and SSO. `none` (the default) leaves the node as its sections say. Needs `KDR_GOOGLE_CLIENT_ID`, the client secret in the secrets file, and `KDR_PUBLIC_URL`. The `envGate` config option wins over this.
+Puts the whole deployment behind a Google sign-in (issue #1865): `googleChallenge` sends a visit to a page (the web app's or the portal's) without env access straight into Google's sign-in, with no page of ours first, and back to the page asked for; any other request without env access is refused. Only an account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for it, gets through. Its env access is kept apart from the user signed in, and with nobody signed in the sign-in signs the person in as their own user too. Google stands in for a VPN and SSO. `none` (the default) leaves the node as its sections say. Needs `KDR_GOOGLE_CLIENT_ID`, the client secret in the secrets file, and `KDR_PUBLIC_URL`. The `envGate` config option wins over this.
 
 ### `KDR_FLAVOR_DIR`
 

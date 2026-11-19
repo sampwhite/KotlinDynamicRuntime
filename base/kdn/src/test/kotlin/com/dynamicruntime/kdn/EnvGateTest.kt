@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -14,6 +15,8 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.EGATE
+import com.dynamicruntime.common.user.INVITE
+import com.dynamicruntime.common.user.RL
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.user.EnvGate
@@ -178,6 +181,45 @@ class EnvGateTest : StringSpec({
         EnvGate.returnPath(cxt.instanceConfig, "//evil.example/wa") shouldBe "/wa"
         EnvGate.returnPath(cxt.instanceConfig, "/kda/admin/user/list") shouldBe "/wa"
         EnvGate.returnPath(cxt.instanceConfig, "/wasteland") shouldBe "/wa"
+        // The portal's pages are visits too.
+        EnvGate.returnPath(cxt.instanceConfig, "/cp/portal?x=1") shouldBe "/cp/portal?x=1"
+    }
+
+    "sign-ins started together in one browser each return to their own page" {
+        val cxt = gated("gateTabs")
+        val client = TestHttpClient(cxt.instanceConfig)
+        // Two tabs whose env access lapsed together each start a sign-in before either comes back.
+        val first = googleQuery(client.sendGetRequestRaw("/wa/one"))
+        val second = googleQuery(client.sendGetRequestRaw("/wa/two"))
+        tokensByCode["c-tab1"] = mkIdToken("sub-tabs", "tabs@$domain", first[EGATE.nonceParam] as String)
+        tokensByCode["c-tab2"] = mkIdToken("sub-tabs", "tabs@$domain", second[EGATE.nonceParam] as String)
+        location(callback(client, second, "c-tab2")) shouldBe "/wa/two"
+        location(callback(client, first, "c-tab1")) shouldBe "/wa/one"
+        envAuthOf(client) shouldBe "tabs@$domain"
+    }
+
+    "a portal page and a HEAD request go to Google as a web app visit does; a static resource is refused" {
+        val cxt = gated("gatePages")
+        val client = TestHttpClient(cxt.instanceConfig)
+        val query = googleQuery(client.sendGetRequestRaw("/cp/portal"))
+        tokensByCode["c-portal"] = mkIdToken("sub-portal", "portal@$domain", query[EGATE.nonceParam] as String)
+        location(callback(client, query, "c-portal")) shouldBe "/cp/portal"
+        val head = RequestHandler(cxt.instanceConfig, "HEAD", "/wa/forms", emptyMap(), mutableMapOf())
+        head.handleRequest()
+        googleQuery(head)
+        TestHttpClient(cxt.instanceConfig).sendGetRequestRaw("/st/anything.js").rptStatusCode shouldBe EXC.authNeeded
+    }
+
+    "the callback is held to the Google sign-in's per-IP ceiling" {
+        val cxt = Startup.mkTestBootCxt("gateLimited", "envGateLimited", gateSettings())
+        val client = TestHttpClient(cxt.instanceConfig).also { it.peerAddress = "198.51.100.7" }
+        val statuses = (1..RL.pwPerIpMax + 1).map {
+            val query = googleQuery(client.sendGetRequestRaw("/wa"))
+            callback(client, query, "no-such-code-$it").rptStatusCode
+        }
+        // Google refuses every made-up code; the last attempt is not sent to Google at all.
+        statuses.dropLast(1).toSet() shouldBe setOf(EXC.authNeeded)
+        statuses.last() shouldBe EXC.tooManyRequests
     }
 
     "a bad state, a wrong nonce, and an account that is not the deployment's own are each refused before any user is made" {
@@ -190,7 +232,8 @@ class EnvGateTest : StringSpec({
         tokensByCode["c-state"] = mkIdToken("sub-state", "state@$domain", query[EGATE.nonceParam] as String)
         stranger.sendGetRequest(EGATE.callbackPath, mapOf(EGATE.codeParam to "c-state", EGATE.stateParam to "forged"))
             .rptStatusCode shouldBe EXC.badInput
-        // The state is spent by a return, good or not.
+        // The state is spent by a return, good or not: one that failed at Google cannot be used again.
+        callback(stranger, query, "c-no-such-code").rptStatusCode shouldBe EXC.authNeeded
         callback(stranger, query, "c-state").rptStatusCode shouldBe EXC.badInput
 
         fun refusedWith(email: String, status: Int, token: (nonce: String) -> String) {
@@ -207,7 +250,8 @@ class EnvGateTest : StringSpec({
         refusedWith("nohd@$domain", EXC.notAuthorized) { mkIdToken("sub-nohd", "nohd@$domain", it, hd = null) }
         refusedWith("unverified@$domain", EXC.notAuthorized) { mkIdToken("sub-unv", "unverified@$domain", it, emailVerified = false) }
         refusedWith("outsider@other.test", EXC.notAuthorized) { mkIdToken("sub-out", "outsider@other.test", it, hd = "other.test") }
-        for (address in listOf("state@$domain", "nonce@$domain", "hd@$domain", "nohd@$domain", "unverified@$domain", "outsider@other.test")) {
+        val refused = listOf("state@$domain", "nonce@$domain", "hd@$domain", "nohd@$domain", "unverified@$domain", "outsider@other.test")
+        for (address in refused) {
             users.queryIdentityByAddress(cxt, address).shouldBeNull()
         }
     }
@@ -219,9 +263,10 @@ class EnvGateTest : StringSpec({
         tokensByCode["c-chooser"] = mkIdToken("sub-chooser", "someone@other.test", q[EGATE.nonceParam] as String, hd = "other.test")
         val refused = callback(client, q, "c-chooser")
         refused.rptResponseData.shouldNotBeNull() shouldContain "Use another Google account"
-        googleQuery(client.sendGetRequest(EGATE.startPath, mapOf(EP.envAuthNextParam to "/wa/home", EGATE.promptParam to EGATE.selectAccount)))[
-            EGATE.promptParam,
-        ] shouldBe EGATE.selectAccount
+        val another = client.sendGetRequest(
+            EGATE.startPath, mapOf(EP.envAuthNextParam to "/wa/home", EGATE.promptParam to EGATE.selectAccount),
+        )
+        googleQuery(another)[EGATE.promptParam] shouldBe EGATE.selectAccount
     }
 
     "env access is the gate's own cookie, whoever the session acts as, and lasts only its lifetime" {
@@ -298,6 +343,10 @@ class EnvGateTest : StringSpec({
         visit.rptStatusCode shouldBe 303
         location(visit) shouldBe "/wa/clients?c=acme"
         envAuthOf(admin) shouldBe "dev@$domain"
+        // Signed in by the address alone: no Google account is linked for a made-up subject.
+        val users = UserService.get(cxt)
+        users.queryIdentityByAddress(cxt, "dev@$domain").shouldNotBeNull()
+        users.queryLinkedIdentity(cxt, LSRC.google, "simulated:dev@$domain").shouldBeNull()
 
         // Through a proxy, the host is no trigger.
         val proxied = TestHttpClient(cxt.instanceConfig).also {
@@ -329,6 +378,15 @@ class EnvGateTest : StringSpec({
         ) shouldContain "client secret"
         refusal("gateTrusts", gateSettings(mapOf(ACFG.trustEnvAuthHeader to true))) shouldContain "is set on"
         refusal("gateBadMode", gateSettings(mapOf(EGATE.envGate to "always"))) shouldContain "takes one of"
+
+        // A real deployment must say where Google returns; a test instance may build it from the request.
+        fun realNode(publicUrl: String?) = KdrInstanceConfig("gateReal", ENV.prod, ENV.liveSource).apply {
+            put(ACFG.isTestInstance, false)
+            for ((k, v) in gateSettings()) put(k, v)
+            if (publicUrl != null) put(INVITE.publicUrl.name, publicUrl)
+        }
+        shouldThrow<KdrException> { EnvGate.checkBoot(realNode(null)) }.message.orEmpty() shouldContain INVITE.publicUrl.name
+        EnvGate.checkBoot(realNode("https://gate.example"))
 
         // On a public test deployment (a test instance the public can reach, in `dev`), which passes its own checks.
         fun publicRefusal(name: String, settings: Map<String, Any?>): String = shouldThrow<KdrException> {

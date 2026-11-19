@@ -147,7 +147,8 @@ On any deployment, a session with env auth switched to debug has the diagnostic 
 too, but not the test only endpoints.
 
 **A deployment behind the env gate** (`KDR_ENV_GATE`) needs env access for everything, whatever a
-section's rule says. A visit to the web app without it goes straight to Google's sign-in and back to the page asked for,
+section's rule says. A visit to a page without it, the web app's or the portal's, goes straight to Google's sign-in and
+back to the page asked for,
 and any other request is refused (401) until then; only `health` still answers. The Google sign-in is the env access,
 and only for an account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for
 it. Its env access lasts a set time (12 hours by default), after which the next visit goes back through Google. Any

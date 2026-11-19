@@ -523,13 +523,14 @@ class RequestService : ServiceInitializer {
         extractAuth(cxt, handler)
         // On a gated request (issue #1865), env access is the gate's Google sign-in's alone, from its own cookie: none
         // assumed, none from a header, and none from whoever the session is signed in as.
-        EnvGate.resolve(cxt, handler)
+        val gated = EnvGate.applies(cxt.instanceConfig, handler)
+        EnvGate.resolve(cxt, handler, gated)
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
         // (issue #1150), so it is known only now that the session is restored -- and before the gates below.
         EnvAuthRules.fromAdminLogin(cxt)
         // The env gate (issue #1865): a caller without env access is sent to Google, or refused, before anything else.
-        if (EnvGate.check(cxt, handler, focus)) {
-            handler.logSuccess(cxt, EXC.ok)
+        if (EnvGate.check(cxt, handler, focus, gated)) {
+            handler.logSuccess(cxt, handler.rptStatusCode)
             return
         }
         // A read-only API key (issue #1402) makes GET requests and nothing else, whatever the section and whatever its

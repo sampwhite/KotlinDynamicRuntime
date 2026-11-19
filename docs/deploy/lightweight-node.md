@@ -551,12 +551,12 @@ application, and carries env auth too, which is fine on a node that does nothing
 ## Putting the whole node behind Google
 
 A deployment that keeps real data, and is for your own people, can put everything behind a Google sign-in instead,
-with Google standing in for a VPN: `KDR_ENV_GATE=googleChallenge`. A visit to `/wa` then goes straight to Google's
-sign-in, with no page of the application's first, and comes back to the page that was asked for. Only an account on
-your admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) gets through, which needs that domain to be a Google Workspace domain. The
-sign-in grants env access for 12 hours. With nobody signed in, it also signs the person in as their own user; they may
-then sign in as, or switch to, another user and keep their env access. Every other request without env access is
-refused, except `/kda/health`.
+with Google standing in for a VPN: `KDR_ENV_GATE=googleChallenge`. A visit to a page (under `/wa` or `/cp`) then goes
+straight to Google's sign-in, with no page of the application's first, and comes back to the page that was asked for.
+Only an account on your admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) gets through, which needs that domain to be a Google
+Workspace domain. The sign-in grants env access for 12 hours. With nobody signed in, it also signs the person in as
+their own user; they may then sign in as, or switch to, another user and keep their env access. Every other request
+without env access is refused, except `/kda/health`.
 
 It needs:
 
