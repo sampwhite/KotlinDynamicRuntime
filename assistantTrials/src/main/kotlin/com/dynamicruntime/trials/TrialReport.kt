@@ -99,7 +99,7 @@ object TrialReport {
         appendLine("- **Variant:** ${r.variant.description}")
         appendLine("- **Administrator:** `$email`")
         appendLine("- **Client:** `${r.client ?: "none"}`, sandbox `${r.sandbox ?: "none"}`")
-        appendLine("- **Model:** ${r.model ?: r.turns.mapNotNull { it.model }.distinct().joinToString().ifEmpty { "unknown" }}")
+        appendLine("- **Model:** ${r.models.joinToString().ifEmpty { "unknown" }}")
         appendLine("- **Took:** ${r.endedAt - r.startedAt}; ${r.weighted} weighted tokens, about ${cost(r.weighted, r.model) ?: "?"}")
         appendLine()
         appendLine("### Expectations")

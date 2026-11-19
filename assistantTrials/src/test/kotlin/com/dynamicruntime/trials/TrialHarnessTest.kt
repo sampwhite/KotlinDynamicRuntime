@@ -162,11 +162,41 @@ class TrialHarnessTest : StringSpec({
             )
         }
         dryRunOutcome(call("t", mapOf(CFEP.dryRun to true)), call("t", mapOf(CFEP.dryRun to false))).kind shouldBe OutcomeKind.met
+        // A dry run before making-changes is read changes nothing, so the read still came before the first change.
+        val read = listOf(
+            mapOf(
+                ACNV.role to ABLK.assistant, ACNV.turnId to "t",
+                ACNV.content to listOf(
+                    mapOf(
+                        ABLK.type to ABLK.toolUse, ABLK.id to "r1", ABLK.name to ATOOL.readDoc,
+                        ABLK.input to mapOf(ATOOL.doc to HDOC.makingChanges),
+                    ),
+                ),
+            ),
+        )
+        val now = Clock.System.now()
+        val ordered = TrialConversation(
+            "c", emptyList(), call("t", mapOf(CFEP.dryRun to true)) + read + call("t", mapOf(CFEP.dryRun to false)),
+        )
+        MethodChecks.readsMakingChanges.check(
+            TrialResult(smoke, smoke.variants.single(), "c", null, listOf(ordered), emptyMap(), emptyList(), now, now),
+        ).kind shouldBe OutcomeKind.met
         // A turn that never dry-ran, and a call that never said: both made outright.
         dryRunOutcome(call("t", mapOf(CFEP.dryRun to true)), call("t", mapOf(CFEP.dryRun to false)), call("u", emptyMap())).let {
             it.kind shouldBe OutcomeKind.varied
             it.detail shouldContain "Made without a dry run: ${ATOOL.patchConfig}."
         }
+    }
+
+    "copy for one file in two bundles is merged, not replaced" {
+        fun bundle(key: String, value: String) = mapOf(
+            CFEP.slots to mapOf(
+                CCT.fragmentDef to listOf(mapOf(CCT.fileId to HFRAG.home, CCT.content to mapOf(HFRAG.homeNs to mapOf(key to value)))),
+            ),
+        )
+        val view = ConfigView(mapOf("a" to bundle(HFRAG.intro, "Riverbend grants."), "b" to bundle("other", "More.")))
+        view.copyKeys["${HFRAG.home}.${HFRAG.homeNs}.${HFRAG.intro}"] shouldBe "Riverbend grants."
+        view.copyKeys["${HFRAG.home}.${HFRAG.homeNs}.other"] shouldBe "More."
     }
 
     "a cost is the weighted tokens at the model's input price" {

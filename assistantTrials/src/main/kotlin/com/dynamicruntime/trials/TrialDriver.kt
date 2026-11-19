@@ -30,7 +30,7 @@ interface TrialCaller {
 }
 
 /** A call the node refused: its path, status, and message. */
-class TrialCallRefused(val path: String, val status: Int, message: String) : RuntimeException("$path: HTTP $status, $message")
+class TrialCallRefused(path: String, status: Int, message: String) : RuntimeException("$path: HTTP $status, $message")
 
 /** A [TrialCaller] over a [ProbeSession]: a real socket to a running node. */
 class ProbeCaller(private val session: ProbeSession) : TrialCaller {
@@ -114,17 +114,29 @@ class TrialDriver(
     /** Waits for [turnId] to end; answers why it did not, or null when it did. */
     private fun awaitTurn(conversationId: String, turnId: String): String? {
         val deadline = Clock.System.now() + turnTimeout
+        var failures = 0
         while (Clock.System.now() < deadline) {
             // After the last message there is none, so the poll reads the turns alone.
-            val read = caller.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to conversationId, ACNV.afterSeq to Long.MAX_VALUE))
-            val turn = read[ACNV.turns]
-                .toJsonListOfMaps().firstOrNull { it[ACNV.turnId] == turnId }
+            val read = try {
+                caller.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to conversationId, ACNV.afterSeq to Long.MAX_VALUE))
+                    .also { failures = 0 }
+            } catch (e: Exception) {
+                // One poll failing is a moment's trouble, not the turn's: a paid run gives up only on several in a row.
+                if (++failures >= maxPollFailures) {
+                    runCatching { caller.postData(ACNV.cancelPath, mapOf(ACNV.conversationId to conversationId)) }
+                    return "polling it failed $failures times in a row, and it was asked to stop; the last: ${e.message}"
+                }
+                null
+            }
+            val turn = read?.get(ACNV.turns).toJsonListOfMaps().firstOrNull { it[ACNV.turnId] == turnId }
             if (turn != null && turn[ACNV.status] != ACNV.statusRunning) return null
             Thread.sleep(pollEvery.inWholeMilliseconds)
         }
         runCatching { caller.postData(ACNV.cancelPath, mapOf(ACNV.conversationId to conversationId)) }
         return "its turn was still running after $turnTimeout, and was asked to stop."
     }
+
+    private val maxPollFailures = 5
 
     private fun readConversation(id: String): TrialConversation {
         val read = caller.getData(ACNV.conversationPath, mapOf(ACNV.conversationId to id))

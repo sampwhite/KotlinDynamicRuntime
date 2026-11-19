@@ -3,7 +3,6 @@ package com.dynamicruntime.trials
 import com.dynamicruntime.common.assistant.ABLK
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
-import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -75,7 +74,6 @@ class TurnInfo(val turn: Map<String, Any?>) {
     val turnId: String get() = turn[ACNV.turnId].toOptStr().orEmpty()
     val text: String get() = turn[ACNV.text].toOptStr().orEmpty()
     val status: String get() = turn[ACNV.status].toOptStr().orEmpty()
-    val stopReason: String? get() = turn[ACNV.stopReason].toOptStr()
     val note: String? get() = turn[ACNV.note].toOptStr()
     val steps: Long get() = turn[ACNV.steps].toOptLong() ?: 0
     val weighted: Long get() = turn[ACNV.weighted].toOptLong() ?: 0
@@ -104,8 +102,11 @@ class TrialResult(
     val turns: List<TurnInfo> by lazy { conversations.flatMap { c -> c.turns.map { TurnInfo(it) } } }
     val weighted: Long get() = turns.sumOf { it.weighted }
 
+    /** The models that answered, each once. */
+    val models: List<String> get() = turns.mapNotNull { it.model }.distinct()
+
     /** The model that answered, when every turn names the same one. */
-    val model: String? get() = turns.mapNotNull { it.model }.distinct().singleOrNull()
+    val model: String? get() = models.singleOrNull()
 
     /** Each expectation of the trial, then those every trial is held to, with its outcome. */
     fun outcomes(): List<Pair<Expectation, Outcome>> = (trial.expectations + MethodChecks.all).map { expectation ->
@@ -115,10 +116,4 @@ class TrialResult(
             Outcome.varied("The check itself failed: ${e.message ?: e::class.simpleName}.")
         }
     }
-
-    /** Whether the assistant ever called [tool]. */
-    fun called(tool: String): Boolean = calls.any { it.name == tool }
-
-    /** The calls that read a document named [doc]. */
-    fun docReads(doc: String): List<ToolCall> = calls.filter { it.name == ATOOL.readDoc && it.input[ATOOL.doc] == doc }
 }

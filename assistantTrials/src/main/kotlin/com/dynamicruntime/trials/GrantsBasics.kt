@@ -23,7 +23,8 @@ object GrantsBasics {
 
     private val amountTerms = listOf("amount", "budget", "dollar", "request", "fund", "asked")
     private val dateTerms = listOf("start", "date", "kickoff", "begin")
-    private val categoryTerms = listOf("category", "area", "focus", "type", "field")
+    // Not "type" or "field": a description's own words use them, and the check would point at it.
+    private val categoryTerms = listOf("category", "area", "focus")
     private val descriptionTerms = listOf("description", "narrative", "summary", "about", "project", "purpose")
 
     private val explicit = TrialVariant(

@@ -88,13 +88,20 @@ class ConfigView(val bundles: Map<String, Map<String, Any?>>) {
     fun collected(workflow: Map<String, Any?>?): Set<String> = workflow?.get(WFD.tasks).toJsonListOfMaps()
         .flatMap { task -> task[WFD.traits].toJsonListOfMaps().mapNotNull { it[WFD.traitId].toOptStr() } }.toSet()
 
-    /** The copy the client rewords: file, then namespace, then key, to its value. */
+    /**
+     * The copy the client rewords: file, then namespace, then key, to its value. Entries for one file, in one bundle or
+     * several, are merged, a later entry's key winning.
+     */
     val copy: Map<String, Map<String, Map<String, String>>> by lazy {
-        entries(CCT.fragmentDef).associate { entry ->
-            entry[CCT.fileId].toOptStr().orEmpty() to entry[CCT.content].toJsonMapOrEmpty().mapValues { (_, keys) ->
-                keys.toJsonMapOrEmpty().mapValues { (_, value) -> value.toOptStr().orEmpty() }
+        val merged = mutableMapOf<String, MutableMap<String, MutableMap<String, String>>>()
+        for (entry in entries(CCT.fragmentDef)) {
+            val file = merged.getOrPut(entry[CCT.fileId].toOptStr().orEmpty()) { mutableMapOf() }
+            for ((ns, keys) in entry[CCT.content].toJsonMapOrEmpty()) {
+                val namespace = file.getOrPut(ns) { mutableMapOf() }
+                keys.toJsonMapOrEmpty().forEach { (key, value) -> namespace[key] = value.toOptStr().orEmpty() }
             }
         }
+        merged
     }
 
     /** Every reworded key as `file.namespace.key` to its value. */
@@ -167,7 +174,8 @@ object Checks {
 /** What every trial is held to: how the assistant worked, as its transcript shows. */
 object MethodChecks {
     val readsMakingChanges = Expectation("Read making-changes before its first change") { r ->
-        val writes = r.calls.filterNot { it.isRead || it.name == ATOOL.readDoc }
+        // A dry run changes nothing, so it may come before the read.
+        val writes = r.calls.filterNot { it.isRead || it.name == ATOOL.readDoc || it.dryRun == true }
         val firstWrite = r.calls.indexOfFirst { it in writes }
         val read = r.calls.indexOfFirst { it.name == ATOOL.readDoc && it.input[ATOOL.doc] == HDOC.makingChanges }
         when {
