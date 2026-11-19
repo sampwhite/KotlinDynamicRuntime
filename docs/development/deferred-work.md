@@ -739,21 +739,6 @@ nothing says so.
   a link may name something that is unpublished, removed, or another client's. That wants a design of its own, which
   this check should not grow into piecemeal.
 
-## When a trait's data can reference an uploaded file
-
-Today's file refs (issue #1153) are **configuration**: an entry of a client's `kdr:fileRefDef` slot naming an image its
-copy shows. A file uploaded for a form's **data** is a data file (`GedraDataType.dataFile`, issue #1837), named so that
-the two never share the word; whether the configuration kind's code names still want scoping is #1841's to settle.
-
-- **Scope the configuration kind's names in code** *(#1809, deferred here 2026-11-16).* The documents already call
-  them "named images" and "configuration file refs", in
-  [`docs/design/config-file-refs.md`](../design/config-file-refs.md). The code still says file ref throughout: the
-  `kdr:fileRefDef` slot, `FileRefService`, `FREF`, `ClientFileRefEdit`, the `ref:` image syntax in copy, the
-  `/clientAdmin/client/files` endpoints, and the assistant's `read_file_refs`. Rename them to a scoped name, such as
-  "config file" or "named image", in the same change that builds the data kind, so that neither is ever plain "file
-  ref" next to the other. The data kind gets a design note of its own, not a section of that one. Not done now, since
-  nothing yet holds a file in its data, and the rename touches stored configuration's slot names.
-
 ## When a configuration holding file refs is imported for another client, or into another deployment
 
 A file ref (issue #1153) is an entry in a client's stored configuration that names bytes in the file store by their
@@ -824,6 +809,84 @@ filtered -- since its `linked` filter must know every file's count before it pag
   count kept on the file's record by the link hook and a form's removal, so a listing reads one number a file. A count
   kept on the record must also follow a form deleted or restored, which today only the link rows' holders tell. Trigger:
   a client whose listing of files is slow, from links in the hundreds of thousands.
+
+## When a client's people upload video their browsers cannot play
+
+A data file's MP4 or QuickTime movie is held to H.264 when its upload finishes (issue #1837), and HEVC -- what a phone
+records by default -- is refused with a message asking for H.264, as are ProRes and the rest. Nothing converts one.
+The record already has what a conversion would need: the statuses `pending` and `failed` (`DFSTAT`), served as uploaded
+meanwhile, and `renditions`, an empty list.
+
+- **Convert video to H.264 in a worker job** *(#1841, deferred here 2026-11-19).* Take the upload, mark it `pending`,
+  and run ffmpeg in a batch job confined to nodes with the CPU for it, by `KDR_TAGS` and a job's presence; a
+  lightweight node has one CPU, `-Xmx384m`, and no ffmpeg, so it never runs one. The H.264 rendition goes into
+  `renditions`, content-addressed as the original is, and the record serves it once it is `ready`; a conversion that
+  fails is `failed`, and the original stays. To decide first: whether the original is kept beside its rendition, and
+  how a conversion counts against a plan. Trigger: a client whose people's videos are refused often enough to ask.
+
+## When uploads are large enough that relaying them costs the nodes
+
+Every upload's bytes pass through a node (issues #1837, #1840): a chunk is read whole, under one of the node's raw-body
+permits, and written to the store; a file is read back from the store a range at a time to be served.
+
+- **Presigned uploads and downloads straight to S3** *(#1841, deferred here 2026-11-19).* Hand the browser a presigned
+  `UploadPart` URL for each chunk, and a presigned `GetObject` for content, so the bytes never cross a node. The cost is
+  the server's own hash of what it stores: a chunk no node reads cannot be checked against the hash the browser sends,
+  so the finish would read the file back to hash it, or take the browser's word. A local store keeps relaying. Trigger:
+  a deployment whose nodes' bandwidth or raw-body permits are the limit on its uploads.
+- **Upload chunks in parallel** *(#1841, deferred here 2026-11-19).* A chunk is taken only at the offset the upload has
+  reached, because the hash of the whole is advanced a chunk at a time and saved between them (the kernel's resumable
+  `Sha256`). Several at once would need parts stored as they come and the whole hashed once at the finish, read back
+  from the store. Trigger: uploads over fast connections that one chunk at a time leaves idle.
+
+## When a file is larger than a single copy can move
+
+The finish moves an upload to the key its hash names, which on S3 is a `CopyObject`: one copy moves at most 5 GB. The
+largest file kind, video, is 2 GB (`FileKinds`), so no file reaches the limit today.
+
+- **Copy a large file in parts** *(#1841, deferred here 2026-11-19).* `UploadPartCopy` moves an object of any size in
+  parts of up to 5 GB each, the same multipart protocol an upload's parts use. Trigger: a file kind whose largest size
+  is raised past 5 GB.
+
+## When a player or a client asks for several ranges of a file at once
+
+A request for several ranges of a file is answered with the whole of it, a 200 (`ByteRanges.resolve`, issue #1836),
+which RFC 9110 allows. Every browser's video player asks for one range at a time.
+
+- **Answer several ranges with `multipart/byteranges`** *(#1841, deferred here 2026-11-19).* Each range a part with its
+  own `Content-Range`, the parts written in order from the store's ranged reads. Trigger: a client whose reader asks for
+  several ranges, such as a PDF viewer reading a large document a few pages at a time.
+
+## When forms holding files are exported, or imported into another deployment
+
+An import strips the file fields of what it imports (issue #1838), counting them under the category `dataFile`: a file's
+id names a record and bytes in the deployment it was uploaded to, and in another it names nothing.
+
+- **Carry data files through an export and an import** *(#1841, deferred here 2026-11-19).* An export that bundles each
+  file a form links, its record and its bytes, and an import that uploads them first and puts the new ids where the old
+  ones were. Trigger: a client moving forms with files between deployments, or restoring them from an export.
+
+## When a client's people browse many images and videos
+
+The Files page and a form show an image at its own size, at most 480 by 360, and a video by its first frame, read with
+`preload="metadata"` (issues #1840, #1863): a 20 MB photograph is read whole to be shown small.
+
+- **Posters and thumbnails** *(#1841, deferred here 2026-11-19).* A small rendition of each image, and a still of each
+  video, made when its upload finishes and kept in `renditions` beside the conversions above; a listing draws them, and
+  only a click opens the file. Making a video's still needs ffmpeg, so it runs where conversions would. Trigger: a client
+  whose forms or listings draw many files at once, slowly.
+
+## When a client takes files from people outside it
+
+A data file is checked to be the kind it says by its bytes, and an MP4's video to be H.264 (issues #1834, #1837): HTML,
+script, and SVG are never data kinds, a file is served with `nosniff`, a PDF as a download, and anything inline that is
+not media under a sandboxing `Content-Security-Policy`. Nothing looks inside a file for malware: a PDF can carry script
+that a reader on someone's own machine may run.
+
+- **Scan uploads for malware** *(#1841, deferred here 2026-11-19).* A scanner run when an upload finishes, the record
+  `pending` until it passes and removed with a reason when it does not, as a file of the wrong kind is. To decide
+  first: which scanner, run where, and what a client pays for it. Trigger: a client whose forms take files from the
+  public, or from people its own staff do not know.
 
 ## When something must ask about a streamed file with HEAD
 
