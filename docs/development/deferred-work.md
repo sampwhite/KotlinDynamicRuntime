@@ -817,8 +817,10 @@ records by default -- is refused with a message asking for H.264, as are ProRes 
 The record already has what a conversion would need: the statuses `pending` and `failed` (`DFSTAT`), served as uploaded
 meanwhile, and `renditions`, an empty list.
 
-- **Convert video to H.264 in a worker job** *(#1841, deferred here 2026-11-19).* Take the upload, mark it `pending`,
-  and run ffmpeg in a batch job confined to nodes with the CPU for it, by `KDR_TAGS` and a job's presence; a
+- **Convert video to H.264 in a worker job** *(#1841, deferred here 2026-11-19).* First the finish changes: today it
+  removes a video that is not H.264, so a job would never see one. It would instead keep such a video, mark it
+  `pending`, and leave it to a batch job that runs ffmpeg on nodes with the CPU for it, confined by `KDR_TAGS` and a
+  job's presence; a
   lightweight node has one CPU, `-Xmx384m`, and no ffmpeg, so it never runs one. The H.264 rendition goes into
   `renditions`, content-addressed as the original is, and the record serves it once it is `ready`; a conversion that
   fails is `failed`, and the original stays. To decide first: whether the original is kept beside its rendition, and
@@ -851,25 +853,30 @@ largest file kind, video, is 2 GB (`FileKinds`), so no file reaches the limit to
 ## When a player or a client asks for several ranges of a file at once
 
 A request for several ranges of a file is answered with the whole of it, a 200 (`ByteRanges.resolve`, issue #1836),
-which RFC 9110 allows. Every browser's video player asks for one range at a time.
+which RFC 9110 allows. Chromium's player, the one the app was tried with, asked for one range at a time, and nothing
+else in the app reads a file in ranges: a PDF is served as a download, not shown in place.
 
 - **Answer several ranges with `multipart/byteranges`** *(#1841, deferred here 2026-11-19).* Each range a part with its
-  own `Content-Range`, the parts written in order from the store's ranged reads. Trigger: a client whose reader asks for
-  several ranges, such as a PDF viewer reading a large document a few pages at a time.
+  own `Content-Range`, the parts written in order from the store's ranged reads. Trigger: a reader that asks for
+  several ranges at once and is slowed by the whole file -- an API client, say, or a PDF shown in place once that is
+  built.
 
-## When forms holding files are exported, or imported into another deployment
+## When forms holding files are moved to another deployment
 
-An import strips the file fields of what it imports (issue #1838), counting them under the category `dataFile`: a file's
-id names a record and bytes in the deployment it was uploaded to, and in another it names nothing.
+Nothing exports forms as such: an import (`/gedra/formDoc/import`, issue #545) takes forms as a search returns them, and
+strips their file fields (issue #1838), counting them under the category `dataFile`. A file's id names a record and bytes
+in the deployment it was uploaded to; in another it names nothing.
 
-- **Carry data files through an export and an import** *(#1841, deferred here 2026-11-19).* An export that bundles each
-  file a form links, its record and its bytes, and an import that uploads them first and puts the new ids where the old
-  ones were. Trigger: a client moving forms with files between deployments, or restoring them from an export.
+- **Carry data files with the forms that name them** *(#1841, deferred here 2026-11-19).* A way to take forms out with
+  their files -- each file a form links, its record and its bytes, beside the search's output -- and an import that
+  uploads those first and puts the new ids where the old ones were. Trigger: a client moving forms with files between
+  deployments, or restoring them from a copy taken that way.
 
 ## When a client's people browse many images and videos
 
-The Files page and a form show an image at its own size, at most 480 by 360, and a video by its first frame, read with
-`preload="metadata"` (issues #1840, #1863): a 20 MB photograph is read whole to be shown small.
+The Files page and a form show an image at its own size, at most 480 by 360, and a video with `preload="metadata"`
+(issues #1840, #1863), which reads the video's index and, in some browsers, draws its first frame -- in others a blank
+box until it is played. A 20 MB photograph is read whole to be shown small.
 
 - **Posters and thumbnails** *(#1841, deferred here 2026-11-19).* A small rendition of each image, and a still of each
   video, made when its upload finishes and kept in `renditions` beside the conversions above; a listing draws them, and
@@ -883,10 +890,11 @@ script, and SVG are never data kinds, a file is served with `nosniff`, a PDF as 
 not media under a sandboxing `Content-Security-Policy`. Nothing looks inside a file for malware: a PDF can carry script
 that a reader on someone's own machine may run.
 
-- **Scan uploads for malware** *(#1841, deferred here 2026-11-19).* A scanner run when an upload finishes, the record
-  `pending` until it passes and removed with a reason when it does not, as a file of the wrong kind is. To decide
-  first: which scanner, run where, and what a client pays for it. Trigger: a client whose forms take files from the
-  public, or from people its own staff do not know.
+- **Scan uploads for malware** *(#1841, deferred here 2026-11-19).* A scanner run when an upload finishes, the file
+  held until it passes and removed with a reason when it does not, as a file of the wrong kind is. Held means a status
+  of its own, neither served nor linkable, as `uploading` is: not `pending`, the conversion's status, which is served as
+  uploaded and may be linked (issue #1838). To decide first: which scanner, run where, and what a client pays for it.
+  Trigger: a client whose forms take files from the public, or from people its own staff do not know.
 
 ## When something must ask about a streamed file with HEAD
 

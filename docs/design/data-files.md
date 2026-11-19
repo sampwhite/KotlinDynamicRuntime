@@ -273,7 +273,7 @@ Each is in [`deferred-work.md`](../development/deferred-work.md) under the trigg
 - **Copying a file over 5 GB** in parts, once a file kind may be that large.
 - **Several ranges** of a file in one answer.
 - **HEAD** on a file.
-- **Carrying data files through an export and an import.**
+- **Carrying data files with the forms that name them** to another deployment.
 - **Posters and thumbnails.**
 - **Scanning uploads for malware.**
 - **Resuming an upload across a reload**, **editing a map of files**, a **kept count** of the forms that use each
