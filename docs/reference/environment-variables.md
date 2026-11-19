@@ -401,6 +401,12 @@ Switches the multi-node test component on (issue #872), as `multiNodeTest.enable
 
 ## File store
 
+### `KDR_FILE_ORPHAN_GRACE_HOURS`
+
+**Default when unset:** 168
+
+How many hours the nightly sweep of data files (issue #1839) keeps a file uploaded for a form that no form links -- one replaced in its field, or uploaded and never saved -- and bytes in the store that no file's record names, before it removes them. The default is a week, so a person who uploads a file and saves its form days later still finds it. An upload past its own time is removed at once.
+
 ### `KDR_FILE_STORE_CHECK`
 
 **Default when unset:** strict, except warn in production

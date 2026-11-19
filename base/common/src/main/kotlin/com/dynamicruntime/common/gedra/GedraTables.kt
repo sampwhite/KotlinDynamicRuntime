@@ -104,6 +104,12 @@ object GDU {
     /** Under [progress]: which request holds the claim ([finishingAt]), so only it renews or gives it up. */
     const val finishingBy = "finishingBy"
 
+    /**
+     * Under [progress]: the SHA-256 of the whole file, once its chunks are put together (issue #1839), so the sweep
+     * knows the bytes under that hash are this upload's while its finish moves them there and before its record says so.
+     */
+    const val contentHash = "contentHash"
+
     // Each part's keys.
     const val number = "number"
     const val size = "size"

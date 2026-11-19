@@ -1,6 +1,7 @@
 package com.dynamicruntime.common
 
 import com.dynamicruntime.common.datafile.DataFileDeleteGuard
+import com.dynamicruntime.common.datafile.dataFileSweepJob
 import com.dynamicruntime.common.datafile.DataFileLinkHook
 import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.datafile.dataFileSchema
@@ -195,6 +196,8 @@ class CommonComponent : ComponentDefinition {
         collector.addJob(stateRecomputeJob())
         // The nightly report snapshots (issue #1035), half an hour after the recompute they read the results of.
         collector.addJob(reportHistoryJob())
+        // The nightly sweep of data files (issue #1839): what uploads leave behind, an hour after the snapshots.
+        collector.addJob(dataFileSweepJob())
         // The first cfactCalc function (issue #678): a workflow's cfactCalc usages emit cfacts into the same
         // form-singleton state the core details workflow derives, run inside that recompute (not a standalone pass).
         collector.addWorkflowFunction(ComputeCFactsFromDataCreation)

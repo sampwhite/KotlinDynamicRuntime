@@ -804,6 +804,16 @@ each file under its key (issue #1840).
   per entry, as the list's growing column of controls, with a way to add and remove keys. Not built because no trait
   holds one outside a test (`DataFileLinkTest`'s `rooms`). Trigger: a client whose trait does.
 
+## When a deleted form can be restored
+
+Nothing restores a deleted form today, so the nightly sweep of data files (issue #1839) treats a file that only deleted
+forms link as unused, and removes it a grace after the last of them was deleted. The deleted form keeps its link rows
+(issue #1838), which is what dates that deletion.
+
+- **Keep a restorable form's files** *(#1839, deferred here 2026-11-19).* When forms can be restored, a restore must find
+  its files: either a restore within the grace, which already works, or the sweep keeping a deleted form's files for as
+  long as it may be restored, as its own setting. Trigger: a restore of deleted forms is built.
+
 ## When a client's file links grow too many to read for each listing
 
 The Files page's listing (issue #1863) says how many live forms use each file. It reads all of the client's link rows
