@@ -521,8 +521,8 @@ class RequestService : ServiceInitializer {
             directAccess, handler.forwardedFor, handler.getRequestHeader(DirectAccess.forwardedHeader), handler.peerAddress,
         )
         extractAuth(cxt, handler)
-        // On a gated request (issue #1865), env access comes only with a Google sign-in: none assumed for a local request.
-        EnvGate.dropAssumption(cxt, handler)
+        // On a gated request (issue #1865), env access comes only with a Google sign-in: none assumed, none from a header.
+        EnvGate.dropOtherEnvAuth(cxt, handler)
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
         // (issue #1150), and a gated node's from the gate's Google sign-in (issue #1865), so it is known only now that
         // the session is restored -- and before the gates below.

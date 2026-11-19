@@ -564,8 +564,9 @@ It needs:
 - `KDR_PUBLIC_URL`, the address visitors use, such as `https://dynamicruntime.com`.
 - In Google Cloud Console, `<KDR_PUBLIC_URL>/kda/auth/envGate/callback` registered as an **Authorized redirect URI**
   for the client.
-- `KDR_TRUST_ENV_AUTH_HEADER=false`, and not `KDR_ENV_AUTH_FROM_ADMIN_LOGIN`: on a gated node, env access is the Google
-  sign-in's alone. The node refuses to start otherwise, or without any of the above.
+- Neither `KDR_TRUST_ENV_AUTH_HEADER` nor `KDR_ENV_AUTH_FROM_ADMIN_LOGIN` turned on: on a gated node, env access is the
+  Google sign-in's alone, and header trust defaults off there. The node refuses to start with either on, or without any
+  of the above.
 
 ## Mail and sign-in
 

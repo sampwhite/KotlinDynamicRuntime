@@ -191,7 +191,7 @@ class GoogleTokenEndpoint(private val clientId: String, private val clientSecret
  * containing [EGATE.adminHostWord] under `.localhost` forces the gate and skips only the trip to Google. Everything
  * after it runs for real -- the domain checks, finding or making the user, the stamp, the return.
  *
- * The gate's place in a request is `RequestService.dispatch`, after the session is restored: [dropAssumption], then
+ * The gate's place in a request is `RequestService.dispatch`, after the session is restored: [dropOtherEnvAuth], then
  * `EnvAuthRules.fromAdminLogin` (which grants env access from a stamped session), then [check].
  *
  * Theme: #ENVAT.
@@ -293,8 +293,12 @@ object EnvGate {
                     "(as '${clientSecretName(config)}').",
             )
         }
-        if (EnvAuthRules.isTrusted(config)) {
-            refuse("${EGATE.envGateEnvVar} is '$mode', so env access is the Google sign-in's alone: ${ENVA.trustEnvAuthHeaderEnvVar} must be off.")
+        // Only trust stated outright: behind the gate it defaults off, a test instance's included (EnvAuthRules.isTrusted).
+        if (EnvAuthRules.explicitTrust(config) == true) {
+            refuse(
+                "${EGATE.envGateEnvVar} is '$mode', so env access is the Google sign-in's alone, but " +
+                    "${ENVA.trustEnvAuthHeaderEnvVar} (or '${ACFG.trustEnvAuthHeader}') is set on. Unset it, or set it off.",
+            )
         }
         if (config.getEnvBool(PTD.envAuthFromAdminLoginEnvVar) == true) {
             refuse("${EGATE.envGateEnvVar} is '$mode', so ${PTD.envAuthFromAdminLoginEnvVar} must be off: a code sign-in must not grant env access.")
@@ -305,12 +309,13 @@ object EnvGate {
     }
 
     /**
-     * On a request the gate applies to, drops env access the node **assumed** for a local request
-     * (`KDR_ASSUME_ENV_AUTH`): on a gated request env access comes only with a Google sign-in, real or simulated.
-     * Run before `EnvAuthRules.fromAdminLogin`, which grants nothing to a request already env-authed.
+     * On a request the gate applies to, drops env access from any other source: one the node **assumed** for a local
+     * request (`KDR_ASSUME_ENV_AUTH`), or a trusted header, which a simulated request on a test instance may still
+     * have. On a gated request env access comes only with a Google sign-in, real or simulated. Run before
+     * `EnvAuthRules.fromAdminLogin`, which grants it from the gate's sign-in and nothing to a request already env-authed.
      */
-    fun dropAssumption(cxt: KdrCxt, handler: RequestHandler) {
-        if (cxt.envAuthEmail == ENVA.assumedAddress && applies(cxt.instanceConfig, handler)) {
+    fun dropOtherEnvAuth(cxt: KdrCxt, handler: RequestHandler) {
+        if (cxt.envAuthEmail != null && applies(cxt.instanceConfig, handler)) {
             cxt.envAuthEmail = null
         }
     }

@@ -15,6 +15,8 @@ import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.EGATE
+import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.user.EnvGate
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.GoogleCodeExchange
@@ -66,14 +68,16 @@ class EnvGateTest : StringSpec({
             tokensByCode[code] ?: throw KdrException("Google does not know code '$code'.", code = EXC.authNeeded)
     }
 
-    /** A gated node's settings: Google configured against this test's key and exchange, and header trust off. */
+    /**
+     * A gated node's settings: Google configured against this test's key and exchange. Header trust is left unset,
+     * which behind the gate is off even on a test instance.
+     */
     fun gateSettings(extra: Map<String, Any?> = emptyMap()): Map<String, Any?> = buildMap {
         put(EGATE.envGate, "googleChallenge")
         put(ACFG.adminEmailDomain, domain)
         put(GOOG.googleClientId, clientId)
         put(GOOG.googleKeySource, keySource)
         put(EGATE.codeExchange, exchange)
-        put(ACFG.trustEnvAuthHeader, false)
         putAll(extra)
     }
 
@@ -159,6 +163,10 @@ class EnvGateTest : StringSpec({
         envelope[EP.errorCode] shouldBe EP.envAuthRequiredCode
         envelope[EP.extraData].toJsonMapOrEmpty()[EP.envAuthLoginUrl] shouldBe "/kda${EGATE.startPath}"
         client.sendGetRequest("/health").rptStatusCode shouldBe EXC.ok
+        // A test instance does not trust the env-auth header behind the gate: the header is no way past it.
+        EnvAuthRules.isTrusted(cxt.instanceConfig) shouldBe false
+        client.setHeader(ENVA.header, "header@$domain")
+        client.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
     }
 
     "the start path returns to the page the browser names, fragment included, and never to another site" {
@@ -244,8 +252,7 @@ class EnvGateTest : StringSpec({
         val cxt = Startup.mkTestBootCxt(
             "gateSimulated", "envGateSimulated",
             mapOf(
-                ACFG.adminEmailDomain to domain, EGATE.simulate to true,
-                EGATE.simulatedAddress to "dev@$domain", ACFG.trustEnvAuthHeader to false,
+                ACFG.adminEmailDomain to domain, EGATE.simulate to true, EGATE.simulatedAddress to "dev@$domain",
             ),
         )
         // The gate is off on this node: only the admin host is gated.
@@ -254,6 +261,13 @@ class EnvGateTest : StringSpec({
 
         val admin = TestHttpClient(cxt.instanceConfig).also { it.setHeader("Host", "admin.kd9.localhost:7099") }
         admin.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
+        // This test instance trusts the env-auth header, being ungated, but on a gated request the header does not count.
+        EnvAuthRules.isTrusted(cxt.instanceConfig) shouldBe true
+        val headered = TestHttpClient(cxt.instanceConfig).also {
+            it.setHeader("Host", "admin.kd9.localhost:7099")
+            it.setHeader(ENVA.header, "header@$domain")
+        }
+        headered.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
         val visit = admin.sendGetRequestRaw("/wa/clients", mapOf("c" to "acme"))
         visit.rptStatusCode shouldBe 303
         location(visit) shouldBe "/wa/clients?c=acme"
@@ -287,7 +301,7 @@ class EnvGateTest : StringSpec({
             "gateNoSecret",
             gateSettings(mapOf(EGATE.codeExchange to null, EGATE.clientSecretKey to "noSuchSecretForEnvGateTest")),
         ) shouldContain "client secret"
-        refusal("gateTrusts", gateSettings(mapOf(ACFG.trustEnvAuthHeader to true))) shouldContain "must be off"
+        refusal("gateTrusts", gateSettings(mapOf(ACFG.trustEnvAuthHeader to true))) shouldContain "is set on"
         refusal("gateBadMode", gateSettings(mapOf(EGATE.envGate to "always"))) shouldContain "takes one of"
 
         // On a public test deployment (a test instance the public can reach, in `dev`), which passes its own checks.

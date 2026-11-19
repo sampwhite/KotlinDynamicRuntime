@@ -65,7 +65,8 @@ object ACFG {
      * When true, this node believes the `X-Kdr-Env-Email` header an edge server sets on a request it has
      * already authenticated (issue #348). It cannot verify that claim -- the real guarantee is that only the
      * edge can reach this node, a network property -- so the deployment asserts it here. Unset defaults from
-     * `KDR_TRUST_ENV_AUTH_HEADER`, and failing that from [isTestInstance]. Resolved through
+     * `KDR_TRUST_ENV_AUTH_HEADER`, and failing that from [isTestInstance] -- except behind the env gate, where it
+     * defaults off (issue #1865). Resolved through
      * `EnvAuthRules.isTrusted`, which is the only thing that should read it.
      */
     const val trustEnvAuthHeader = "trustEnvAuthHeader"
