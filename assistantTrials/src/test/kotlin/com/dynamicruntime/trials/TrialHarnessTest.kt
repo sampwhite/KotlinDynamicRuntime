@@ -175,9 +175,12 @@ class TrialHarnessTest : StringSpec({
             ),
         )
         val now = Clock.System.now()
-        val ordered = TrialConversation(
-            "c", emptyList(), call("t", mapOf(CFEP.dryRun to true)) + read + call("t", mapOf(CFEP.dryRun to false)),
-        )
+        val messages = buildList {
+            addAll(call("t", mapOf(CFEP.dryRun to true)))
+            addAll(read)
+            addAll(call("t", mapOf(CFEP.dryRun to false)))
+        }
+        val ordered = TrialConversation("c", emptyList(), messages)
         MethodChecks.readsMakingChanges.check(
             TrialResult(smoke, smoke.variants.single(), "c", null, listOf(ordered), emptyMap(), emptyList(), now, now),
         ).kind shouldBe OutcomeKind.met
