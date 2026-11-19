@@ -79,6 +79,12 @@ Each request asks for two beta features by header: `server-side-fallback-2026-07
 Sonnet 5.5, Opus 5.5, Fable 5.1, Fable 5, or Mythos 5.1 -- and another refuses the boot, as does a `max_tokens` above
 the models' 128,000.
 
+**Tuning against the real model** is what the assistant trials are for (issue #1859): named, repeatable runs, outside
+the gate, that start a node with the assistant on, configure a fresh client through prompts alone, and report what the
+assistant did, where it varied from what was expected, and the client's whole configuration. A change to the prompt, a
+tool, or a guide it reads is measured by running the same trial before and after. The `kdr-testing` skill says how to
+run one.
+
 ## Who may use it, and how much
 
 **Opt-in per client, by a deployment operator.** The switch is a row in `AssistantClients`, not part of the client's
