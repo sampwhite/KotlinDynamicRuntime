@@ -8,7 +8,9 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * The Files page (issue #1863), the pure half: a listing's rows read into views, the filters as the listing's input, and
@@ -21,9 +23,20 @@ import com.dynamicruntime.common.util.toOptStr
  * One file of the listing: its record ([view]), who uploaded it ([ownerId], [ownerName]), when its upload began
  * ([uploadedAt]), and how many live forms link it ([forms]), whether or not the caller may read them.
  */
-class FileRow(val view: DataFileView, val ownerId: Long?, val ownerName: String?, val uploadedAt: String?, val forms: Int) {
+class FileRow(
+    val view: DataFileView,
+    val ownerId: Long?,
+    val ownerName: String?,
+    val uploadedAt: String?,
+    val forms: Int,
+    /** While it uploads, when its upload is no longer taken. */
+    val expiresAt: String? = null,
+) {
     val fileId: String get() = view.fileId
     val uploading: Boolean get() = view.status == DFSTAT.uploading
+
+    /** An upload past its time ([expiresAt] before [now]): it takes no more chunks, and can only be removed. */
+    fun abandoned(now: Instant): Boolean = uploading && expiresAt?.toOptInstantOrNull()?.let { it < now } == true
 }
 
 /** A listing's page: its [rows], how many there are in all ([available]), and whether more can be shown. */
@@ -39,6 +52,7 @@ fun filesPageFrom(envelope: Map<String, Any?>): FilesPageData {
             ownerName = item[DFILE.ownerName].toOptStr(),
             uploadedAt = item[DFILE.uploadedAt].toOptStr(),
             forms = item[DFILE.forms].toOptLong()?.toInt() ?: 0,
+            expiresAt = item[DFILE.expiresAt].toOptStr(),
         )
     }
     return FilesPageData(rows, envelope[EP.numAvailable].toOptLong()?.toInt() ?: rows.size)
@@ -59,7 +73,8 @@ fun filesListArgs(filter: FilesFilter, limit: Int): Map<String, Any?> = buildMap
 const val filesAny = "any"
 
 /** The kinds a file may be, as the kind filter offers them. */
-fun fileKindChoices(): List<SchOption> = listOf(SchOption(filesAny, "Any kind")) + FileKinds.kinds.map { SchOption(it.id, it.label) }
+fun fileKindChoices(): List<SchOption> =
+    listOf(SchOption(filesAny, "Any kind")) + FileKinds.kinds.map { SchOption(it.id, it.label) }
 
 /** The statuses the status filter offers: only the two reached today. */
 fun fileStatusChoices(): List<SchOption> =
@@ -71,6 +86,10 @@ fun fileUseChoices(): List<SchOption> =
 
 /** A filter's chosen [value] as the listing takes it: null for [filesAny]. */
 fun filterValue(value: String?): String? = value?.takeIf { it != filesAny && it.isNotEmpty() }
+
+/** [row]'s status in words, at [now]: an upload past its time says it stopped, not that it is under way. */
+fun fileStatusText(row: FileRow, now: Instant): String =
+    if (row.abandoned(now)) "Stopped (no longer taken)" else fileStatusText(row.view.status)
 
 /** A file's status in words. */
 fun fileStatusText(status: String?): String = when (status) {
@@ -110,8 +129,21 @@ fun filesShowOwner(rows: List<FileRow>, me: Long?): Boolean = rows.any { it.owne
 /** Who uploaded [row]'s file, in a word: their name, else their user id. */
 fun fileOwnerText(row: FileRow): String = row.ownerName ?: row.ownerId?.let { "User $it" } ?: "—"
 
-/** One use of a file, as `/files/usedBy` answers it: the form, and the field of which of its traits names the file. */
-class FileUse(val formId: String, val traitId: String, val fieldPath: String)
+/**
+ * One use of a file, as `/files/usedBy` answers it: the form, when it was created, and which field of which of its traits
+ * names the file -- each with its words ([traitTitle], [fieldLabel]), as the form's pages name them.
+ */
+class FileUse(
+    val formId: String,
+    val traitId: String,
+    val fieldPath: String,
+    val traitTitle: String? = null,
+    val fieldLabel: String? = null,
+    val formCreatedAt: String? = null,
+)
+
+/** A use in words: `Site media · Photo`, the field's path when the server gave no label. */
+fun fileUseText(use: FileUse): String = "${use.traitTitle ?: use.traitId} · ${use.fieldLabel ?: use.fieldPath}"
 
 /** The uses `/files/usedBy` answers, the caller's to read, and how many forms they may not read use the file too. */
 class FileUses(val uses: List<FileUse>, val hidden: Int)
@@ -120,7 +152,10 @@ class FileUses(val uses: List<FileUse>, val hidden: Int)
 fun fileUsesFrom(item: Map<String, Any?>): FileUses = FileUses(
     uses = item[DFILE.usedBy].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }.mapNotNull { use ->
         val form = use[DFILE.formId].toOptStr() ?: return@mapNotNull null
-        FileUse(form, use[DFILE.traitId].toOptStr().orEmpty(), use[DFILE.fieldPath].toOptStr().orEmpty())
+        FileUse(
+            form, use[DFILE.traitId].toOptStr().orEmpty(), use[DFILE.fieldPath].toOptStr().orEmpty(),
+            use[DFILE.traitTitle].toOptStr(), use[DFILE.fieldLabel].toOptStr(), use[DFILE.formCreatedAt].toOptStr(),
+        )
     },
     hidden = item[DFILE.hiddenForms].toOptLong()?.toInt() ?: 0,
 )

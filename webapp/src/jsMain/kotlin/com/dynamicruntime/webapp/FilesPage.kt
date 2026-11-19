@@ -15,6 +15,7 @@ import react.Props
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
+import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
@@ -25,7 +26,9 @@ import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
 import react.dom.html.ReactHTML.ul
+import react.dom.html.ReactHTML.video
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -66,16 +69,25 @@ val FilesPage = FC<Props> {
     var openUses by useState<String?>(null)
     var openPreview by useState<String?>(null)
     val rows = useRowActions()
+    // Which read is the latest: an answer to an earlier one -- a filter changed again before it came back -- is dropped,
+    // so a listing never shows rows of a filter it no longer names.
+    val asked = useRef(0)
 
     useEffect(generation, filter, shown, reread) {
+        val ask = (asked.current ?: 0) + 1
+        asked.current = ask
         filesScope.launch {
             try {
-                page = FilesApi.list(filter, shown)
+                val read = FilesApi.list(filter, shown)
+                if (asked.current != ask) return@launch
+                // Each file's record, so a preview draws at once rather than asking for what the listing holds.
+                read.rows.forEach { DataFileCache.remember(it.view) }
+                page = read
                 loadError = null
             } catch (e: Throwable) {
-                loadError = userFacingError(e)
+                if (asked.current == ask) loadError = userFacingError(e)
             } finally {
-                growing = false
+                if (asked.current == ask) growing = false
             }
         }
     }
@@ -209,7 +221,7 @@ private fun ChildrenBuilder.fileRow(
             val facts = listOfNotNull(view.kind?.label, view.size?.let { byteSizeText(it) })
             if (facts.isNotEmpty()) div { className = ClassName("subtitle"); +facts.joinToString(" · ") }
         }
-        td { +fileStatusText(view.status) }
+        td { +fileStatusText(row, now) }
         td { row.uploadedAt?.let { RelativeTime { iso = it; this.now = now } } }
         if (showOwner) td { +fileOwnerText(row) }
         td {
@@ -263,7 +275,21 @@ private fun ChildrenBuilder.fileRow(
             key = "${row.fileId}:preview".unsafeCast<Key>()
             td {
                 asDynamic()["colSpan"] = columns
-                DataFileValue { fileId = row.fileId }
+                // The thing itself: the row above already names it.
+                if (view.kind?.family == FKFAM.video) {
+                    video {
+                        className = ClassName("data-file-preview")
+                        controls = true
+                        asDynamic()["preload"] = "metadata"
+                        src = DataFileApi.contentUrl(row.fileId)
+                    }
+                } else {
+                    img {
+                        className = ClassName("data-file-preview")
+                        src = DataFileApi.contentUrl(row.fileId)
+                        alt = view.title
+                    }
+                }
             }
         }
     }
@@ -275,6 +301,7 @@ private external interface FileUsesListProps : Props {
 
 /** The forms that use a file, each a link to the form, read when the row is opened. */
 private val FileUsesList = FC<FileUsesListProps> { props ->
+    val now = useRelativeClock()
     var uses by useState<FileUses?>(null)
     var failure by useState<DisplayError?>(null)
     useEffect(props.fileId) {
@@ -298,9 +325,12 @@ private val FileUsesList = FC<FileUsesListProps> { props ->
                         key = "$at:${use.formId}".unsafeCast<Key>()
                         a {
                             href = routeHref(listOf(HP.page to HMENU.pageForms, HP.gedra to use.formId))
-                            +use.formId
+                            +fileUseText(use)
                         }
-                        span { className = ClassName("type-hint"); +" · the field ${use.fieldPath} of ${use.traitId}" }
+                        use.formCreatedAt?.let { created ->
+                            span { className = ClassName("type-hint"); +" · a form created " }
+                            span { className = ClassName("type-hint"); RelativeTime { iso = created; this.now = now } }
+                        }
                     }
                 }
             }

@@ -52,6 +52,13 @@ object DFILE {
     const val traitId = "traitId"
     const val fieldPath = "fieldPath"
 
+    /** A use's trait, as its form's pages title it, and its field, as they label it (issue #1863). */
+    const val traitTitle = "traitTitle"
+    const val fieldLabel = "fieldLabel"
+
+    /** When a use's form was created, by which a person tells forms of one trait apart (issue #1863). */
+    const val formCreatedAt = "formCreatedAt"
+
     /** How many live forms the caller may not read use the file too. */
     const val hiddenForms = "hiddenForms"
 

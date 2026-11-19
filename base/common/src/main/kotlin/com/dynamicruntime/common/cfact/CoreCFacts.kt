@@ -2,9 +2,13 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.filekind.DataFileFields
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.gedra.ClientSelfServeCreate
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.CustomerAccess
+import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.isSelfServeClient
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
@@ -113,6 +117,12 @@ object CFACTS {
      * what it lists.
      */
     const val seesClientForms = "kdr:seesClientForms"
+
+    /**
+     * The caller's client's forms can hold **uploaded files** (issue #1863): some trait of its forms has a file field.
+     * What offers the Files page, which for any other client could only ever say there are none.
+     */
+    const val clientHoldsFiles = "kdr:clientHoldsFiles"
 
     /**
      * The caller is **signed in to `public`** (issue #1636): a visitor who registered, acting in the placeholder client,
@@ -352,6 +362,17 @@ fun addCoreCFacts(collector: SchemaCollector) {
                 "for whose forms it shows -- \"Forms\" against \"My forms\" -- asks it.",
         ),
     ) { AdminRules.isClientAdministrator(it) || AdminRules.editsClient(it) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.clientHoldsFiles, CFGRP.caller,
+            "True when some trait of the caller's client's forms has a file field (format `gedra-file`), so its forms can " +
+                "hold uploaded files. What offers the Files page.",
+        ),
+    ) { cxt ->
+        // An edge runs no form data, and keeps no files: false there, as the boot role's own fact would answer.
+        val data = cxt.instanceConfig.get(GedraDataService.serviceName) as? GedraDataService
+        data != null && holdsFilesOf(data.entryUnion(cxt, cxt.client, GedraDataType.formDoc))
+    }
     // Three cheap facts about where the caller is (issue #1636), read off the context and the loaded clients, so the
     // home cards can be offered by them: each is asked on every read of the shell config, which is polled.
     collector.addCFact(
@@ -470,3 +491,13 @@ fun addCoreCFacts(collector: SchemaCollector) {
         ),
     ) { it.isEnvAuthEffective && !it.isEnvDebug }
 }
+
+/**
+ * Whether [union], a client's entry union, has a file field anywhere (`DataFileFields.holdsFiles`), remembered for each
+ * union: a fact asked on every read of the shell config, which is polled, and a union only changes as a whole, when the
+ * client's configuration is reloaded -- so a new union is a new key, and an old one goes with its last reference.
+ */
+private val holdsFilesByUnion: MutableMap<SchType, Boolean> = java.util.Collections.synchronizedMap(java.util.WeakHashMap())
+
+private fun holdsFilesOf(union: SchType?): Boolean =
+    union != null && holdsFilesByUnion.getOrPut(union) { DataFileFields.holdsFiles(union) }

@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /** The Files page (issue #1863), the pure half: a listing read, its filters, and what a row offers. */
 class FilesListingTest {
@@ -41,7 +42,8 @@ class FilesListingTest {
 
     @Test
     fun onlyAFileNoFormUsesIsRemovableAndOneThatIsSaysWhy() {
-        val page = filesPageFrom(mapOf(EP.items to listOf(item("a", 1), item("b", 0), item("c", 3), item("d", 0, status = DFSTAT.uploading))))
+        val items = listOf(item("a", 1), item("b", 0), item("c", 3), item("d", 0, status = DFSTAT.uploading))
+        val page = filesPageFrom(mapOf(EP.items to items))
         assertEquals(listOf(false, true, false, true), page.rows.map { fileRemovable(it) })
         assertEquals("A form uses it; remove it from that form to delete it.", fileKeptText(page.rows[0]))
         assertEquals("3 forms use it; remove it from them to delete it.", fileKeptText(page.rows[2]))
@@ -65,5 +67,18 @@ class FilesListingTest {
         assertEquals("photo", uses.uses.single().fieldPath)
         assertEquals("And 2 forms you may not open.", fileHiddenUsesText(uses.hidden))
         assertNull(fileHiddenUsesText(0))
+        // Without the server's words, the ids stand in; with them, the trait and field as the form's pages name them.
+        assertEquals("t · photo", fileUseText(uses.uses.single()))
+        assertEquals("Site media · Photo", fileUseText(FileUse("gd.fd.x", "sample:siteMedia", "photo", "Site media", "Photo")))
+    }
+
+    @Test
+    fun anUploadPastItsTimeSaysItStopped() {
+        val now = Instant.parse("2026-11-19T12:00:00Z")
+        fun uploading(expires: String) =
+            filesPageFrom(mapOf(EP.items to listOf(item("u", 0, status = DFSTAT.uploading) + (DFILE.expiresAt to expires)))).rows.single()
+        assertEquals("Stopped (no longer taken)", fileStatusText(uploading("2026-11-19T11:00:00Z"), now))
+        assertEquals("Uploading", fileStatusText(uploading("2026-11-20T11:00:00Z"), now))
+        assertEquals("Ready", fileStatusText(filesPageFrom(mapOf(EP.items to listOf(item("r", 0)))).rows.single(), now))
     }
 }

@@ -159,8 +159,8 @@ session, never to a client's people.
 | `apiKeys` | API keys |  | Opens `apiKeys` | Administrators: `kdr:administersClient,kdr:app` |
 | `forms` | My forms |  | Opens `forms` | Signed-in people who are neither administrators nor editors: `kdr:loggedIn,~kdr:seesClientForms,kdr:app` |
 | `clientForms` | Forms |  | Opens `forms` | Administrators and editors: `kdr:seesClientForms,kdr:app` |
-| `files` | My files |  | Opens `files` | Signed-in people who are neither administrators nor editors: `kdr:loggedIn,~kdr:seesClientForms,kdr:app` |
-| `clientFiles` | Files |  | Opens `files` | Administrators and editors: `kdr:seesClientForms,kdr:app` |
+| `files` | My files |  | Opens `files` | Signed-in people who are neither administrators nor editors, where forms hold files: `kdr:loggedIn,~kdr:seesClientForms,kdr:clientHoldsFiles,kdr:app` |
+| `clientFiles` | Files |  | Opens `files` | Administrators and editors, where forms hold files: `kdr:seesClientForms,kdr:clientHoldsFiles,kdr:app` |
 | `workflows` | Workflows |  | Opens `workflows` | Nobody until a client turns it on (`#never`) |
 | `reference` | Reference |  | Group header | Everyone, on every node |
 | `docs` | Documents | Reference (`reference`) | Opens `docs` | Everyone: `kdr:app` |

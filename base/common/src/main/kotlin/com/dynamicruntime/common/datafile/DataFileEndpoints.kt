@@ -49,6 +49,7 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         description = "A file in a listing of files (issue #1863): its record, who uploaded it, and how many forms use it."
         recordFields()
         property(DFILE.ownerName, "The name of the user who uploaded it, when they have one.")
+        property(DFILE.expiresAt, "While it is uploading: when its upload is no longer taken.") { dateTime() }
         property(
             DFILE.forms, "How many live forms link it, whether or not you may read them; one that any links is not removed.",
             required = true,
@@ -71,6 +72,9 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         property(DFILE.formId, "The form's id.", required = true)
         property(DFILE.traitId, "The trait of the entry holding the field.", required = true)
         property(DFILE.fieldPath, "Where in the entry's data the field is.", required = true)
+        property(DFILE.traitTitle, "The trait, as the form's pages title it.")
+        property(DFILE.fieldLabel, "The field, as the form's pages label it.")
+        property(DFILE.formCreatedAt, "When the form was created.") { dateTime() }
     }
     type(DFILE.usedByType) {
         type = SCT.kObject

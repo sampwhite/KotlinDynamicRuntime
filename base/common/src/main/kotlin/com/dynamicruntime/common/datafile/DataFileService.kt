@@ -559,8 +559,11 @@ object DataFileService {
         val users = UserService.get(cxt)
         val names = page.rows.mapNotNull { it.userId }.distinct().associateWith { users.queryByUserId(cxt, it)?.name }
         val items = page.rows.map { row ->
-            info(row) + linkedMapOf(DFILE.ownerName to names[row.userId], DFILE.forms to (forms[row.gedraId.fullId] ?: 0))
-                .filterValues { it != null }
+            // While it uploads, when it stops being taken, so a page tells an abandoned upload from one under way.
+            val expires = fileOf(row)[DFILE.expiresAt].takeIf { fileOf(row)[DFILE.status] == DFSTAT.uploading }
+            info(row) + linkedMapOf(
+                DFILE.ownerName to names[row.userId], DFILE.forms to (forms[row.gedraId.fullId] ?: 0), DFILE.expiresAt to expires,
+            ).filterValues { it != null }
         }
         return ListPage(items, page.numAvailable, page.numAvailable > items.size)
     }

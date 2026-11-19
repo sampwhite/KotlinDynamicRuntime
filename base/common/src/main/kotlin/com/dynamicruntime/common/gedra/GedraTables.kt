@@ -257,5 +257,7 @@ fun gedraDataTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = 
         forClient()
         // Which forms use a file: a removal's refusal, a read through a form, and `/files/usedBy`.
         index(GDL.fileId)
+        // A client's links whole: how many forms use each file a listing shows (issue #1863).
+        index(PF.client)
     }
 }

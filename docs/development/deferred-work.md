@@ -804,6 +804,17 @@ each file under its key (issue #1840).
   per entry, as the list's growing column of controls, with a way to add and remove keys. Not built because no trait
   holds one outside a test (`DataFileLinkTest`'s `rooms`). Trigger: a client whose trait does.
 
+## When a client's file links grow too many to read for each listing
+
+The Files page's listing (issue #1863) says how many live forms use each file. It reads all of the client's link rows
+(`GedraFileLinks`, by its `client` index) and their forms from the cache on each request -- a page opened, grown, or
+filtered -- since its `linked` filter must know every file's count before it pages.
+
+- **Keep each file's count of live forms** *(#1863 review, deferred here 2026-11-19).* A table cache of the links, or a
+  count kept on the file's record by the link hook and a form's removal, so a listing reads one number a file. A count
+  kept on the record must also follow a form deleted or restored, which today only the link rows' holders tell. Trigger:
+  a client whose listing of files is slow, from links in the hundreds of thousands.
+
 ## When something must ask about a streamed file with HEAD
 
 A file sent a range at a time (`StreamedContent`, issue #1836) answers GET only: a request is matched to its endpoint

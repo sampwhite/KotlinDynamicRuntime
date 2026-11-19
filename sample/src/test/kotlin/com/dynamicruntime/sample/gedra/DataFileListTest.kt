@@ -9,16 +9,25 @@ import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.sample.SampleTestInstances
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.shouldBe
 
 /**
@@ -79,6 +88,37 @@ class DataFileListTest : StringSpec({
         rows(chief).map { it[DFILE.fileId] } shouldContainExactlyInAnyOrder listOf(used, spare, sams)
         val ids = rows(outsider).map { it[DFILE.fileId] }
         for (id in listOf(used, spare, sams)) ids shouldNotContain id
+    }
+
+    "a caller who reaches every client lists only the client they act in; an editor lists the whole client" {
+        val deploymentAdmin = TestUser.createFullAdmin(cxt, "root@list1863.globex.test", userClient = SC.globex)
+        rows(deploymentAdmin).map { it[DFILE.fileId] } shouldContainExactlyInAnyOrder listOf(used, spare, sams)
+        // Acting in `hub`, the same reach lists none of globex's.
+        val inHub = TestUser.createFullAdmin(cxt, "root@list1863.hub.test")
+        val hubIds = rows(inHub).map { it[DFILE.fileId] }
+        for (id in listOf(used, spare, sams)) hubIds shouldNotContain id
+
+        val editor = TestUser.create(cxt, "ed@list1863.globex.test", userClient = SC.globex, persona = PERSONA.editor)
+        rows(editor).map { it[DFILE.fileId] } shouldContainExactlyInAnyOrder listOf(used, spare, sams)
+    }
+
+    "a file uploaded in a sandbox is listed in the sandbox, not in the client it shadows" {
+        val inSandbox = TestUser.create(cxt, "chief@list1863.acme.test", level = ROLE.admin, userClient = SC.acme)
+        val atHome = TestUser.create(cxt, "deputy@list1863.acme.test", level = ROLE.admin, userClient = SC.acme)
+        inSandbox.postData(AEP.openSandbox, emptyMap())
+        val made = upload(inSandbox, "rehearsal.png", png(11))
+        made shouldContain ":sandbox"
+        rows(inSandbox).map { it[DFILE.fileId] } shouldContain made
+        rows(atHome).map { it[DFILE.fileId] } shouldNotContain made
+    }
+
+    "the menu offers the page to a client whose forms hold files, named for whose files it lists" {
+        fun menuIds(user: TestUser) =
+            user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.menu].toJsonListOfMaps().map { it[HFLD.id] }
+        menuIds(pat) shouldContain HMENU.files
+        menuIds(pat) shouldNotContain HMENU.clientFiles
+        menuIds(chief) shouldContain HMENU.clientFiles
+        menuIds(chief) shouldNotContain HMENU.files
     }
 
     "a listing grows a batch at a time, newest first, and says how many there are" {

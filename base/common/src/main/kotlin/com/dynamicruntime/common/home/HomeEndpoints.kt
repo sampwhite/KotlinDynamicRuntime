@@ -615,14 +615,15 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         )
         // The Files page (issue #1863), beside the forms whose fields hold the files, and named the same way: a caller who
         // reads every form of a client reads every file of it too (the `files` section's read scope), "Files"; everyone
-        // else reads their own, "My files". App-only, since an edge keeps no files.
+        // else reads their own, "My files". Only for a client whose forms can hold files, since for any other the page
+        // could only say there are none; app-only, since an edge keeps no files.
         menuItem(
             HMENU.files, "My files", UiRoute(HMENU.pageFiles),
-            cfactExpression = "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}",
+            cfactExpression = "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.clientHoldsFiles},${CFACTS.app}",
         )
         menuItem(
             HMENU.clientFiles, "Files", UiRoute(HMENU.pageFiles),
-            cfactExpression = "${CFACTS.seesClientForms},${CFACTS.app}",
+            cfactExpression = "${CFACTS.seesClientForms},${CFACTS.clientHoldsFiles},${CFACTS.app}",
         )
         // The workflow pages (issue #792): off by default -- a client with normal workflows turns it on by overlaying
         // this item with a real condition (the sample's acme does), the way an overlay turns an item off.

@@ -35,6 +35,8 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * The links between forms and the data files their fields name (issue #1838), kept in [GDT.gedraFileLinks]: one row
@@ -282,10 +284,26 @@ object DataFileLinks {
      */
     fun usedBy(cxt: KdrCxt, file: GedraDataRow): Map<String, Any?> {
         val usage = usage(cxt, file.gedraId.fullId, liveFromSql = false)
+        val forms = formsIn(cxt, usage.visibleForms, ReadScopeRules.forCaller(cxt))
+        val data = GedraDataService.get(cxt)
         return linkedMapOf(
             DFILE.fileId to file.gedraId.fullId,
-            DFILE.usedBy to usage.links.map {
-                linkedMapOf(DFILE.formId to it[GDL.holderId], DFILE.traitId to it[GDL.traitId], DFILE.fieldPath to it[GDL.fieldPath])
+            DFILE.usedBy to usage.links.map { link ->
+                val holder = forms[link[GDL.holderId].toOptStr()]
+                val traitId = link[GDL.traitId].toOptStr().orEmpty()
+                val fieldPath = link[GDL.fieldPath].toOptStr().orEmpty()
+                // The trait and its field as the form's pages name them (issue #1863), so a person reads which form
+                // and which field, not ids.
+                val dataType = holder?.let { traitDataTypeIn(data.entryUnion(cxt, it.client, it.kind), traitId) }
+                val field = fieldPath.substringBefore('.').substringBefore('[')
+                linkedMapOf(
+                    DFILE.formId to link[GDL.holderId], DFILE.traitId to traitId, DFILE.fieldPath to fieldPath,
+                    DFILE.traitTitle to (dataType?.title ?: humanizeFieldName(traitId.substringAfterLast(':'))),
+                    // The field's own title, as a form labels it, never its target type's, which every field of
+                    // that type shares.
+                    DFILE.fieldLabel to (dataType?.properties?.get(field)?.title ?: humanizeFieldName(field)),
+                    DFILE.formCreatedAt to holder?.createdAt?.formatDate(),
+                ).filterValues { it != null }
             },
             DFILE.hiddenForms to usage.hidden,
         )

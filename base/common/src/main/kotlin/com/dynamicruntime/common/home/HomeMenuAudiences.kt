@@ -80,6 +80,15 @@ object HomeMenuAudiences {
             "${CFACTS.administersCustomer},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
             "Administrators of a customer's root client", offered = false,
         ),
+        // The Files page's two entries (issue #1863): the forms list's two audiences, in a client whose forms hold files.
+        MenuAudience(
+            "${CFACTS.seesClientForms},${CFACTS.clientHoldsFiles},${CFACTS.app}",
+            "Administrators and editors, where forms hold files", offered = false,
+        ),
+        MenuAudience(
+            "${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.clientHoldsFiles},${CFACTS.app}",
+            "Signed-in people who are neither administrators nor editors, where forms hold files", offered = false,
+        ),
         MenuAudience(CFACTS.isDeploymentOperator, "Deployment operators", offered = false, deployment = true),
         MenuAudience("${CFACTS.isDeploymentOperator},${CFACTS.app}", "Deployment operators, on an app node", offered = false, deployment = true),
         MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false, deployment = true),
