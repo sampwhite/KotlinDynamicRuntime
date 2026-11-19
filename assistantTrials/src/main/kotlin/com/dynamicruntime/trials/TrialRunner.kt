@@ -30,6 +30,7 @@ object Trials {
  * A run never fails on what the assistant did -- that is the report's to say. It exits non-zero only when the harness
  * itself could not run: no API key, no free port, a node that would not start.
  */
+@Suppress("ConstPropertyName")
 object TrialRunner {
     private val runsDir: File = File(System.getProperty("kdr.trials.runsDir") ?: "build/trialRuns")
 
@@ -79,7 +80,7 @@ object TrialRunner {
             println(
                 "  ${r.trial.name}/${r.variant.name}: ${counts[OutcomeKind.met] ?: 0} met, ${counts[OutcomeKind.varied] ?: 0} varied, " +
                     "${counts[OutcomeKind.notMet] ?: 0} not met; ${r.weighted} weighted tokens, about " +
-                    "${TrialReport.cost(r.weighted, r.model) ?: "?"}" + if (r.problems.isEmpty()) "" else "; ${r.problems.size} problem(s)",
+                        (TrialReport.cost(r.weighted, r.model) ?: "?") + if (r.problems.isEmpty()) "" else "; ${r.problems.size} problem(s)",
             )
         }
         println()

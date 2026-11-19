@@ -141,7 +141,7 @@ class TrialHarnessTest : StringSpec({
     }
 
     "a change made without saying dryRun, through a tool that offers one, was not dry-run" {
-        var id = 0
+        @Suppress("CanBeVal") var id = 0
         fun call(turn: String, input: Map<String, Any?>) = listOf(
             mapOf(
                 ACNV.role to ABLK.assistant, ACNV.turnId to turn,

@@ -22,6 +22,7 @@ class ToolCall(val turnId: String, val name: String, val input: Map<String, Any?
     /** The call in one line: its name and input. */
     val summary: String get() = "$name ${input.toJsonStr(compact = true).take(summaryChars)}"
 
+    @Suppress("ConstPropertyName")
     companion object {
         val readPrefixes = listOf("read_", "list_", "view_")
         const val summaryChars = 240
