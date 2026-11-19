@@ -49,7 +49,18 @@ be read in ranges with no check of its hash ([the file store's ranged read](#rea
 
 ## Uploading a file
 
-An upload comes **in chunks, in order**, so a lost connection costs a chunk rather than the file:
+**A file of 8 MiB or less is uploaded in one request** (#1840): `POST /files/upload?name=&mimeType=`, the file the raw
+body, as `application/octet-stream`. It answers the file's record, `ready`, and is refused as an upload in chunks is: by
+the checks a begin makes, a `Content-Length` past 8 MiB before the body is read, and the checks of the finish. It is a
+begin, one chunk, and its finish, run in one request, so it adds no path of its own through the store, and a file it
+refuses, or that any failure stops, is aborted, leaving nothing behind: nobody holds its id to resume it. **It is not
+safe to send again**: one whose answer was lost may have made the file, and a second would make another. So the webapp
+sends it again only after a 429, which the dispatcher answers before reading the body; for anything else it says so,
+and an extra file a person's own retry makes is unlinked, for the sweep (#1839). An image or a document is usually this size, and a
+resume would gain it nothing.
+
+A larger file -- a video, above all -- comes **in chunks, in order**, so a lost connection costs a chunk rather than the
+file:
 
 1. **Begin** (`POST /files/upload/begin {name, mimeType, declaredSize}`). The type must be one of the data kinds, and the
    size at most its kind's largest (video 2 GB, an image 20 MB, a PDF 50 MB), and the client's plan must have room
@@ -57,10 +68,15 @@ An upload comes **in chunks, in order**, so a lost connection costs a chunk rath
 2. **Chunks** (`POST /files/upload/chunk?fileId=&offset=&chunkHash=`, the chunk the raw body, as
    `application/octet-stream`). Each is the next one, at the offset the upload has reached, the chunk size long unless it
    is the last, and hashes to the SHA-256 sent with it. One sent again, already taken, is answered as before, so a
-   sender that lost the answer may send it again. Any other is a 409 carrying `nextOffset`.
+   sender that lost the answer may send it again. Any other is a 409 carrying `nextOffset`. **The chunk that completes
+   the file finishes the upload** in the same request (#1840): its checks are in the next section, and its answer
+   carries the file's record under `file`.
 3. **Status** (`GET /files/upload/status?fileId=`) says where to resume after a lost connection.
-4. **Finish** (`POST /files/upload/finish {fileId}`), every byte taken. Its checks are in the next section.
-5. **Abort** (`POST /files/upload/abort {fileId}`) ends it without a file.
+4. **Abort** (`POST /files/upload/abort {fileId}`) ends it without a file: its parts dropped, and the file a finish
+   that failed part-way put together from them, which nothing else names.
+
+Until #1840 the finish was a call of its own, `POST /files/upload/finish`. It never did anything but follow the last
+chunk, so a caller made a call that told the server only what it already knew.
 
 **The running hash is saved between chunks** in the upload's row (`GedraFileUploads`, under the file's own lock), as the
 kernel's resumable `Sha256` saves it: consecutive chunks may reach different nodes, and the store is never made to read
@@ -87,6 +103,14 @@ The chunks are put together, and the file is checked before it is ready:
   and then the index whole, and reads each video track's codec from its sample description. H.264 (`avc1`, `avc3`)
   plays in every browser. HEVC (`hvc1`, `hev1`), which phones record by default, plays in some, and is refused with a
   message asking for H.264: stored, it would show nothing for half its viewers. Converting a video is not built.
+- **A QuickTime movie is an MP4** (#1840): what a Mac or an iPhone exports, named `.mov` or `.mp4`, its `ftyp` box
+  naming only `qt  `. Its boxes are the ones MP4's came from, so it is walked the same way -- its index often after
+  its media -- held to H.264 the same way (a ProRes master is refused for its codec), and stored and served as
+  `video/mp4`. Until #1840 its brand refused it outright, which refused the H.264 movies people most often have. One
+  from a Mac (H.264 and AAC, its index after its media) was played that way in Chromium; Safari plays QuickTime
+  natively, and Firefox reads such a file as MP4, though no one has watched one there yet. A codec a person knows by
+  name is refused by it: a ProRes master is told "ProRes ('apcn')", not only its code. **Its audio is not checked**, as an MP4's is not: AAC, what is exported, plays
+  everywhere, while uncompressed PCM, rare outside an editor's masters, may play without sound.
 - **A WebM** is checked by its EBML document type.
 - **The plan still has room**: asked again, since two uploads begun at once can each have found room the other took.
 
@@ -94,9 +118,22 @@ A file that fails is removed, record and bytes, and the refusal says why -- an M
 among them. One that passes is named by its hash -- the staged copy moved there, or dropped for a copy already stored --
 and marked `ready`.
 
-**A finish may be called again after a failure part-way**, a store's or the network's. That the store put the chunks
-together is recorded in the upload's row the moment it is done, so a second call takes up from where the file is --
-staged, or already under its hash -- and never asks the store to complete an upload it has completed.
+**A finish may run again after a failure part-way**, a store's or the network's: the sender sends the last chunk again,
+which is answered as taken and finishes. (The status then reports every byte taken and the file still `uploading`.)
+That the store put the chunks together is recorded in the upload's row the moment it is done, so the second run takes up
+from where the file is -- staged, or already under its hash -- and never asks the store to complete an upload it has
+completed. A last chunk sent again after the file is finished is answered with its record; any other chunk of a finished
+file is a 409, since it is not one the file took.
+
+**One request finishes an upload at a time.** A finish claims the upload under its lock, recording when in its row
+(`finishingAt`), before it asks the store for anything. A large file's finish takes a while -- the parts put together
+and, on S3, copied to the file's hash -- and a sender whose connection dropped meanwhile sends the last chunk again.
+That request finds the claim and is answered 429, to be sent again shortly, rather than asking the store to complete
+parts it no longer has (a 404 that would read as the upload's end). The claim carries a token, so only its holder
+renews it -- between the finish's steps, so a long finish keeps it -- or gives it up, at once when the finish fails. One
+whose node stopped lapses five minutes after its last renewal (`DFILE.finishLeaseMs`), and the next last chunk takes it
+over. The webapp, answered 429 for a last chunk, keeps sending it every few seconds, up to three times the lease,
+rather than reporting a stopped upload; the field says it is checking the file meanwhile.
 
 ## Reading a file
 

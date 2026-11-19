@@ -13,6 +13,7 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.errorContextData
+import com.dynamicruntime.common.schema.isDataFile
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchVariants
@@ -1512,6 +1513,9 @@ private fun ChildrenBuilder.renderScalarList(
     // What each remove button names its entry by on a friendly form (issue #1714), numbered apart when they read alike.
     val removeLabels = if (opts.friendly) distinctHeadings(elements.indices.map { entryHeading(entryLabelFor(copy, opts), it) }) else null
 
+    // A list of files keys each element by its file (issue #1840), so a field's upload stays with its file when one
+    // above it is removed; any other list keeps its place, since a text element's key would change as it is typed.
+    val fileKeys = if (elementType?.isDataFile() == true) elementKeys(elements) else null
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
         val elementMessages = errors.messagesAt(elementPath)
@@ -1520,6 +1524,7 @@ private fun ChildrenBuilder.renderScalarList(
             emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
         }
         div {
+            fileKeys?.let { key = it[i].unsafeCast<react.Key>() }
             id = ElementId(fieldRowId(elementPath))
             tabIndex = -1
             className = ClassName("${rowClass(elementMessages)} nested")
@@ -1632,6 +1637,18 @@ private fun ChildrenBuilder.prefillControls(
 internal fun ChildrenBuilder.readOnlyValue(
     vt: SchType, value: Any?, presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
 ) {
+    // A file in a form's data (issue #1840) shows as the file -- its name, a link, an image or a video -- not its id.
+    if (vt.isDataFile()) {
+        value.toOptStr()?.takeIf { it.isNotEmpty() }?.let { id -> DataFileValue { fileId = id } }
+        return
+    }
+    // And a list of them, or a map of them (each under its key): every file shown, none as an id.
+    val holdsFiles = (vt.jsonType == SCT.array && vt.itemType?.isDataFile() == true && value is List<*>) ||
+        (vt.jsonType == SCT.kObject && vt.properties.isEmpty() && vt.additionalValueType?.isDataFile() == true && value is Map<*, *>)
+    if (holdsFiles) {
+        dataFileList(value)
+        return
+    }
     // A structured array -- its elements are objects with declared fields -- reads far better as a nested table
     // (a sub-table inside the cell) than as raw JSON (issue #540): this is what turns a database-tables row's
     // `columns`/`indexes` into readable sub-tables rather than a JSON blob. A free-form array (no element

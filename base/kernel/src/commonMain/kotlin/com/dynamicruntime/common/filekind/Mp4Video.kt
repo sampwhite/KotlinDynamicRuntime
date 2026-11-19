@@ -12,6 +12,9 @@ import com.dynamicruntime.common.exception.KdrException
  * MP4 is held to H.264, and HEVC -- what a phone records by default -- is refused with a message saying so, rather
  * than stored to show nothing for half its viewers. A video converted to H.264 is a deferred job.
  *
+ * A QuickTime movie is walked the same way (issue #1840): its boxes are the ones an MP4's came from, its index often
+ * after its media, which the walk reaches a header at a time.
+ *
  * Pure: the bytes come from a reader the caller supplies, a range at a time, so a 2 GB file is read a few headers and
  * one `moov` box at a time -- on S3, a request each.
  *
@@ -35,6 +38,15 @@ object Mp4Video {
     val hevc: Set<String> = setOf("hvc1", "hev1")
 
     private const val videoHandler = "vide"
+
+    /**
+     * What a refusal calls a codec a person may know by name, beside its code (issue #1840): ProRes, the editing codec
+     * a QuickTime master is often in, and the older codecs a QuickTime movie may hold.
+     */
+    val codecNames: Map<String, String> = mapOf(
+        "apcn" to "ProRes", "apch" to "ProRes", "apcs" to "ProRes", "apco" to "ProRes", "ap4h" to "ProRes", "ap4x" to "ProRes",
+        "mp4v" to "MPEG-4 Part 2", "jpeg" to "Motion JPEG", "mjpa" to "Motion JPEG", "mjpb" to "Motion JPEG",
+    )
 
     /**
      * The codecs of the video tracks of an MP4 of [size] bytes, read through [read] (an offset and a length within
@@ -68,9 +80,12 @@ object Mp4Video {
         codecs.any { it in hevc } ->
             "This video is HEVC (H.265), which not every browser plays. Export it as H.264 -- most phones and editors " +
                 "offer 'Most compatible' or 'H.264' -- and upload that."
-        codecs.any { it !in h264 } ->
-            "This video's codec is ${codecs.filterNot { it in h264 }.distinct().joinToString(", ") { "'$it'" }}, which not every " +
-                "browser plays. Export it as H.264 and upload that."
+        codecs.any { it !in h264 } -> {
+            val named = codecs.filterNot { it in h264 }.distinct().joinToString(", ") { code ->
+                codecNames[code]?.let { "$it ('$code')" } ?: "'$code'"
+            }
+            "This video's codec is $named, which not every browser plays. Export it as H.264 and upload that."
+        }
         else -> null
     }
 

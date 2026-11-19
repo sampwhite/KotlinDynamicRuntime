@@ -367,3 +367,15 @@ external interface TableProps : Props {
 }
 
 external val Table: ComponentType<TableProps>
+
+external interface ProgressProps : Props {
+    /** How far, from 0 to 100. */
+    var percent: Int?
+    /** "active" (animated, under way) | "exception" | "normal" | "success". */
+    var status: String?
+    /** "small" | "default". */
+    var size: String?
+}
+
+/** antd's progress bar: an upload's (issue #1840). */
+external val Progress: ComponentType<ProgressProps>

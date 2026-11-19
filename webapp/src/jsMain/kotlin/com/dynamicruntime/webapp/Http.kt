@@ -237,6 +237,14 @@ object Http {
         requestJson("POST", apiRoot + path, parts, multipart = true).orThrow()
 
     /**
+     * POSTs [bytes] -- a browser `ArrayBuffer`, `Blob`, or `File` -- as the raw body of an endpoint that takes one
+     * (`application/octet-stream`; a chunk of an upload, or a small file whole, issue #1840), with [args] as its query
+     * string. An [ApiResult], since an upload reads a refusal's status to decide whether to retry, resume, or stop.
+     */
+    suspend fun sendRawApiResult(path: String, args: Map<String, Any?>, bytes: dynamic): ApiResult<Map<String, Any?>> =
+        requestJson("POST", apiRoot + path + queryString(args), null, rawBody = bytes)
+
+    /**
      * The address of an API endpoint with [args] as its query string, for handing to the browser to fetch itself
      * -- an `<img>`'s `src`, a download -- where the answer is a file and not an envelope to parse.
      */
@@ -287,8 +295,9 @@ object Http {
         url: String,
         body: Map<String, Any?>?,
         multipart: Boolean = false,
+        rawBody: dynamic = null,
     ): ApiResult<Map<String, Any?>> {
-        val text = when (val sent = requestText(method, url, body, multipart)) {
+        val text = when (val sent = requestText(method, url, body, multipart, rawBody)) {
             is ApiResult.Ok -> sent.value
             is ApiResult.Refused -> return sent
             is ApiResult.Failed -> return sent
@@ -341,6 +350,7 @@ object Http {
         url: String,
         body: Map<String, Any?>?,
         multipart: Boolean = false,
+        rawBody: dynamic = null,
     ): ApiResult<String> {
         val init: dynamic = js("({})")
         init.method = method
@@ -351,7 +361,10 @@ object Http {
         val headers: dynamic = js("({})")
         val traceId = applyRequestHeaders(headers)
         init.headers = headers
-        if (body != null && multipart) {
+        if (rawBody != null) {
+            headers["Content-Type"] = "application/octet-stream"
+            init.body = rawBody
+        } else if (body != null && multipart) {
             // Deliberately no Content-Type: the browser sets it, because only it knows the boundary it generated.
             init.body = formDataOf(body)
         } else if (body != null) {

@@ -40,9 +40,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * A file uploaded for a form's data (issue #1837): begun, sent in chunks that resume where they stopped, finished into
- * a record whose bytes are checked and named by their hash, and read a range at a time -- by its owner, and by an
- * administrator of its client, and by nobody else.
+ * A file uploaded for a form's data (issue #1837): begun, sent in chunks that resume where they stopped, finished by
+ * the last of them (#1840) into a record whose bytes are checked and named by their hash, and read a range at a time --
+ * by its owner, and by an administrator of its client, and by nobody else. A small file is uploaded in one request.
  */
 class DataFileUploadTest : StringSpec({
     val cxt = TestInstances.default("files1837")
@@ -80,6 +80,23 @@ class DataFileUploadTest : StringSpec({
         return head + u32(size - head.size) + ascii("mdat") + ByteArray(size - head.size - 8) { ((it * 31 + 7) and 0xFF).toByte() }
     }
 
+    /**
+     * A QuickTime movie of [size] bytes as a Mac exports one (issue #1840): `qt  ` its only brand, a `wide` box, its
+     * media, and its index last -- a video track of [codec] and a timed-metadata track beside it.
+     */
+    fun quickTime(codec: String, size: Int): ByteArray {
+        val ftyp = box("ftyp", ascii("qt  "), ByteArray(4), ascii("qt  "))
+        fun track(handler: String, format: String): ByteArray {
+            val hdlr = box("hdlr", ByteArray(4), ascii("mhlr"), ascii(handler), ByteArray(12), ascii("\u0000"))
+            val stsd = box("stsd", ByteArray(4), u32(1), box(format, ByteArray(78)))
+            return box("trak", box("mdia", hdlr, box("minf", box("stbl", stsd))))
+        }
+        val moov = box("moov", track("vide", codec), track("meta", "mebx"))
+        val head = ftyp + box("wide")
+        val media = size - head.size - moov.size
+        return head + u32(media) + ascii("mdat") + ByteArray(media - 8) { ((it * 13 + 5) and 0xFF).toByte() } + moov
+    }
+
     val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(200) { it.toByte() }
     val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + ByteArray(200)
 
@@ -93,22 +110,29 @@ class DataFileUploadTest : StringSpec({
         user.client.sendRawBodyRequest(DFILE.chunkPath, mapOf(DFILE.fileId to fileId, DFILE.offset to offset, DFILE.chunkHash to hash), bytes),
     )
 
-    fun finish(user: TestUser, fileId: String) =
-        envelope(user.client.sendEditRequest(DFILE.finishPath, null, mapOf(DFILE.fileId to fileId), HttpMethod.POST))
+    /** The file's record in the [envelope] of the chunk that finished its upload. */
+    fun recordOf(envelope: Map<String, Any?>): Map<String, Any?> =
+        envelope[EP.results].toJsonMapOrEmpty()[DFILE.file].toJsonMapOrEmpty()
 
-    /** Uploads [bytes] whole, chunk by chunk, and answers the finish's envelope. */
+    /** Uploads [bytes] chunk by chunk, and answers the envelope of the last, which finishes the upload. */
     fun upload(user: TestUser, name: String, mime: String, bytes: ByteArray): Map<String, Any?> {
         val begun = begin(user, name, mime, bytes.size)
         val fileId = begun[DFILE.fileId].toOptStr().shouldNotBeNull()
         val chunk = begun[DFILE.chunkSize].toOptLong()!!.toInt()
         var at = 0
-        while (at < bytes.size) {
+        while (true) {
             val end = minOf(at + chunk, bytes.size)
-            sendChunk(user, fileId, at.toLong(), bytes.copyOfRange(at, end))[EP.status] shouldBe null
+            val answer = sendChunk(user, fileId, at.toLong(), bytes.copyOfRange(at, end))
+            if (end == bytes.size) return answer
+            answer[EP.status] shouldBe null
             at = end
         }
-        return finish(user, fileId)
     }
+
+    /** Uploads [bytes] in one request, answering its envelope. */
+    fun uploadWhole(user: TestUser, name: String, mime: String, bytes: ByteArray): Map<String, Any?> = envelope(
+        user.client.sendRawBodyRequest(DFILE.uploadPath, mapOf(DFILE.name to name, DFILE.mimeType to mime), bytes),
+    )
 
     "a video in two chunks, resumed between them, is ready under its hash and read back a range at a time" {
         val video = mp4("avc1", DFILE.chunkBytes + 300_000)
@@ -122,15 +146,20 @@ class DataFileUploadTest : StringSpec({
             DFILE.chunkBytes.toLong()
         // The connection is lost here: the upload says where to resume.
         owner.getItem(DFILE.statusPath, mapOf(DFILE.fileId to fileId))[DFILE.nextOffset] shouldBe DFILE.chunkBytes.toLong()
-        sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), video.copyOfRange(DFILE.chunkBytes, video.size))
-
-        val ready = finish(owner, fileId)[EP.item].toJsonMapOrEmpty()
+        val last = video.copyOfRange(DFILE.chunkBytes, video.size)
+        // The last chunk finishes the upload, and its answer is the file's record.
+        val finished = sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last)[EP.results].toJsonMapOrEmpty()
+        finished[DFILE.status] shouldBe DFSTAT.ready
+        finished[DFILE.nextOffset] shouldBe video.size.toLong()
+        val ready = finished[DFILE.file].toJsonMapOrEmpty()
         ready[DFILE.status] shouldBe DFSTAT.ready
         ready[DFILE.hash] shouldBe video.sha256Hex()
         ready[DFILE.size] shouldBe video.size.toLong()
         ready[DFILE.kind] shouldBe "mp4"
         ready[DFILE.name] shouldBe "visit.mp4"
         owner.getItem(DFILE.statusPath, mapOf(DFILE.fileId to fileId))[DFILE.status] shouldBe DFSTAT.ready
+        // Its answer was lost and the last chunk sent again: answered with the record, as before.
+        recordOf(sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last))[DFILE.hash] shouldBe video.sha256Hex()
 
         owner.client.setHeader("Range", "bytes=100-199")
         val range = try {
@@ -158,14 +187,41 @@ class DataFileUploadTest : StringSpec({
         sendChunk(owner, fileId, 0, first)[EP.status] shouldBe null
         // The answer was lost and the chunk sent again: taken once, answered twice.
         sendChunk(owner, fileId, 0, first)[EP.results].toJsonMapOrEmpty()[DFILE.nextOffset] shouldBe DFILE.chunkBytes.toLong()
-        // Finished early, it says what is missing.
-        finish(owner, fileId)[EP.status] shouldBe EXC.conflict.toLong()
+        // Not all of it taken, it is not finished, and says where to resume.
+        val status = owner.getItem(DFILE.statusPath, mapOf(DFILE.fileId to fileId))
+        status[DFILE.status] shouldBe DFSTAT.uploading
+        status[DFILE.nextOffset] shouldBe DFILE.chunkBytes.toLong()
     }
 
-    "a file whose bytes are not the kind it was sent as is refused at the finish, and is gone" {
+    "a last chunk sent while another request finishes the upload waits, then finishes it; a finished file takes no other chunk" {
+        val video = mp4("avc1", DFILE.chunkBytes + 20_000)
+        val fileId = begin(owner, "busy.mp4", "video/mp4", video.size)[DFILE.fileId].toOptStr()!!
+        val first = video.copyOfRange(0, DFILE.chunkBytes)
+        val last = video.copyOfRange(DFILE.chunkBytes, video.size)
+        sendChunk(owner, fileId, 0, first)[EP.status] shouldBe null
+
+        // Another request holds the finish, as the first does while it puts a large file together.
+        val claim = DataFileService.claimFinish(cxt, fileId)
+        val busy = sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last)
+        busy[EP.status] shouldBe EXC.tooManyRequests.toLong()
+        busy[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "is being finished"
+        // Every byte is taken, and the upload is not finished: resuming sends the last chunk again.
+        val status = owner.getItem(DFILE.statusPath, mapOf(DFILE.fileId to fileId))
+        status[DFILE.status] shouldBe DFSTAT.uploading
+        status[DFILE.nextOffset] shouldBe video.size.toLong()
+
+        // Only the request holding the claim gives it up: one that lost it leaves it to its holder.
+        DataFileService.releaseFinish(cxt, fileId, "not-the-claim")
+        sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last)[EP.status] shouldBe EXC.tooManyRequests.toLong()
+        DataFileService.releaseFinish(cxt, fileId, claim)
+        recordOf(sendChunk(owner, fileId, DFILE.chunkBytes.toLong(), last))[DFILE.status] shouldBe DFSTAT.ready
+        // Only the chunk whose answer was lost is answered with the record; any other is not one the file took.
+        sendChunk(owner, fileId, 0, first)[EP.status] shouldBe EXC.conflict.toLong()
+    }
+
+    "a file whose bytes are not the kind it was sent as is refused by the chunk that finishes it, and is gone" {
         val sent = begin(owner, "photo.png", "image/png", jpeg.size)[DFILE.fileId].toOptStr()!!
-        sendChunk(owner, sent, 0, jpeg)
-        val refused = finish(owner, sent)
+        val refused = sendChunk(owner, sent, 0, jpeg)
         refused[EP.status] shouldBe EXC.badInput.toLong()
         refused[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "its content is a JPEG file"
         envelope(owner.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to sent)))[EP.status] shouldBe EXC.notFound.toLong()
@@ -191,8 +247,8 @@ class DataFileUploadTest : StringSpec({
     }
 
     "two uploads of one file are two records sharing one copy of its bytes" {
-        val a = upload(owner, "a.png", "image/png", png)[EP.item].toJsonMapOrEmpty()
-        val b = upload(other, "b.png", "image/png", png)[EP.item].toJsonMapOrEmpty()
+        val a = recordOf(upload(owner, "a.png", "image/png", png))
+        val b = recordOf(upload(other, "b.png", "image/png", png))
         (a[DFILE.fileId] == b[DFILE.fileId]) shouldBe false
         a[DFILE.hash] shouldBe b[DFILE.hash]
         val stored = FileStoreService.get(cxt).forOwner(cxt, client).list(cxt, DFILE.bucket, "clients/$client/files/")
@@ -201,7 +257,7 @@ class DataFileUploadTest : StringSpec({
 
     "a file is read by its owner and an administrator of its client, sent only by its owner, and removed" {
         val video = mp4("avc1", 40_000)
-        val fileId = upload(owner, "mine.mp4", "video/mp4", video)[EP.item].toJsonMapOrEmpty()[DFILE.fileId].toOptStr()!!
+        val fileId = recordOf(upload(owner, "mine.mp4", "video/mp4", video))[DFILE.fileId].toOptStr()!!
 
         envelope(other.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
         envelope(other.client.sendGetRequest(DFILE.contentPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
@@ -218,9 +274,10 @@ class DataFileUploadTest : StringSpec({
     }
 
     "an aborted upload is gone, record and staged chunks; a file declared empty is refused at the begin" {
-        val video = mp4("avc1", 30_000)
+        // Two chunks, the first sent: the last would have finished it.
+        val video = mp4("avc1", DFILE.chunkBytes + 30_000)
         val fileId = begin(owner, "dropped.mp4", "video/mp4", video.size)[DFILE.fileId].toOptStr()!!
-        sendChunk(owner, fileId, 0, video)
+        sendChunk(owner, fileId, 0, video.copyOfRange(0, DFILE.chunkBytes))[EP.status] shouldBe null
         owner.postData(DFILE.abortPath, mapOf(DFILE.fileId to fileId))[DFILE.removed] shouldBe true
         envelope(owner.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
         FileStoreService.get(cxt).store.stagedUploads(cxt, DFILE.bucket).filter { it.key.endsWith(fileId.substringAfterLast('.')) }.shouldBeEmpty()
@@ -236,8 +293,7 @@ class DataFileUploadTest : StringSpec({
         val truncated = box("ftyp", ascii("isom"), ByteArray(4), ascii("isom")) + box("mdat", ByteArray(20_000))
         val begun = begin(owner, "cut.mp4", "video/mp4", truncated.size)
         val fileId = begun[DFILE.fileId].toOptStr()!!
-        sendChunk(owner, fileId, 0, truncated)
-        val refused = finish(owner, fileId)
+        val refused = sendChunk(owner, fileId, 0, truncated)
         refused[EP.status] shouldBe EXC.badInput.toLong()
         refused[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "no index"
         envelope(owner.client.sendGetRequest(DFILE.infoPath, mapOf(DFILE.fileId to fileId)))[EP.status] shouldBe EXC.notFound.toLong()
@@ -249,9 +305,9 @@ class DataFileUploadTest : StringSpec({
     "a WebM and a PDF are told by their bytes, the PDF offered as a download" {
         val webm = byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte(), 0x9F.toByte(), 0x42, 0x82.toByte(), 0x84.toByte()) +
             ascii("webm") + ByteArray(3000)
-        upload(owner, "clip.webm", "video/webm", webm)[EP.item].toJsonMapOrEmpty()[DFILE.kind] shouldBe "webm"
+        recordOf(upload(owner, "clip.webm", "video/webm", webm))[DFILE.kind] shouldBe "webm"
         val pdf = ascii("%PDF-1.7\n") + ByteArray(3000)
-        val fileId = upload(owner, "report.pdf", "application/pdf", pdf)[EP.item].toJsonMapOrEmpty()[DFILE.fileId].toOptStr()!!
+        val fileId = recordOf(upload(owner, "report.pdf", "application/pdf", pdf))[DFILE.fileId].toOptStr()!!
         val content = owner.client.sendGetRequest(DFILE.contentPath, mapOf(DFILE.fileId to fileId))
         content.rptStatusCode shouldBe 200
         content.rptResponseHeaders["content-disposition"]?.single() shouldBe "attachment; filename=\"report.pdf\""
@@ -262,10 +318,44 @@ class DataFileUploadTest : StringSpec({
         createClient(parent, CLD.sandbox to true)
         val chief = TestUser.create(cxt, "chief@files1837s.test", level = ROLE.admin, userClient = parent)
         chief.postData(AEP.openSandbox, emptyMap())
-        val made = upload(chief, "in-sandbox.png", "image/png", png)[EP.item].toJsonMapOrEmpty()
+        val made = recordOf(upload(chief, "in-sandbox.png", "image/png", png))
         made[DFILE.fileId].toOptStr().shouldNotBeNull() shouldContain ":sandbox"
         FileStoreService.get(cxt).forOwner(cxt, parent).meta(cxt, DFILE.bucket, "clients/$parent/files/${png.sha256Hex()}").shouldNotBeNull()
         chief.getItem(DFILE.infoPath, mapOf(DFILE.fileId to made[DFILE.fileId]))[DFILE.status] shouldBe DFSTAT.ready
+    }
+
+    "a QuickTime movie of H.264 is taken as MP4 and served as one; one of ProRes is refused for its codec" {
+        // Sent as the browser names a `.mov`, its index after its media, as a Mac writes it.
+        val movie = quickTime("avc1", 60_000)
+        val record = recordOf(upload(owner, "export.mov", "video/quicktime", movie))
+        record[DFILE.status] shouldBe DFSTAT.ready
+        record[DFILE.kind] shouldBe "mp4"
+        record[DFILE.mimeType] shouldBe "video/mp4"
+        val content = owner.client.sendGetRequest(DFILE.contentPath, mapOf(DFILE.fileId to record[DFILE.fileId]))
+        content.rptStatusCode shouldBe 200
+        content.rptResponseMimeType shouldBe "video/mp4"
+
+        val prores = uploadWhole(owner, "master.mov", "video/quicktime", quickTime("apcn", 60_000))
+        prores[EP.status] shouldBe EXC.badInput.toLong()
+        prores[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "ProRes ('apcn')"
+    }
+
+    "a file of one chunk or less is uploaded in one request; one refused there leaves nothing behind" {
+        val whole = uploadWhole(owner, "one.png", "image/png", png)
+        whole[EP.status] shouldBe null
+        val record = whole[EP.results].toJsonMapOrEmpty()
+        record[DFILE.status] shouldBe DFSTAT.ready
+        record[DFILE.hash] shouldBe png.sha256Hex()
+        record[DFILE.name] shouldBe "one.png"
+        owner.getItem(DFILE.infoPath, mapOf(DFILE.fileId to record[DFILE.fileId]))[DFILE.kind] shouldBe "png"
+
+        val before = GedraDataService.get(cxt).liveGedraIds(cxt, GedraDataType.dataFile, client).size
+        val wrong = uploadWhole(owner, "photo.png", "image/png", jpeg)
+        wrong[EP.status] shouldBe EXC.badInput.toLong()
+        wrong[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "its content is a JPEG file"
+        uploadWhole(owner, "page.html", "text/html", ascii("<html></html>"))[EP.status] shouldBe EXC.badInput.toLong()
+        uploadWhole(owner, "big.mp4", "video/mp4", mp4("avc1", DFILE.chunkBytes + 1))[EP.status] shouldBe EXC.payloadTooLarge.toLong()
+        GedraDataService.get(cxt).liveGedraIds(cxt, GedraDataType.dataFile, client).size shouldBe before
     }
 
     "a data file holds no entries, so nothing that writes entries makes one" {

@@ -31,7 +31,6 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
-import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -96,20 +95,15 @@ class DataFileLinkTest : StringSpec({
     fun envelope(handler: com.dynamicruntime.common.http.request.RequestHandler): Map<String, Any?> =
         handler.rptResponseData?.jsonMap().shouldNotBeNull()
 
-    /** Begins an upload of [bytes] for [user], answering the file's id; finished when [finish]. */
+    /** Uploads [bytes] for [user] in one request, answering the file's id; only begun, still uploading, unless [finish]. */
     fun upload(user: TestUser, name: String, mime: String, bytes: ByteArray, finish: Boolean = true): String {
-        val begun = user.postItem(DFILE.beginPath, mapOf(DFILE.name to name, DFILE.mimeType to mime, DFILE.declaredSize to bytes.size))
-        val fileId = begun[DFILE.fileId].toOptStr().shouldNotBeNull()
-        if (finish) {
-            val sent = envelope(
-                user.client.sendRawBodyRequest(
-                    DFILE.chunkPath, mapOf(DFILE.fileId to fileId, DFILE.offset to 0L, DFILE.chunkHash to bytes.sha256Hex()), bytes,
-                ),
-            )
-            sent[EP.status] shouldBe null
-            envelope(user.client.sendEditRequest(DFILE.finishPath, null, mapOf(DFILE.fileId to fileId), HttpMethod.POST))[EP.status] shouldBe null
+        if (!finish) {
+            val begun = user.postItem(DFILE.beginPath, mapOf(DFILE.name to name, DFILE.mimeType to mime, DFILE.declaredSize to bytes.size))
+            return begun[DFILE.fileId].toOptStr().shouldNotBeNull()
         }
-        return fileId
+        val sent = envelope(user.client.sendRawBodyRequest(DFILE.uploadPath, mapOf(DFILE.name to name, DFILE.mimeType to mime), bytes))
+        sent[EP.status] shouldBe null
+        return sent[EP.results].toJsonMapOrEmpty()[DFILE.fileId].toOptStr().shouldNotBeNull()
     }
 
     fun visit(photo: String? = null, note: String = "a visit"): Map<String, Any?> =

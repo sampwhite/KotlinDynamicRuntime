@@ -94,6 +94,16 @@ object GDU {
      */
     const val completed = "completed"
 
+    /**
+     * Under [progress]: when the request finishing the upload last claimed or renewed its claim (issue #1840), so a
+     * second -- the last chunk sent again while the first still works -- waits rather than finishing it twice. A claim
+     * not renewed within `DFILE.finishLeaseMs` was left by a request that stopped, and may be taken over.
+     */
+    const val finishingAt = "finishingAt"
+
+    /** Under [progress]: which request holds the claim ([finishingAt]), so only it renews or gives it up. */
+    const val finishingBy = "finishingBy"
+
     // Each part's keys.
     const val number = "number"
     const val size = "size"

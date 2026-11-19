@@ -25,13 +25,6 @@ fun visibilityModeLabel(mode: WfVisibilityMode): String = when (mode) {
     WfVisibilityMode.restricted -> "Administrators, and people with a label"
 }
 
-/** [labels] joined as a choice: "pilot", "pilot or east", "pilot, east, or west". */
-private fun orList(labels: List<String>): String = when (labels.size) {
-    1 -> labels[0]
-    2 -> "${labels[0]} or ${labels[1]}"
-    else -> labels.dropLast(1).joinToString(", ") + ", or " + labels.last()
-}
-
 /** Who [visibility] lets see a workflow, in a phrase: "Everyone", "Administrators only", or with the labels. */
 fun visibilityText(visibility: WfVisibility): String = when {
     !visibility.restricted -> "Everyone"

@@ -186,6 +186,8 @@ val EditFormPage = FC<Props> {
                     // Load the form and seed the edits from its current entries, so editing opens on what the
                     // form holds now.
                     val item = SchemaCatalogApi.invoke(getEp, mapOf(GDF.gedraId to id))[EP.item].toJsonMapOrEmpty()
+                    // The files its fields name, so each shows without a request of its own (issue #1840).
+                    DataFileCache.rememberAll(item[GDF.files])
                     if (item.isEmpty()) {
                         notFound = true
                     } else {

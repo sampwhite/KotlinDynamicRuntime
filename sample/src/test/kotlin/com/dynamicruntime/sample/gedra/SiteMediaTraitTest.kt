@@ -11,7 +11,6 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
-import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.sample.SampleTestInstances
@@ -35,13 +34,10 @@ class SiteMediaTraitTest : StringSpec({
         handler.rptResponseData?.jsonMap().shouldNotBeNull()
 
     fun uploadPng(): String {
-        val begun = user.postItem(DFILE.beginPath, mapOf(DFILE.name to "site.png", DFILE.mimeType to "image/png", DFILE.declaredSize to png.size))
-        val fileId = begun[DFILE.fileId].toOptStr().shouldNotBeNull()
-        envelope(
-            user.client.sendRawBodyRequest(DFILE.chunkPath, mapOf(DFILE.fileId to fileId, DFILE.offset to 0L, DFILE.chunkHash to png.sha256Hex()), png),
-        )[EP.status] shouldBe null
-        envelope(user.client.sendEditRequest(DFILE.finishPath, null, mapOf(DFILE.fileId to fileId), HttpMethod.POST))[EP.status] shouldBe null
-        return fileId
+        val args = mapOf(DFILE.name to "site.png", DFILE.mimeType to "image/png")
+        val sent = envelope(user.client.sendRawBodyRequest(DFILE.uploadPath, args, png))
+        sent[EP.status] shouldBe null
+        return sent[EP.results].toJsonMapOrEmpty()[DFILE.fileId].toOptStr().shouldNotBeNull()
     }
 
     fun create(data: Map<String, Any?>): Map<String, Any?> = envelope(
