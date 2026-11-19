@@ -266,5 +266,15 @@ wide.
 
 ## What is not built
 
-- **Converting a video**, HEAD on a file, presigned uploads straight to S3, and the rest, each in
-  [`deferred-work.md`](../development/deferred-work.md) under its trigger (#1841).
+Each is in [`deferred-work.md`](../development/deferred-work.md) under the trigger that would make it worth doing:
+
+- **Converting a video** to H.264, in a worker job on nodes with the CPU for it.
+- **Presigned uploads and downloads** straight to S3, and **chunks in parallel**.
+- **Copying a file over 5 GB** in parts, once a file kind may be that large.
+- **Several ranges** of a file in one answer.
+- **HEAD** on a file.
+- **Carrying data files with the forms that name them** to another deployment.
+- **Posters and thumbnails.**
+- **Scanning uploads for malware.**
+- **Resuming an upload across a reload**, **editing a map of files**, a **kept count** of the forms that use each
+  file, and keeping a **restorable form's** files.
