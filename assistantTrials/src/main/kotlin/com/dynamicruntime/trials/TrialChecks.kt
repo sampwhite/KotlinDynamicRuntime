@@ -29,8 +29,7 @@ class FieldView(val traitId: String, val name: String, val schema: Map<String, A
     val isNumber: Boolean get() = type == "number" || type == "integer"
     val isDate: Boolean get() = format == "date" || format == "date-time"
 
-    val words: String get() = listOf(name, schema[SCH.title].toOptStr(), schema[SCH.description].toOptStr())
-        .filterNotNull().joinToString(" ").lowercase()
+    val words: String get() = listOfNotNull(name, schema[SCH.title].toOptStr(), schema[SCH.description].toOptStr()).joinToString(" ").lowercase()
 
     /** Whether any of [terms] appears in its [words]. */
     fun mentions(terms: List<String>): Boolean = terms.any { words.contains(it.lowercase()) }

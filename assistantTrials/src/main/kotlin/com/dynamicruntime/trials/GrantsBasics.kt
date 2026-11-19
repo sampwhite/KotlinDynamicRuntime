@@ -16,6 +16,7 @@ import com.dynamicruntime.common.util.toOptStr
  * few typed fields, a review workflow with an approval, the program's own words on Home and in the invitation mail, a
  * Home card to apply from, and a report. Together they cover most of what the making-changes guide lists.
  */
+@Suppress("ConstPropertyName")
 object GrantsBasics {
     /** The program's name, which the copy checks look for. */
     private const val program = "Riverbend"
