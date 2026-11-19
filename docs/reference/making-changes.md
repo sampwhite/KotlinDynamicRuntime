@@ -64,9 +64,22 @@ each kind of change, which to use.
 
 ## Workflows
 
+**A form's fields go on both its creation and core details workflows.** The New form, which the creation
+workflow makes, asks for them, and the core details workflow is where they are seen and changed once the form
+exists. So a form that collects a grant's amount and description has the trait holding them on both, whether
+or not the request names core details. The two differ only when a client wants them to, such as core details
+asking for more than the New form, once the form exists.
+
+**A review builds on core details.** A review workflow is made eligible once the form has the fact
+`kdr:coreDetailsComplete`, so the answers it reviews are there. Its approval task collects no traits and
+offers no save, and shows above its button the traits of tasks of its own workflow, never another
+workflow's: the nearest task before it that collects traits, or the tasks its `showTasks` names. To
+show the form's answers, the review has a task before the approval that lists their traits and offers no
+save. [The committee review](../demo-client/committee-review.md) is a whole example.
+
 | Change | Where a person makes it | Endpoint | Assistant tool | Dry run |
 |---|---|---|---|---|
-| A workflow made from a template, the starter New form among them: made, renamed, or its tasks' traits changed | Clients page, **Forms and data**, **Workflows** | `POST /clientAdmin/client/workflows/save` | `save_template_workflow` | Yes |
+| A workflow made from a template, the starter New form and core details among them: made, renamed, or its tasks' traits changed | Clients page, **Forms and data**, **Workflows** | `POST /clientAdmin/client/workflows/save` | `save_template_workflow` | Yes |
 | A workflow made from a template, removed | Clients page, **Forms and data**, **Workflows** | `POST /clientAdmin/client/workflows/remove` | `remove_template_workflow` | Yes |
 | A workflow's time windows, who sees it, and whether it is turned on | Clients page, **Forms and data**, **Workflows** | `POST /clientAdmin/client/workflows/params` | `set_workflow_params` | Yes |
 | A workflow written whole: its tasks, saves, approvals, and conditions | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
