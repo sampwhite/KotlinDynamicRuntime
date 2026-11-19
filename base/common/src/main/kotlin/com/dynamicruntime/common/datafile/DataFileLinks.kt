@@ -250,6 +250,21 @@ object DataFileLinks {
     }
 
     /**
+     * How many live forms link each of [client]'s data files that any links (issue #1863), by file id: what a listing
+     * of files says of each, and how it tells a linked file from one nothing uses. One query of the client's links, and
+     * the forms from the cache, which holds only live ones. Every live form counts, read by the caller or not, since
+     * any of them keeps the file from removal.
+     */
+    fun liveFormCounts(cxt: KdrCxt, client: String): Map<String, Int> {
+        val links = queryLinks(cxt, mapOf(PF.client to client), ::byClientStmt)
+        if (links.isEmpty()) return emptyMap()
+        val live = formsIn(cxt, links.mapNotNull { it[GDL.holderId].toOptStr() }.distinct(), ReadScope.unrestricted).keys
+        return links.filter { it[GDL.holderId].toOptStr() in live }
+            .groupBy { it[GDL.fileId].toOptStr().orEmpty() }
+            .mapValues { (_, rows) -> rows.mapNotNull { it[GDL.holderId].toOptStr() }.distinct().size }
+    }
+
+    /**
      * The data file [fileId] when the caller may read it through a live form that links it, one their read scope
      * admits; null otherwise. What [DataFileService.viewable] falls back to after the caller's own scope: one query of
      * the links, and the forms from the cache, which holds only live ones.
@@ -314,6 +329,11 @@ object DataFileLinks {
 
     private fun byFileStmt(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
         sqlCxt, "qGedraFileLinksByFile", table.columns, "select * from t:${GDT.gedraFileLinks} where c:${GDL.fileId} = :${GDL.fileId}",
+    )
+
+    private fun byClientStmt(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
+        sqlCxt, "qGedraFileLinksByClient", table.columns,
+        "select c:${GDL.fileId}, c:${GDL.holderId} from t:${GDT.gedraFileLinks} where c:${PF.client} = :${PF.client}",
     )
 
     private fun deleteStmt(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(

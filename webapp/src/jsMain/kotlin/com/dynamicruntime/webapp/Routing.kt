@@ -247,6 +247,7 @@ private val routes: List<RouteDef> = listOf(
     RouteDef(HMENU.pageCustomers, "customers/:${HP.customer}"),
     RouteDef(HMENU.pageReports, "reports"),
     RouteDef(HMENU.pageApiKeys, "api-keys"),
+    RouteDef(HMENU.pageFiles, "files"),
     RouteDef(ASST.page, "assistant"),
     RouteDef(HMENU.pageReports, "reports/:${HP.report}"),
     RouteDef(HMENU.pageForms, "forms"),

@@ -366,6 +366,14 @@ object HMENU {
     const val clientForms = "clientForms"
 
     /**
+     * The Files page (issue #1863), named for whose files it lists as the forms listing is: "My files" for a caller who
+     * reads their own, and [clientFiles], "Files", for one who reads every file of their client -- an administrator of
+     * it or an editor. Shown one instead of the other.
+     */
+    const val files = "files"
+    const val clientFiles = "clientFiles"
+
+    /**
      * The workflow pages (issue #792). **Off by default** -- in the base menu under the never-true condition -- and
      * turned on by a client whose users work in normal workflows, with an overlay that gives it a real condition.
      */
@@ -421,6 +429,8 @@ object HMENU {
     const val pageCustomers = "customers"
     const val pageReports = "reports"
     const val pageApiKeys = "apiKeys"
+    /** The Files page (issue #1863): the caller's data files, and the forms that use each. */
+    const val pageFiles = "files"
     /**
      * The Reports page's own route parameters (issues #1007, #1036): the report that is open, how it is shown, and
      * the view that shows a report's history. Here, beside the page id, because a simulation's start page is built

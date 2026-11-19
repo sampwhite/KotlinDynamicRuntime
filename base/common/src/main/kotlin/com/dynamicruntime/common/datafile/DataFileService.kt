@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.annotation.KdrInternal
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileDisposition
 import com.dynamicruntime.common.filekind.FileKind
@@ -36,6 +37,7 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.user.ReadScopeRules
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.Sha256
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.mkUniqueId
@@ -534,6 +536,33 @@ object DataFileService {
             val abandoned = file[DFILE.status] == DFSTAT.uploading && (file[DFILE.expiresAt].toOptInstant()?.let { it < now } == true)
             if (abandoned) 0L else file[DFILE.size].toOptLong() ?: 0L
         }
+    }
+
+    /**
+     * The live data files the caller may read within their own client (issue #1863), most recently written first, at
+     * most [limit]: their own uploads for an ordinary user, the client's for an editor or an administrator, as their read
+     * scope says -- held to the client they act in, so a caller who reaches every client lists one at a time. Each row is
+     * the file's record ([info]) with its owner's name and how many live forms link it ([DataFileLinks.liveFormCounts]).
+     * Only those of [kind], in [status], or -- [linked] -- that some live form links or none does, when given.
+     */
+    fun list(cxt: KdrCxt, limit: Int, kind: String?, status: String?, linked: Boolean?): ListPage {
+        val caller = ReadScopeRules.forCaller(cxt)
+        val scope = ReadScope(
+            client = caller.client ?: cxt.client, org = caller.org, userId = caller.userId, identityId = caller.identityId,
+        )
+        val forms = DataFileLinks.liveFormCounts(cxt, scope.client ?: cxt.client)
+        val page = GedraDataService.get(cxt).listGedras(cxt, GedraDataType.dataFile, scope, limit, rowFilter = { row ->
+            val file = fileOf(row)
+            (kind == null || file[DFILE.kind] == kind) && (status == null || file[DFILE.status] == status) &&
+                (linked == null || ((forms[row.gedraId.fullId] ?: 0) > 0) == linked)
+        })
+        val users = UserService.get(cxt)
+        val names = page.rows.mapNotNull { it.userId }.distinct().associateWith { users.queryByUserId(cxt, it)?.name }
+        val items = page.rows.map { row ->
+            info(row) + linkedMapOf(DFILE.ownerName to names[row.userId], DFILE.forms to (forms[row.gedraId.fullId] ?: 0))
+                .filterValues { it != null }
+        }
+        return ListPage(items, page.numAvailable, page.numAvailable > items.size)
     }
 
     /** [bytes] as whole megabytes, rounded up: what a plan counts. */

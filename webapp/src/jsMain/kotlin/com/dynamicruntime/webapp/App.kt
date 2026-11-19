@@ -302,6 +302,7 @@ val App = FC<Props> {
                                 pageCustomers -> CustomersPage {}
                                 pageReports -> ReportsPage {}
                                 pageApiKeys -> ApiKeysPage {}
+                                pageFiles -> FilesPage {}
                                 pageAssistant -> AssistantPage {}
                                 pageOperatorAssistant -> OperatorAssistantPage {}
                                 pageEditForm -> EditFormPage {}
@@ -405,6 +406,10 @@ private const val pageCustomers = HMENU.pageCustomers
 private const val pageReports = HMENU.pageReports
 private const val pageApiKeys = HMENU.pageApiKeys
 
+// The Files page (issue #1863): offered to every signed-in caller, as the forms listing is; its listing is as wide as
+// the caller's read scope.
+private const val pageFiles = HMENU.pageFiles
+
 // The configuration assistant (issue #1527) and the operator's page of it: offered by the assistant module's own menu entries
 // where it is loaded; the routes exist unconditionally, and each page says so when the assistant is not there.
 private const val pageAssistant = ASST.page
@@ -468,6 +473,7 @@ private fun currentPage(): String {
         params[HP.page] == pageCustomers -> pageCustomers
         params[HP.page] == pageReports -> pageReports
         params[HP.page] == pageApiKeys -> pageApiKeys
+        params[HP.page] == pageFiles -> pageFiles
         params[HP.page] == pageAssistant -> pageAssistant
         params[HP.page] == pageOperatorAssistant -> pageOperatorAssistant
         params[HP.page] == pageEditForm -> pageEditForm

@@ -84,6 +84,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.profile, "Profile", HMENU.pageProfile, HMENU.account),
             call(HMENU.logout, "Log out", HACT.logout.name, HMENU.account),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            page(HMENU.files, "My files", HMENU.pageFiles),
             header(HMENU.reference, "Reference"),
             page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
@@ -110,6 +111,8 @@ class HomeMenuTest : StringSpec({
             page(HMENU.apiKeys, "API keys", HMENU.pageApiKeys),
             // Their listing is every form in their client, not only their own (issue #1091).
             page(HMENU.clientForms, "Forms", HMENU.pageForms),
+            // Their client's files, as the forms are (issue #1863).
+            page(HMENU.clientFiles, "Files", HMENU.pageFiles),
             header(HMENU.reference, "Reference"),
             page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
@@ -172,6 +175,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.cacheState, "Cache state", HMENU.pageCacheState, HMENU.operator),
             page(HMENU.fileStore, "File store", HMENU.pageFileStore, HMENU.operator),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            page(HMENU.files, "My files", HMENU.pageFiles),
             header(HMENU.reference, "Reference"),
             page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),
