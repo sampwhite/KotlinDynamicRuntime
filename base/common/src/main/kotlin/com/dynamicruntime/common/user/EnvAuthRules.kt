@@ -241,16 +241,10 @@ object EnvAuthRules {
     }
 
     /**
-     * Env auth from an **administrator's login** (issue #1150): a signed-in user whose address is on the admin domain
-     * and who holds `allClients` is env-authed as that address. Two deployments grant it:
-     *
-     * - an ephemeral public test deployment with no edge ([PublicTestDeployment.envAuthFromAdminLogin]), from any login;
-     * - a node behind the **env gate** (issue #1865), only from a session the gate's Google sign-in wrote, and only
-     *   until its stamp ([UserAuthCookie.envGateUntilEpochMs]) lapses -- so a code sign-in to the same address is no
-     *   way in, and access ends within a known time once Google no longer vouches for the person.
-     *
-     * Runs once the session is restored and before the section gate, since [resolve] ran before anyone was signed in;
-     * a request an edge already vouched for keeps that.
+     * Env auth from an **administrator's login** (issue #1150), for an ephemeral public test deployment with no edge
+     * ([PublicTestDeployment.envAuthFromAdminLogin]): a signed-in user whose address is on the admin domain and who
+     * holds `allClients` is env-authed as that address. Runs once the session is restored and before the section
+     * gate, since [resolve] ran before anyone was signed in; a request an edge already vouched for keeps that.
      *
      * Only [AddressRules.isAdminDomain] -- not `isControlledDomain`, which also admits `example.com` outside
      * production, an address anyone may register. The capability is read **live** ([refreshActingRoles], through the
@@ -262,8 +256,7 @@ object EnvAuthRules {
      * Theme: #ENVAT.
      */
     fun fromAdminLogin(cxt: KdrCxt) {
-        if (cxt.envAuthEmail != null) return
-        if (!PublicTestDeployment.envAuthFromAdminLogin(cxt.instanceConfig) && !fromGateSignIn(cxt)) return
+        if (cxt.envAuthEmail != null || !PublicTestDeployment.envAuthFromAdminLogin(cxt.instanceConfig)) return
         // Env auth is a person's, confirmed by their sign-in; a program holding their API key is not them (issue #1402).
         if (cxt.apiKey != null) return
         val profile = cxt.userProfile
@@ -272,15 +265,6 @@ object EnvAuthRules {
         if (!AddressRules.isAdminDomain(cxt, row.primaryId)) return
         refreshActingRoles(cxt)
         if (ROLE.allClients in cxt.userProfile.roles) cxt.envAuthEmail = sanitizeAddress(row.primaryId)
-    }
-
-    /**
-     * Whether the restored session is one the env gate's Google sign-in wrote, still within its env access (issue
-     * #1865), on a node whose gate may grant it.
-     */
-    private fun fromGateSignIn(cxt: KdrCxt): Boolean {
-        val until = cxt.restoredSession?.envGateUntilEpochMs ?: return false
-        return EnvGate.mayGrant(cxt.instanceConfig) && cxt.now().toEpochMilliseconds() <= until
     }
 
     /**

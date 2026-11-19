@@ -63,11 +63,4 @@ class KdrRequest(
      * A password login leaves this false: passwords ride existing trust but never grant it (issue #69).
      */
     var trustDevice: Boolean = false
-
-    /**
-     * Set by the env gate's sign-in (issue #1865), beside [setAuthCookie]: when the env access it grants ends. The
-     * session cookie is stamped with it (`UserAuthCookie.envGateUntilEpochMs`), which is what makes this session's
-     * env access the Google sign-in's. Null for every other sign-in.
-     */
-    var envGateUntilMs: Long? = null
 }

@@ -148,9 +148,12 @@ too, but not the test only endpoints.
 section's rule says. A visit to the web app without it goes straight to Google's sign-in and back to the page asked for,
 and any other request is refused (401) until then; only `health` still answers. The Google sign-in is the env access,
 and only for an account on the admin domain (`$${ADMR.adminEmailDomainEnvVar.name}`), where Google is authoritative for
-it. It also signs the person in as their user. Its env access lasts a set time (12 hours by default), after which the
-next visit goes back through Google. Any other sign-in, a code sent to the same address included, gives no env access
-there.
+it. Its env access lasts a set time (12 hours by default), after which the next visit goes back through Google. Any
+other sign-in, a code sent to the same address included, gives no env access there.
+
+Env access and the user signed in stay apart, as they do behind an edge. A Google sign-in with nobody signed in also
+signs the person in as their own user, for convenience; after that they may sign in as, or switch to, another user and
+keep their env access.
 
 ## API keys and access tokens
 

@@ -521,11 +521,11 @@ class RequestService : ServiceInitializer {
             directAccess, handler.forwardedFor, handler.getRequestHeader(DirectAccess.forwardedHeader), handler.peerAddress,
         )
         extractAuth(cxt, handler)
-        // On a gated request (issue #1865), env access comes only with a Google sign-in: none assumed, none from a header.
-        EnvGate.dropOtherEnvAuth(cxt, handler)
+        // On a gated request (issue #1865), env access is the gate's Google sign-in's alone, from its own cookie: none
+        // assumed, none from a header, and none from whoever the session is signed in as.
+        EnvGate.resolve(cxt, handler)
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
-        // (issue #1150), and a gated node's from the gate's Google sign-in (issue #1865), so it is known only now that
-        // the session is restored -- and before the gates below.
+        // (issue #1150), so it is known only now that the session is restored -- and before the gates below.
         EnvAuthRules.fromAdminLogin(cxt)
         // The env gate (issue #1865): a caller without env access is sent to Google, or refused, before anything else.
         if (EnvGate.check(cxt, handler, focus)) {
@@ -1081,11 +1081,9 @@ class RequestService : ServiceInitializer {
         // #1372); a sign-in starts one.
         val signedInMs = cxt.restoredSession?.takeIf { req.sessionChange }?.signedInEpochMs ?: nowMs
         val expireMs = SessionLifetime.issuedEnd(cxt, profile.client, signedInMs, nowMs)
-        // The env gate's stamp (issue #1865) is the gate sign-in's alone: a switch to another of the person's users drops
-        // it, as env access from a login is keyed on the user signed in.
         val cookie = UserAuthCookie(
             profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona,
-            signedInEpochMs = signedInMs, issuedEpochMs = nowMs, envGateUntilEpochMs = req.envGateUntilMs,
+            signedInEpochMs = signedInMs, issuedEpochMs = nowMs,
         )
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(node), Instant.fromEpochMilliseconds(expireMs))
 
@@ -1125,7 +1123,7 @@ class RequestService : ServiceInitializer {
         val expireMs = SessionLifetime.issuedEnd(cxt, profile.client, renewing.signedInEpochMs, nowMs)
         val cookie = UserAuthCookie(
             profile.userId, profile.client, profile.roles.toList(), expireMs, profile.identityId, profile.persona,
-            signedInEpochMs = renewing.signedInEpochMs, issuedEpochMs = nowMs, envGateUntilEpochMs = renewing.envGateUntilEpochMs,
+            signedInEpochMs = renewing.signedInEpochMs, issuedEpochMs = nowMs,
         )
         handler.addResponseCookie(AUTHC.authCookie, cookie.encode(NodeService.get(cxt)), Instant.fromEpochMilliseconds(expireMs))
     }

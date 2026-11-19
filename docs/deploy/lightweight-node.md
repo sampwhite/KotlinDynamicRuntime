@@ -554,7 +554,8 @@ A deployment that keeps real data, and is for your own people, can put everythin
 with Google standing in for a VPN: `KDR_ENV_GATE=googleChallenge`. A visit to `/wa` then goes straight to Google's
 sign-in, with no page of the application's first, and comes back to the page that was asked for. Only an account on
 your admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) gets through, which needs that domain to be a Google Workspace domain. The
-sign-in grants env access for 12 hours and signs the person in as their user. Every other request without it is
+sign-in grants env access for 12 hours. With nobody signed in, it also signs the person in as their own user; they may
+then sign in as, or switch to, another user and keep their env access. Every other request without env access is
 refused, except `/kda/health`.
 
 It needs:

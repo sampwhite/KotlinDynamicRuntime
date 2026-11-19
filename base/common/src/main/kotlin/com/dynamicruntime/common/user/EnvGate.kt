@@ -53,7 +53,8 @@ object EGATE {
             "sends a visit to the web app without env access straight into Google's sign-in, with no page of ours " +
             "first, and back to the page asked for; any other request without env access is refused. Only an " +
             "account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for it, gets " +
-            "through, and that sign-in both grants env access and signs the person in as their user. Google stands " +
+            "through. Its env access is kept apart from the user signed in, and with nobody signed in the sign-in " +
+            "signs the person in as their own user too. Google stands " +
             "in for a VPN and SSO. `${EnvGateMode.none}` (the default) leaves the node as its sections say. Needs " +
             "`KDR_GOOGLE_CLIENT_ID`, the client secret in the secrets file, and `KDR_PUBLIC_URL`. The `envGate` " +
             "config option wins over this.",
@@ -115,8 +116,15 @@ object EGATE {
     /** The section a gated node still answers without env access: health, for a load balancer or a monitor. */
     const val openSection = "health"
 
+    /**
+     * The cookie holding a gate sign-in's env access: the address Google vouched for and when the access ends,
+     * encrypted. Apart from the session cookie (`kdrAuth`), as an edge's env sign-in is, so the person can sign in as,
+     * or switch to, any user without losing it.
+     */
+    const val accessCookie = "kdrEnvGate"
+
     /** The short-lived cookie holding a sign-in's `state`, `nonce`, and where to return, encrypted. */
-    const val stateCookie = "kdrEnvGate"
+    const val stateCookie = "kdrEnvGateState"
 
     /** How long a sign-in has to come back from Google, in milliseconds (10 minutes). */
     const val stateMillis = 10L * 60 * 1000
@@ -183,16 +191,20 @@ class GoogleTokenEndpoint(private val clientId: String, private val clientSecret
  * Visiting the web app without env access goes **straight into Google's sign-in**, with no page of ours first, and
  * comes back to the page asked for. Any other request without env access is refused with the 401 the web app
  * already follows for an edge (`EP.envAuthRequiredCode`), pointing at [EGATE.startPath], which carries the page the
- * browser is on. That sign-in both grants env access and signs the person in as their user: the session cookie it
- * writes is stamped with how long its env access lasts (`UserAuthCookie.envGateUntilEpochMs`), and only a gate
- * sign-in stamps one, so a code sign-in to the same address is no way in.
+ * browser is on.
  *
- * **Simulated** for development and tests: on a node that may ([mayGrant]'s fence, [EGATE.simulate]), a host label
+ * **Env access and the user signed in stay apart**, as they are behind an edge. The sign-in writes its env access to a
+ * cookie of its own ([EGATE.accessCookie]): the address Google vouched for, until [lifetimeMs] has passed. On a gated
+ * request that cookie is the only source of env access ([resolve]), whoever the session acts as, so the person may sign
+ * in as another user, or switch to one, and keep it. As a convenience, a sign-in with nobody signed in also signs the
+ * person in as their own user. Only the Google sign-in writes the cookie, so a code sign-in to the same address gives
+ * no env access.
+ *
+ * **Simulated** for development and tests: on a node that may ([maySimulate], [EGATE.simulate]), a host label
  * containing [EGATE.adminHostWord] under `.localhost` forces the gate and skips only the trip to Google. Everything
  * after it runs for real -- the domain checks, finding or making the user, the stamp, the return.
  *
- * The gate's place in a request is `RequestService.dispatch`, after the session is restored: [dropOtherEnvAuth], then
- * `EnvAuthRules.fromAdminLogin` (which grants env access from a stamped session), then [check].
+ * The gate's place in a request is `RequestService.dispatch`, after the session is restored: [resolve], then [check].
  *
  * Theme: #ENVAT.
  */
@@ -220,12 +232,6 @@ object EnvGate {
     fun maySimulate(config: KdrInstanceConfig): Boolean =
         (config.get(EGATE.simulate) as? Boolean)
             ?: (config.isTestInstance && config.env == ENV.local && !PublicTestDeployment.isOn(config) && config.bootRole == null)
-
-    /**
-     * Whether a session's gate stamp may grant env access on this node: the gate is on, or the node may simulate it.
-     * The stamp is in the session cookie, which only this deployment's key can have written.
-     */
-    fun mayGrant(config: KdrInstanceConfig): Boolean = isOn(config) || maySimulate(config)
 
     /**
      * Whether [handler]'s request is to be simulated: the node may simulate, the request came straight to it (no
@@ -309,15 +315,18 @@ object EnvGate {
     }
 
     /**
-     * On a request the gate applies to, drops env access from any other source: one the node **assumed** for a local
-     * request (`KDR_ASSUME_ENV_AUTH`), or a trusted header, which a simulated request on a test instance may still
-     * have. On a gated request env access comes only with a Google sign-in, real or simulated. Run before
-     * `EnvAuthRules.fromAdminLogin`, which grants it from the gate's sign-in and nothing to a request already env-authed.
+     * On a request the gate applies to, sets its env access from [EGATE.accessCookie] alone: the address a gate sign-in
+     * wrote there, while it lasts and is still on the admin domain. Any other source is dropped -- env access the node
+     * **assumed** for a local request (`KDR_ASSUME_ENV_AUTH`), or a trusted header, which a simulated request on a test
+     * instance may still have -- and the session's user has no bearing on it. A request the gate does not apply to is
+     * left as `EnvAuthRules.resolve` made it.
      */
-    fun dropOtherEnvAuth(cxt: KdrCxt, handler: RequestHandler) {
-        if (cxt.envAuthEmail != null && applies(cxt.instanceConfig, handler)) {
-            cxt.envAuthEmail = null
-        }
+    fun resolve(cxt: KdrCxt, handler: RequestHandler) {
+        if (!applies(cxt.instanceConfig, handler)) return
+        val access = handler.getRequestCookies()[EGATE.accessCookie]?.let { EnvGateAccess.decode(NodeService.get(cxt), it) }
+        cxt.envAuthEmail = access
+            ?.takeIf { cxt.now().toEpochMilliseconds() <= it.expireEpochMs && AddressRules.isAdminDomain(cxt, it.email) }
+            ?.let { EnvAuthRules.sanitizeAddress(it.email) }
     }
 
     /**
@@ -453,7 +462,7 @@ object EnvGate {
 
     /**
      * Google's return: checks `state` against [EGATE.stateCookie], exchanges the code, verifies the ID token and its
-     * `nonce`, and signs the person in. Any failure is a plain refusal from the node; an account Google vouched for
+     * `nonce`, and grants env access ([signIn]). Any failure is a plain refusal from the node; an account Google vouched for
      * that is not the deployment's own gets a link back to Google's chooser, to pick another.
      */
     private fun callback(cxt: KdrCxt, handler: RequestHandler) {
@@ -497,10 +506,11 @@ object EnvGate {
     }
 
     /**
-     * Signs in as the person [token] names, when it is the deployment's own: Google verified the address, it is on
-     * the admin domain, and Google is authoritative for that domain (the signed `hd` claim). Checked **before** any
-     * user is found or made, so an outside account gets nothing on this node. Then the session is written with its
-     * env access stamp, and the browser sent to [returnTo].
+     * Grants env access to the person [token] names, when it is the deployment's own: Google verified the address, it is
+     * on the admin domain, and Google is authoritative for that domain (the signed `hd` claim). Checked **before** any
+     * user is found or made, so an outside account gets nothing on this node. Then the env access is written to
+     * [EGATE.accessCookie]; when nobody is signed in, the person is signed in as their own user too; and the browser is
+     * sent to [returnTo]. Somebody already signed in stays as they are.
      */
     private fun signIn(cxt: KdrCxt, handler: RequestHandler, token: GoogleIdToken, returnTo: String) {
         val email = token.email?.normalizeEmail()
@@ -516,14 +526,22 @@ object EnvGate {
             )
             return
         }
-        // The sign-in completes as any other does (AuthFormHandler.completeLogin), which reads the request it is in.
-        val request = KdrRequest(cxt, emptyMap(), null, handler)
-        cxt.request = request
-        UserService.get(cxt).authFormHandler.loginByGoogleToken(cxt, token)
-        request.envGateUntilMs = cxt.now().toEpochMilliseconds() + lifetimeMs(cxt.instanceConfig)
-        LogAuth.info(cxt) { "Env gate sign-in for '$email' (subject '${token.subject}')." }
-        // The cookie goes on before the redirect, which sends the response at once.
-        RequestService.get(cxt).checkAddAuthCookies(cxt, handler)
+        // The cookies go on before the redirect, which sends the response at once.
+        val access = EnvGateAccess(email, cxt.now().toEpochMilliseconds() + lifetimeMs(cxt.instanceConfig))
+        handler.addResponseCookie(
+            EGATE.accessCookie, access.encode(NodeService.get(cxt)), Instant.fromEpochMilliseconds(access.expireEpochMs),
+        )
+        val signsIn = !cxt.userProfile.isLoggedIn
+        if (signsIn) {
+            // The sign-in completes as any other does (AuthFormHandler.completeLogin), which reads the request it is in.
+            cxt.request = KdrRequest(cxt, emptyMap(), null, handler)
+            UserService.get(cxt).authFormHandler.loginByGoogleToken(cxt, token)
+            RequestService.get(cxt).checkAddAuthCookies(cxt, handler)
+        }
+        LogAuth.info(cxt) {
+            "Env gate sign-in for '$email' (subject '${token.subject}')" +
+                if (signsIn) ", signed in as their user." else ", keeping the session's user ${cxt.userProfile.userId}."
+        }
         handler.sendRedirect(returnTo)
     }
 
@@ -568,6 +586,28 @@ object EnvGate {
 
     /** 128 random bits, URL-safe. */
     private fun randomToken(): String = ByteArray(16).also { random.nextBytes(it) }.base64Encode()
+
+    /**
+     * A gate sign-in's env access, in [EGATE.accessCookie]: the address Google vouched for, and when the access ends.
+     * Encrypted with the deployment's key, so the browser can neither read nor forge it.
+     */
+    class EnvGateAccess(val email: String, val expireEpochMs: Long) {
+        fun encode(node: NodeService): String =
+            node.encryptString(mapOf(K_EMAIL to email, K_EXPIRE to expireEpochMs).toJsonStr(compact = true))
+
+        companion object {
+            private const val K_EMAIL = "m"
+            private const val K_EXPIRE = "e"
+
+            /** Decrypts and parses a wire cookie, or null if it is absent, malformed, or undecryptable. */
+            fun decode(node: NodeService, cookie: String): EnvGateAccess? = try {
+                val m = node.decryptString(cookie).jsonMap() ?: return null
+                EnvGateAccess(m[K_EMAIL].toOptStr() ?: return null, m[K_EXPIRE].toOptLong() ?: return null)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
 
     /**
      * What a sign-in carries through Google, in [EGATE.stateCookie]: the `state` Google returns, the `nonce` its ID

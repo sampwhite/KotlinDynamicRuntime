@@ -8,7 +8,6 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.HttpUtil
 import com.dynamicruntime.common.http.request.RequestHandler
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.node.NodeService
@@ -23,7 +22,6 @@ import com.dynamicruntime.common.user.GoogleCodeExchange
 import com.dynamicruntime.common.user.JwtKeySource
 import com.dynamicruntime.common.user.LSRC
 import com.dynamicruntime.common.user.PTD
-import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.base64Encode
 import com.dynamicruntime.common.util.jsonMap
@@ -226,26 +224,54 @@ class EnvGateTest : StringSpec({
         ] shouldBe EGATE.selectAccount
     }
 
-    "only a session the gate's sign-in wrote has env access, and only until its stamp lapses" {
-        val cxt = gated("gateStamp")
+    "env access is the gate's own cookie, whoever the session acts as, and lasts only its lifetime" {
+        val cxt = gated("gateAccess")
         val client = TestHttpClient(cxt.instanceConfig)
         signIn(client, "cy@$domain")
         envAuthOf(client) shouldBe "cy@$domain"
-        val node = NodeService.get(cxt)
-        val issued = UserAuthCookie.decode(node, client.cookies[AUTHC.authCookie]!!).shouldNotBeNull()
-        issued.roles.contains(ROLE.allClients) shouldBe true
-        fun withStamp(stamp: Long?): String = UserAuthCookie(
-            issued.userId, issued.client, issued.roles, issued.expireEpochMs, issued.identityId, issued.persona,
-            issued.signedInEpochMs, issued.issuedEpochMs, envGateUntilEpochMs = stamp,
-        ).encode(node)
+        val session = client.cookies[AUTHC.authCookie].shouldNotBeNull()
+        val access = client.cookies[EGATE.accessCookie].shouldNotBeNull()
 
-        // The same user's session written by any other sign-in -- a code sign-in to the same address -- has no stamp.
-        val unstamped = TestHttpClient(cxt.instanceConfig).also { it.cookies[AUTHC.authCookie] = withStamp(null) }
-        unstamped.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
-        // A lapsed stamp is no access either; the next visit goes back through Google.
-        val lapsed = TestHttpClient(cxt.instanceConfig).also { it.cookies[AUTHC.authCookie] = withStamp(System.currentTimeMillis() - 1000) }
+        // The session alone -- as a code sign-in to the same address would leave -- has no env access.
+        val sessionOnly = TestHttpClient(cxt.instanceConfig).also { it.cookies[AUTHC.authCookie] = session }
+        sessionOnly.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
+        // The env access alone gets through, with nobody signed in.
+        val accessOnly = TestHttpClient(cxt.instanceConfig).also { it.cookies[EGATE.accessCookie] = access }
+        val anonymous = accessOnly.sendGetRequest(AEP.selfInfo)
+        anonymous.rptStatusCode shouldBe EXC.ok
+        anonymous.createdCxt?.envAuthEmail shouldBe "cy@$domain"
+        anonymous.createdCxt?.userProfile?.isLoggedIn shouldBe false
+        // A lapsed one is no access; the next visit goes back through Google.
+        val node = NodeService.get(cxt)
+        val lapsed = TestHttpClient(cxt.instanceConfig).also {
+            it.cookies[EGATE.accessCookie] = EnvGate.EnvGateAccess("cy@$domain", System.currentTimeMillis() - 1000).encode(node)
+        }
         lapsed.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
         googleQuery(lapsed.sendGetRequestRaw("/wa"))
+    }
+
+    "a person keeps env access as another user, and a sign-in keeps whoever is signed in" {
+        val cxt = gated("gateApart")
+        val ada = TestHttpClient(cxt.instanceConfig)
+        signIn(ada, "ada.apart@$domain")
+        val adaId = ada.sendGetRequest(AEP.selfInfo).createdCxt?.userProfile?.userId.shouldNotBeNull()
+        val bo = TestHttpClient(cxt.instanceConfig)
+        signIn(bo, "bo.apart@$domain")
+
+        // Bo's browser comes to act as Ada (a switch, or a sign-in as her): Bo's env access stays, and nothing loops.
+        bo.cookies[AUTHC.authCookie] = ada.cookies[AUTHC.authCookie]!!
+        val asAda = bo.sendGetRequest(AEP.selfInfo)
+        asAda.rptStatusCode shouldBe EXC.ok
+        asAda.createdCxt?.userProfile?.userId shouldBe adaId
+        asAda.createdCxt?.envAuthEmail shouldBe "bo.apart@$domain"
+        bo.sendGetRequestRaw("/wa").rptResponseHeaders["location"].shouldBeNull()
+
+        // Signed in as Ada with no env access, Bo signs in to Google: the session stays Ada's.
+        val adaSession = TestHttpClient(cxt.instanceConfig).also { it.cookies[AUTHC.authCookie] = ada.cookies[AUTHC.authCookie]!! }
+        signIn(adaSession, "bo.apart@$domain")
+        val after = adaSession.sendGetRequest(AEP.selfInfo)
+        after.createdCxt?.userProfile?.userId shouldBe adaId
+        after.createdCxt?.envAuthEmail shouldBe "bo.apart@$domain"
     }
 
     "a simulated sign-in on an admin host under localhost lands as the simulated user, with no trip to Google" {

@@ -85,13 +85,6 @@ class UserAuthCookie(
      * once. A cookie without it is not read.
      */
     val issuedEpochMs: Long = signedInEpochMs,
-    /**
-     * When the env access of a session signed in through the env gate ends (issue #1865), kept through every
-     * renewal; null for a session signed in any other way. Only the gate's Google sign-in writes one, so it is what
-     * says this session's env access came from Google: a code sign-in to the same address has none
-     * (`EnvAuthRules.fromAdminLogin`).
-     */
-    val envGateUntilEpochMs: Long? = null,
 ) {
     /** Encrypts this cookie to its wire string using the instance key (shared by every node). */
     fun encode(node: NodeService): String =
@@ -105,7 +98,6 @@ class UserAuthCookie(
                 if (persona != null) put(K_PERSONA, persona)
                 put(K_SIGNED_IN, signedInEpochMs)
                 put(K_ISSUED, issuedEpochMs)
-                if (envGateUntilEpochMs != null) put(K_ENV_GATE, envGateUntilEpochMs)
             }.toJsonStr(compact = true),
         )
 
@@ -118,7 +110,6 @@ class UserAuthCookie(
         private const val K_PERSONA = "p"
         private const val K_SIGNED_IN = "s"
         private const val K_ISSUED = "t"
-        private const val K_ENV_GATE = "g"
 
         /** Decrypts and parses a wire cookie string, or null if it is absent, malformed, or undecryptable. */
         fun decode(node: NodeService, cookie: String): UserAuthCookie? = try {
@@ -129,10 +120,7 @@ class UserAuthCookie(
             val expire = m[K_EXPIRE].toOptLong() ?: return null
             val signedIn = m[K_SIGNED_IN].toOptLong() ?: return null
             val issued = m[K_ISSUED].toOptLong() ?: return null
-            UserAuthCookie(
-                userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr(), signedIn, issued,
-                m[K_ENV_GATE].toOptLong(),
-            )
+            UserAuthCookie(userId, client, roles, expire, m[K_IDENTITY].toOptStr(), m[K_PERSONA].toOptStr(), signedIn, issued)
         } catch (_: Exception) {
             null
         }
