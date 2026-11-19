@@ -206,6 +206,25 @@ The `files` section is any signed-in user's, and how far a caller reaches is the
 `usedBy` answers each field of a live form the caller may read that names the file, and how many live forms they may
 not read use it too.
 
+## Listing files
+
+`GET /files/list` (#1863) lists the live data files the caller may read **within the client they act in**, most
+recently written first, as a growing listing: their own for an ordinary user, the client's for an editor or an
+administrator. A caller who reaches every client lists one at a time, the one they act in, rather than every file of
+the deployment. Each row is the file's record, its owner's name, and **how many live forms link it**, read or not by
+the caller, since any of them keeps the file from removal. The counts come from one query of the client's links, by an
+index on the links' `client`, and the forms from the cache; the files are the cache's index of the client's rows, as the
+plan's count is. It filters by kind, by status, and by whether any form uses the file (`linked`). A row still uploading
+carries when its upload stops being taken (`expiresAt`), so a page can tell an abandoned one from one under way.
+`usedBy` names each use as the form's pages do -- its trait's title, its field's label -- and when the form was created.
+
+The webapp's **Files** page (**My files** for a caller who reads only their own, as the forms listing is named), offered
+only where some trait of the client's forms has a file field (the `kdr:clientHoldsFiles` fact), draws it: each file's
+name as a link, its kind and size, status, when its upload began, who uploaded it when that is not always the caller,
+and how many forms use it -- which opens them, from `usedBy`, each a link to its form. A file no form uses has
+**Remove**, behind a confirmation naming where it acts; for an upload under way it aborts it. One a form uses says to
+take it out of the form instead.
+
 ## The plan
 
 A plan counts the megabytes of a client's files (`fileMegabytes`, 500 on the free plan): every live data file's size,

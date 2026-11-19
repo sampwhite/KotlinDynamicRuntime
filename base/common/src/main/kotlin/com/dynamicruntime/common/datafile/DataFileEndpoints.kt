@@ -9,18 +9,32 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /** The namespace of the data-file endpoints' types. */
 private const val namespace = "kdr.${DFILE.section}"
 
+/** A data file's record as an endpoint answers it ([DFILE.recordType]): shared by the record and a listing's row. */
+private fun SchTypeBuilder.recordFields() {
+    property(DFILE.fileId, "The file's id, which a form's file field names.", required = true)
+    property(DFILE.name, "The name it was uploaded under.")
+    property(DFILE.kind, "Its kind, told by its bytes.", required = true) { FileKinds.kinds.forEach { option(it.id, it.label) } }
+    property(DFILE.mimeType, "The type it is served as.", required = true)
+    property(DFILE.size, "Its size in bytes; while uploading, the size it said it would be.", required = true) { type = SCT.integer }
+    property(DFILE.hash, "The SHA-256 of its bytes, once its upload has finished.")
+    property(DFILE.status, "Where it is: uploading, or ready to be read.", required = true) { DFSTAT.all.forEach { option(it) } }
+    property(DFILE.uploadedAt, "When its upload began.") { dateTime() }
+    property(DFILE.ownerId, "The user who uploaded it.", required = true) { type = SCT.integer }
+}
+
 
 /**
  * The data-file endpoints (issue #1837), in the `files` section, which any signed-in user reaches: a small file's
  * upload in one request (#1840); a larger one's begin, chunks -- the last of which finishes it (#1840) -- abort, and
- * status; a file's record, its content a range at a time, which forms use it (#1838), and its removal. How far a caller
- * reaches is their read scope, and an upload is its owner's alone ([DataFileService]).
+ * status; the caller's files, listed (#1863); a file's record, its content a range at a time, which forms use it (#1838),
+ * and its removal. How far a caller reaches is their read scope, and an upload is its owner's alone ([DataFileService]).
  *
  * Theme: #DFILE.
  */
@@ -28,15 +42,18 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
     type(DFILE.recordType) {
         type = SCT.kObject
         description = "A file uploaded for a form's data: what it is, and how far it has come."
-        property(DFILE.fileId, "The file's id, which a form's file field names.", required = true)
-        property(DFILE.name, "The name it was uploaded under.")
-        property(DFILE.kind, "Its kind, told by its bytes.", required = true) { FileKinds.kinds.forEach { option(it.id, it.label) } }
-        property(DFILE.mimeType, "The type it is served as.", required = true)
-        property(DFILE.size, "Its size in bytes; while uploading, the size it said it would be.", required = true) { type = SCT.integer }
-        property(DFILE.hash, "The SHA-256 of its bytes, once its upload has finished.")
-        property(DFILE.status, "Where it is: uploading, or ready to be read.", required = true) { DFSTAT.all.forEach { option(it) } }
-        property(DFILE.uploadedAt, "When its upload began.") { dateTime() }
-        property(DFILE.ownerId, "The user who uploaded it.", required = true) { type = SCT.integer }
+        recordFields()
+    }
+    type(DFILE.listedType) {
+        type = SCT.kObject
+        description = "A file in a listing of files (issue #1863): its record, who uploaded it, and how many forms use it."
+        recordFields()
+        property(DFILE.ownerName, "The name of the user who uploaded it, when they have one.")
+        property(DFILE.expiresAt, "While it is uploading: when its upload is no longer taken.") { dateTime() }
+        property(
+            DFILE.forms, "How many live forms link it, whether or not you may read them; one that any links is not removed.",
+            required = true,
+        ) { type = SCT.integer }
     }
     type(DFILE.uploadType) {
         type = SCT.kObject
@@ -55,6 +72,9 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         property(DFILE.formId, "The form's id.", required = true)
         property(DFILE.traitId, "The trait of the entry holding the field.", required = true)
         property(DFILE.fieldPath, "Where in the entry's data the field is.", required = true)
+        property(DFILE.traitTitle, "The trait, as the form's pages title it.")
+        property(DFILE.fieldLabel, "The field, as the form's pages label it.")
+        property(DFILE.formCreatedAt, "When the form was created.") { dateTime() }
     }
     type(DFILE.usedByType) {
         type = SCT.kObject
@@ -162,6 +182,25 @@ fun dataFileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, namespace) {
         outputRef = DFILE.usedByType,
         inputFields = { field(DFILE.fileId, "The file.", required = true) },
     ) { c, request -> DataFileLinks.usedBy(c, DataFileService.viewable(c, request[DFILE.fileId].toOptStr().orEmpty())) }
+
+    listEndpoint(
+        DFILE.listPath,
+        "The files uploaded for forms' data in your client that you may read (issue #1863), most recently written first: " +
+            "your own, or, for an editor or an administrator, the client's. Each with how many live forms use it, which " +
+            "keeps it from removal. Filtered by kind, status, and whether any form uses it.",
+        outputRef = DFILE.listedType,
+        hasMore = true,
+        inputFields = {
+            field(DFILE.kind, "Only files of this kind.") { FileKinds.kinds.forEach { option(it.id, it.label) } }
+            field(DFILE.status, "Only files in this status.") { DFSTAT.all.forEach { option(it) } }
+            field(DFILE.linked, "Only files some live form uses (true), or none does (false).") { type = SCT.boolean }
+        },
+    ) { c, request ->
+        DataFileService.list(
+            c, request[EP.limit].toOptLong()?.toInt() ?: Int.MAX_VALUE, request[DFILE.kind].toOptStr(),
+            request[DFILE.status].toOptStr(), request[DFILE.linked] as? Boolean,
+        )
+    }
 
     fileDownloadEndpoint(
         DFILE.contentPath,

@@ -600,9 +600,15 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .data-file-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .data-file-progress { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); }
 .data-file-progress .ant-progress { flex: 1; margin: 0; }
-.data-file-shown { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+/* Items start at their own size: a stretched flex item would draw a small image as wide as the column. */
+.data-file-shown { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; }
 .data-file-list { display: flex; flex-direction: column; gap: 12px; max-width: 100%; }
 .data-file-list .field-label { display: block; margin-bottom: 2px; }
+
+/* The Files page (issue #1863): its filters in a row that wraps, and a row's actions side by side. */
+.files-filters { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-bottom: 12px; }
+.files-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.files-uses { margin: 4px 0; padding-left: 20px; }
 /* An image or a video, at most a modest box: a form shows the file, it is not a viewer. */
 .data-file-preview { display: block; max-width: min(480px, 100%); max-height: 360px; border-radius: 4px; background: var(--surface-page); }
 /* A client's file refs (issue #1176), drawn as its web assets are: a row a ref. What is unusual about one -- a

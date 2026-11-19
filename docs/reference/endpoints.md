@@ -232,6 +232,7 @@ A signed-in caller may call these.
 | GET | `/files/content` |  | A file's content, a range at a time: an image or a video shown in place, anything else a download. Honors `Range`, `If-Range`, and `If-None-Match`. |
 | DELETE | `/files/delete` |  | Removes a file, aborting its upload if one is under way. Its owner may, and an administrator of its client. Refused while a live form's field names it. |
 | GET | `/files/info` |  | What a file is: its name, kind, size, hash, and status. |
+| GET | `/files/list` |  | The files uploaded for forms' data in your client that you may read (issue #1863), most recently written first: your own, or, for an editor or an administrator, the client's. Each with how many live forms use it, which keeps it from removal. Filtered by kind, status, and whether any form uses it. |
 | POST | `/files/upload` |  | Uploads a whole file for a form's data in one request (issue #1840): its bytes as the request's raw body, sent as application/octet-stream, at most 8388608 bytes. Answers the file's record, ready. Refused as an upload in chunks is, and a larger file is uploaded in chunks (`/files/upload/begin`). |
 | POST | `/files/upload/abort` |  | Ends an upload without a file, dropping what was sent. |
 | POST | `/files/upload/begin` |  | Begins an upload of a file for a form's data in chunks (issue #1837), answering how to send it: chunks of `chunkSize` bytes in order, each to `/files/upload/chunk`; the last finishes the upload. Refused for a type no file may be, a size past its kind's largest, or a plan with no room for it. |

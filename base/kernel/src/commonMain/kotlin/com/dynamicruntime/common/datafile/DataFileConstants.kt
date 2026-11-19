@@ -52,8 +52,25 @@ object DFILE {
     const val traitId = "traitId"
     const val fieldPath = "fieldPath"
 
+    /** A use's trait, as its form's pages title it, and its field, as they label it (issue #1863). */
+    const val traitTitle = "traitTitle"
+    const val fieldLabel = "fieldLabel"
+
+    /** When a use's form was created, by which a person tells forms of one trait apart (issue #1863). */
+    const val formCreatedAt = "formCreatedAt"
+
     /** How many live forms the caller may not read use the file too. */
     const val hiddenForms = "hiddenForms"
+
+    // --- the listing (issue #1863) ---
+    /** In a listing's row: the name of the user who uploaded the file. */
+    const val ownerName = "ownerName"
+
+    /** In a listing's row: how many live forms link the file, whether or not the caller may read them. */
+    const val forms = "forms"
+
+    /** A listing's filter: only files some live form links (true), or none does (false). */
+    const val linked = "linked"
 
     /**
      * The longest path to a file field a link keeps (issue #1838): a path takes in a map's keys, which are a form's data,
@@ -63,6 +80,7 @@ object DFILE {
 
     /** Schema type names. */
     const val usedByType = "DataFileUsedBy"
+    const val listedType = "DataFileListed"
     const val useType = "DataFileUse"
     const val recordType = "DataFile"
     const val uploadType = "DataFileUpload"
@@ -80,6 +98,8 @@ object DFILE {
     const val contentPath = "/$section/content"
     const val deletePath = "/$section/delete"
     const val usedByPath = "/$section/usedBy"
+    /** The caller's data files, within their client and read scope (issue #1863). */
+    const val listPath = "/$section/list"
 
     /**
      * How many bytes each chunk of an upload is, all but the last: what the server asks for, at least the 5 MiB the

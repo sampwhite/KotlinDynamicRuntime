@@ -110,6 +110,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.apiKeys, "API keys", HMENU.pageApiKeys),
             // Their listing is every form in their client, not only their own (issue #1091).
             page(HMENU.clientForms, "Forms", HMENU.pageForms),
+            // No Files (issue #1863): this client's forms hold no files.
             header(HMENU.reference, "Reference"),
             page(HMENU.docs, "Documents", HMENU.pageDocs, HMENU.reference),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog, HMENU.reference),

@@ -35,6 +35,8 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * The links between forms and the data files their fields name (issue #1838), kept in [GDT.gedraFileLinks]: one row
@@ -250,6 +252,21 @@ object DataFileLinks {
     }
 
     /**
+     * How many live forms link each of [client]'s data files that any links (issue #1863), by file id: what a listing
+     * of files says of each, and how it tells a linked file from one nothing uses. One query of the client's links, and
+     * the forms from the cache, which holds only live ones. Every live form counts, read by the caller or not, since
+     * any of them keeps the file from removal.
+     */
+    fun liveFormCounts(cxt: KdrCxt, client: String): Map<String, Int> {
+        val links = queryLinks(cxt, mapOf(PF.client to client), ::byClientStmt)
+        if (links.isEmpty()) return emptyMap()
+        val live = formsIn(cxt, links.mapNotNull { it[GDL.holderId].toOptStr() }.distinct(), ReadScope.unrestricted).keys
+        return links.filter { it[GDL.holderId].toOptStr() in live }
+            .groupBy { it[GDL.fileId].toOptStr().orEmpty() }
+            .mapValues { (_, rows) -> rows.mapNotNull { it[GDL.holderId].toOptStr() }.distinct().size }
+    }
+
+    /**
      * The data file [fileId] when the caller may read it through a live form that links it, one their read scope
      * admits; null otherwise. What [DataFileService.viewable] falls back to after the caller's own scope: one query of
      * the links, and the forms from the cache, which holds only live ones.
@@ -267,10 +284,26 @@ object DataFileLinks {
      */
     fun usedBy(cxt: KdrCxt, file: GedraDataRow): Map<String, Any?> {
         val usage = usage(cxt, file.gedraId.fullId, liveFromSql = false)
+        val forms = formsIn(cxt, usage.visibleForms, ReadScopeRules.forCaller(cxt))
+        val data = GedraDataService.get(cxt)
         return linkedMapOf(
             DFILE.fileId to file.gedraId.fullId,
-            DFILE.usedBy to usage.links.map {
-                linkedMapOf(DFILE.formId to it[GDL.holderId], DFILE.traitId to it[GDL.traitId], DFILE.fieldPath to it[GDL.fieldPath])
+            DFILE.usedBy to usage.links.map { link ->
+                val holder = forms[link[GDL.holderId].toOptStr()]
+                val traitId = link[GDL.traitId].toOptStr().orEmpty()
+                val fieldPath = link[GDL.fieldPath].toOptStr().orEmpty()
+                // The trait and its field as the form's pages name them (issue #1863), so a person reads which form
+                // and which field, not ids.
+                val dataType = holder?.let { traitDataTypeIn(data.entryUnion(cxt, it.client, it.kind), traitId) }
+                val field = fieldPath.substringBefore('.').substringBefore('[')
+                linkedMapOf(
+                    DFILE.formId to link[GDL.holderId], DFILE.traitId to traitId, DFILE.fieldPath to fieldPath,
+                    DFILE.traitTitle to (dataType?.title ?: humanizeFieldName(traitId.substringAfterLast(':'))),
+                    // The field's own title, as a form labels it, never its target type's, which every field of
+                    // that type shares.
+                    DFILE.fieldLabel to (dataType?.properties?.get(field)?.title ?: humanizeFieldName(field)),
+                    DFILE.formCreatedAt to holder?.createdAt?.formatDate(),
+                ).filterValues { it != null }
             },
             DFILE.hiddenForms to usage.hidden,
         )
@@ -314,6 +347,11 @@ object DataFileLinks {
 
     private fun byFileStmt(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
         sqlCxt, "qGedraFileLinksByFile", table.columns, "select * from t:${GDT.gedraFileLinks} where c:${GDL.fileId} = :${GDL.fileId}",
+    )
+
+    private fun byClientStmt(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
+        sqlCxt, "qGedraFileLinksByClient", table.columns,
+        "select c:${GDL.fileId}, c:${GDL.holderId} from t:${GDT.gedraFileLinks} where c:${PF.client} = :${PF.client}",
     )
 
     private fun deleteStmt(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
