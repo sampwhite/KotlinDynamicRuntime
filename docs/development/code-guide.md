@@ -349,6 +349,25 @@ layout or *task* layout: the task layout (`WfLayout`, the order of traits within
 thing, and a placeholder until how a task arranges its traits is designed. Selectors, which already choose a
 task's display, are to come down to field layouts too, choosing which one applies; today a type has at most one.
 
+### Adding a schema keyword or a configuration slot
+<!-- Theme: #SLTKW -->
+
+A `g-` keyword is declared in `SchGKeywords`, and a configuration slot in the core config traits (`coreConfigTraits`)
+and in the kernel's `CCT.slotRules`, one line saying what an entry is called, its key field, and how one stands over
+another, which the code layer, a stored override, and a sandbox's report read. Several places must then be told of it, and tests fail until each is (issue #1854),
+each naming the keyword or slot and the place:
+
+- **What the assistant is taught** (`AssistantTaughtTest`): named in its prompt or a row of the Making changes guide,
+  written by one of its tools, or not taught, with why.
+- **The traits editor** (`TraitDesignTest`, a keyword): it maps the field to a kind or refuses it (`fieldKindOf`), keeps
+  it as written through a save, or is never on a field the editor designs.
+- **The bundle editor** (`BundleEditorTest`, a slot): placed in `editorSlotOrder` and named by `editorSlotLabel`.
+- **The slot plumbing and the overview** (`ConfigSlotGuardsTest`, a slot): stood over by key (`ConfigKeys`, its cut,
+  `CodeOverrides`, the code layer's replacements) or listed as not, copied whole into a sandbox, named by kind when a
+  sandbox overlay repeats it, and named on the what-a-client-is page.
+
+The generated references follow by themselves: `check` fails until `./gradlew :launch:refDocsDump` rewrites them.
+
 ### Relaxed validation and coercion is the default
 <!-- Theme: #CFGFG -->
 

@@ -345,10 +345,15 @@ fun editorBundlesInOrder(configs: List<EditorBundle>): List<EditorBundle> =
         }.thenBy { it.name },
     )
 
-/** The slots in the order a page lists them: the client first, then what it declares, then what it says. */
+/**
+ * The slots in the order a page lists them: the client first, then what it declares, then what it says. Every slot of
+ * `CCT.slots` is here, and named by [editorSlotLabel]: `BundleEditorTest` holds both to it (issue #1854).
+ *
+ * Theme: #SLTKW.
+ */
 val editorSlotOrder: List<String> = listOf(
-    CCT.clientDef, CCT.customerDef, CCT.traitDef, CCT.schemaDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
-    CCT.cfactDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.fileRefDef, CCT.counterDef,
+    CCT.clientDef, CCT.customerDef, CCT.traitDef, CCT.schemaDef, CCT.usageDef, CCT.listingDef, CCT.workflowDef,
+    CCT.reportDef, CCT.cfactDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.fileRefDef, CCT.counterDef,
 )
 
 /** What a person calls [slot]; a slot this page does not know is called by its id. */
@@ -358,6 +363,7 @@ fun editorSlotLabel(slot: String): String = when (slot) {
     CCT.traitDef -> "Traits"
     CCT.schemaDef -> "Schema types"
     CCT.usageDef -> "Listing columns"
+    CCT.listingDef -> "Forms listing"
     CCT.workflowDef -> "Workflows"
     CCT.reportDef -> "Reports"
     CCT.cfactDef -> "Cfacts"

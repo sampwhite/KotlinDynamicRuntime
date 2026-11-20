@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.FragmentSource
-import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -66,7 +65,13 @@ object SandboxConfigs {
         joinRoles = emptyList(),
     )
 
-    /** [config], one of the parent's, as the sandbox's copy of it: see the class note for what is rebound. */
+    /**
+     * [config], one of the parent's, as the sandbox's copy of it: see the class note for what is rebound. Every slot is
+     * copied as it is but the definition, which is derived, and the customers, which are left out; `ConfigSlotGuardsTest`
+     * holds it to that (issue #1854), since a field left out of this list is dropped without a word.
+     *
+     * Theme: #SLTKW.
+     */
     fun rebind(config: GedraConfig): GedraConfig {
         val sandbox = sandboxOf(config.gedraId.client)
         return GedraConfig(
@@ -77,6 +82,9 @@ object SandboxConfigs {
             configTraits = config.configTraits,
             defs = config.defs,
             client = config.client?.let { deriveDef(it) },
+            // None of the customers (issue #1107): the platform declares each once, and a copy declaring the parent's again
+            // would be refused as a second declaration of it.
+            customers = emptyList(),
             cfacts = config.cfacts,
             fragments = config.fragments.map { it.reboundTo(sandbox) },
             uiBlocks = config.uiBlocks.map { it.reboundTo(sandbox) },
@@ -115,7 +123,11 @@ object SandboxConfigs {
         parentSource: List<GedraConfig>,
         parentStored: List<GedraConfig>,
         sandboxSource: List<GedraConfig> = emptyList(),
-    ): List<GedraConfig> = parentSource.map { rebind(it) } + sandboxSource + parentStored.map { rebind(it) }
+    ): List<GedraConfig> = buildList {
+        parentSource.mapTo(this) { this@SandboxConfigs.rebind(it) }
+        addAll(sandboxSource)
+        parentStored.mapTo(this) { this@SandboxConfigs.rebind(it) }
+    }
 
     /**
      * Whether [parent] has a sandbox by the definition it runs -- the one in [configs] its own configuration
@@ -192,22 +204,16 @@ object SandboxConfigs {
             null
         }
 
-    /** An entry of [slot] as a person names it: its kind and its id. */
+    /**
+     * An entry of [slot] as a person names it: its kind and the id its key field holds, from the slot's rule
+     * ([CCT.slotRules], issue #1854).
+     *
+     * Theme: #SLTKW.
+     */
     private fun describe(slot: String, entry: Map<String, Any?>): String {
-        val id = listOf(CCT.traitId, CCT.workflowId, CCT.reportId, CCT.typeName, CCT.blockId, CCT.name, CCT.refId, CTR.counterId)
-            .firstNotNullOfOrNull { entry[it].toOptStr() }
-        val kind = when (slot) {
-            CCT.traitDef -> "trait"
-            CCT.workflowDef -> "workflow"
-            CCT.reportDef -> "report"
-            CCT.schemaDef -> "type"
-            CCT.uiBlockDef -> "block"
-            CCT.cfactDef -> "cfact"
-            CCT.fileRefDef -> "file ref"
-            CCT.counterDef -> "counter"
-            else -> slot
-        }
-        return if (id != null) "$kind '$id'" else kind
+        val rule = CCT.slotRule(slot) ?: return slot
+        val id = rule.keyField?.let { entry[it].toOptStr() }
+        return if (id != null) "${rule.kind} '$id'" else rule.kind
     }
 
     private fun FragmentSource.reboundTo(sandbox: String): FragmentSource = refiled(client = client?.let { sandbox })

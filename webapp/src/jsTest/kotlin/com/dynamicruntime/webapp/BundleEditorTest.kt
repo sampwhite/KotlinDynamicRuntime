@@ -38,6 +38,18 @@ class BundleEditorTest {
         ),
     )
 
+    // Issue #1854: a slot the page does not name is listed last under its id, so a new slot fails here until the page
+    // orders and names it. Theme: #SLTKW.
+    @Test
+    fun thePageOrdersAndNamesEverySlot() {
+        for (slot in CCT.slots) {
+            assertTrue(slot in editorSlotOrder, "Slot $slot is not in editorSlotOrder (BundleEditor.kt): place it there.")
+            assertTrue(editorSlotLabel(slot) != slot, "Slot $slot has no label in editorSlotLabel (BundleEditor.kt): name it there.")
+        }
+        assertEquals(CCT.slots.toSet(), editorSlotOrder.toSet(), "editorSlotOrder names a slot that is not in CCT.slots")
+        assertEquals(editorSlotOrder.size, editorSlotOrder.toSet().size, "editorSlotOrder names a slot twice")
+    }
+
     @Test
     fun aDraftsEntriesStandAgainstThePublishedOnesByKey() {
         val traits = view.configs.single { it.name == "traits" }

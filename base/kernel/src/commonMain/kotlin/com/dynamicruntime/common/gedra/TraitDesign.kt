@@ -31,7 +31,8 @@ import com.dynamicruntime.common.util.toOptStr
  * so the two editors do not undo each other. A field removed takes its layout entry with it.
  *
  * A trait whose fields are not all of the editor's kinds -- a nested object, a `$ref`, a date and time, an open
- * list, a counter's field -- is not editable here ([traitDesignOf] says why); it was written by hand, and is edited as it was written.
+ * list, a counter's field, a field whose choices a source supplies -- is not editable here ([traitDesignOf] says why); it was
+ * written by hand, and is edited as it was written.
  */
 
 /** The kinds of field the traits editor offers (issue #1118). Nested objects and arrays wait. */
@@ -399,10 +400,18 @@ fun traitExtensionDesignOf(
     return TraitDesignRead(TraitDesign(design.traitId, design.label, design.description, design.fields, baseTraitId), null)
 }
 
-/** The kind of the stored field [prop], or null when it is none of the editor's. */
+/**
+ * The kind of the stored field [prop], or null when it is none of the editor's. Every `g-` keyword that changes what a
+ * field holds either maps to a kind here or makes the field none of them, and the rest are carried over as written:
+ * `TraitDesignTest` holds every keyword to one of the three (issue #1854).
+ *
+ * Theme: #SLTKW.
+ */
 private fun fieldKindOf(prop: Map<String, Any?>): TraitFieldKind? {
-    // A counter's field (issue #1849) is no kind of the editor's: read as text, it would be offered as free text.
+    // A counter's field (issue #1849), and one whose choices a source supplies (issue #1854), is no kind of the editor's:
+    // read as text, either would be offered as free text.
     if (prop.containsKey(SCH.dRef) || prop[SCH.openOptions] == true || prop.containsKey(SCH.counter)) return null
+    if (prop.containsKey(SCH.optionsSource)) return null
     return when (prop[SCH.type]) {
         SCT.string -> when {
             prop.containsKey(SCH.options) -> TraitFieldKind.choice

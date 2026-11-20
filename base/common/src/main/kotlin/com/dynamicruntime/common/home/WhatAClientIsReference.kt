@@ -3,6 +3,7 @@
 package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.user.UADEP
@@ -14,9 +15,12 @@ import com.dynamicruntime.common.user.UADEP
  * on the Documents page to anyone, and readable by the assistant's `read_doc`.
  *
  * Generated, as the other references are, so the names it uses -- the slots, the sandbox's id, Home's copy key, the
- * endpoints -- are the code's own constants, and a rename changes the page with it.
+ * endpoints -- are the code's own constants, and a rename changes the page with it. Every slot is named, in the table or
+ * after it, which `ConfigSlotGuardsTest` holds it to (issue #1854).
  *
  * One Markdown literal: `$${…}` substitutes.
+ *
+ * Theme: #SLTKW.
  */
 fun whatAClientIsMarkdown(): String =
     // language=Markdown
@@ -71,6 +75,10 @@ names one thing in the whole client, whichever bundle holds it. The slots a clie
 | `$${CCT.uiBlockDef}` | Its changes to the menu and Home's cards ([Menu and home cards](menu-and-home-cards.md)). |
 | `$${CCT.fileRefDef}` | The named images its copy shows. |
 | `$${CCT.counterDef}` | Its counters, which number a field of its forms: a prefix, then a count. |
+
+The rest are rarer: `$${CCT.schemaDef}` holds a type that several traits share, `$${CCT.cfactDef}` a fact its expressions
+may name, and `$${CCT.listingDef}` how its forms list is drawn as a whole, while `$${CCT.customerDef}` is the platform's,
+and only the `$${CL.hub}` client holds any.
 
 The [client configuration reference](client-configuration.md) lists every slot, every field of their entries, and how
 an edit of one is written. A bundle is the unit of publishing: a workflow kept in a bundle of its own can be published

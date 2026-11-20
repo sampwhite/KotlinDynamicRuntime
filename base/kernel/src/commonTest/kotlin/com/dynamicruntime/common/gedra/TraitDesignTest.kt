@@ -1,9 +1,12 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchGKeywords
+import com.dynamicruntime.common.schema.SchKeywordPlace
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.parseSchLayout
@@ -143,6 +146,67 @@ class TraitDesignTest {
             SCH.properties to mapOf("number" to mapOf(SCH.type to SCT.string, SCH.counter to "receipt")),
         )
         assertNotNull(traitDesignOf("receipt", null, numbered).notEditable)
+    }
+
+    /**
+     * Every `g-` keyword, decided for the traits editor (issue #1854): one that changes what a field holds maps to a kind
+     * or makes the field one the editor refuses, one the editor may keep as written survives a save, and one never on a
+     * field the editor designs says why. A keyword added to `SchGKeywords` fails here until somebody decides, since read
+     * as text, a field built on it would be offered as free text, as a counter's once was. Theme: #SLTKW.
+     */
+    @Test
+    fun everyKeywordIsDecidedForTheEditor() {
+        val text = mapOf(SCH.type to SCT.string)
+        // What a field built on the keyword reads as: its kind, or null when the editor refuses it.
+        val shaping: Map<String, Pair<Map<String, Any?>, TraitFieldKind?>> = mapOf(
+            SCH.options to Pair(text + (SCH.options to listOf(mapOf(SCH.value to "a"))), TraitFieldKind.choice),
+            SCH.openOptions to Pair(text + (SCH.options to listOf(mapOf(SCH.value to "a"))) + (SCH.openOptions to true), null),
+            SCH.longText to Pair(text + (SCH.longText to true), TraitFieldKind.longText),
+            SCH.counter to Pair(text + (SCH.counter to "receipt"), null),
+            SCH.optionsSource to Pair(text + (SCH.optionsSource to "clients"), null),
+            SCH.fileKinds to Pair(text + (SCH.format to SFMT.dataFile) + (SCH.fileKinds to listOf("png")), null),
+            SCH.fileMaxSize to Pair(text + (SCH.format to SFMT.dataFile) + (SCH.fileMaxSize to 1000), null),
+            SCH.schemaDocument to Pair(mapOf(SCH.type to SCT.kObject, SCH.schemaDocument to true), null),
+        )
+        // Kept on a text field as written, since the design owns none of them.
+        val kept: Map<String, Any?> = mapOf(
+            SCH.allowCoerce to true,
+            SCH.emptyIsAbsent to true,
+            SCH.visibleOnly to true,
+            SCH.outerWhitespace to "trim",
+            SCH.derived to true,
+            SCH.visibleWhen to "isAdmin",
+            SCH.sensitive to true,
+            SCH.errors to mapOf("required" to "Say what it is."),
+            SCH.presentation to PRES.identifier,
+        )
+        val elsewhere: Map<String, String> = mapOf(
+            SCH.primaryKey to "It keys the items of an array of objects, which the editor never designs.",
+            SCH.optionalContents to "It is written on an object field, which the editor never designs.",
+        )
+        // A keyword written only on a named type is the trait's, not a field's.
+        val typeOnly = SchGKeywords.places.filterValues { it == SchKeywordPlace.namedType }.keys
+
+        for (keyword in SchGKeywords.keywords) {
+            val decisions = listOf(keyword in shaping, keyword in kept, keyword in elsewhere, keyword in typeOnly).count { it }
+            assertEquals(
+                1, decisions,
+                "Keyword $keyword: decide what the traits editor does with it -- map it to a kind or refuse it in fieldKindOf " +
+                    "(TraitDesign.kt), or keep it as written -- and list it once in this test.",
+            )
+        }
+        fun traitOf(field: Map<String, Any?>) = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("f" to field))
+        for ((keyword, case) in shaping) {
+            val (field, kind) = case
+            val read = traitDesignOf("t", null, traitOf(field)).design?.fields?.single()?.kind
+            assertEquals(kind, read, "Keyword $keyword: the editor reads its field as $read")
+        }
+        for ((keyword, value) in kept) {
+            val stored = traitOf(text + (keyword to value))
+            val design = assertNotNull(traitDesignOf("t", null, stored).design, "Keyword $keyword: the editor refuses its field")
+            val saved = design.toDataSchema(stored)[SCH.properties].toJsonMapOrEmpty()["f"].toJsonMapOrEmpty()
+            assertEquals(value, saved[keyword], "Keyword $keyword: a save from the editor drops it")
+        }
     }
 
     @Test

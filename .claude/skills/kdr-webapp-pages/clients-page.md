@@ -542,7 +542,8 @@ and each slot's entry type, key fields, and `$defs`, and each entry's stamp (`la
 page's `StoredConfigTable` for publishing, with its impact report and its "publish from its sandbox", closed to start
 behind a `Disclosure` whose line says how many configurations are unpublished (`publishingSummaryText`), and then lists the
 configurations -- the one holding the client's definition first, then by name (`editorBundlesInOrder`), so a publish or a
-save does not move what was just touched. Each opens, by `Disclosure`, to its slots (`editorSlots`, in `editorSlotOrder`), each slot to its
+save does not move what was just touched. Each opens, by `Disclosure`, to its slots (`editorSlots`, in `editorSlotOrder`,
+which names every slot of `CCT.slots` -- `BundleEditorTest` holds it to them, issue #1854), each slot to its
 entries, matched to the published revision's by their key fields (`addressesEntry`) and marked added, changed,
 unchanged, or removed, and each entry to its JSON, highlighted (`JsonBlock`, the kernel's `highlightJson`, which a
 Markdown `json` block uses). A changed entry shows its draft and published JSON side by side. The
