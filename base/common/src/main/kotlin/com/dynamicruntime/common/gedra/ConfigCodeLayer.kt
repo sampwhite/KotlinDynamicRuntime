@@ -107,8 +107,13 @@ private val GedraConfig.originWord: String get() = if (inheritedFrom != null) CF
  * interface are layered key by key rather than replaced, so they are never one.
  */
 object ConfigCodeLayer {
-    /** The slots whose entries replace a code entry by their key fields. */
-    private val keyedSlots = listOf(CCT.traitDef, CCT.schemaDef, CCT.cfactDef, CCT.workflowDef, CCT.reportDef, CCT.fileRefDef, CCT.counterDef)
+    /**
+     * The slots whose entries replace a code entry by their key fields ([CCT.slotRules]), held to `ConfigKeys` by
+     * `ConfigSlotGuardsTest`.
+     *
+     * Theme: #SLTKW.
+     */
+    private val keyedSlots = CCT.slotRules.filter { it.standsOver == SlotStandsOver.byKey }.map { it.slot }
 
     /**
      * [client]'s code layer, read once ([CodeLayer]), as declared: [ownCode], its own code configurations as the loader

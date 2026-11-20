@@ -38,26 +38,29 @@ object CodeOverrides {
      * What [config] -- reassembled from [entries], its stored slots -- holds of its entries marked to stand over code: a
      * marked trait with the types it generates, a marked type, cfact, workflow, report, or file ref, and the columns of
      * the forms list when any column is marked.
+     *
+     * Theme: #SLTKW.
      */
     fun markedKeys(config: GedraConfig, entries: Map<String, List<Map<String, Any?>>>): ConfigKeys {
         // Whole or as an overlay of the code's (issue #1657): an overlay that read over the code stands over it as its
         // merged definition, and one that did not is in the config as nothing, so its key is not here.
         fun marked(slot: String) = entries[slot].orEmpty().filter { it[CCT.overrides] in markValues }
-        fun keysOf(slot: String, field: String) = marked(slot).mapNotNull { it[field].toOptStr() }
-        val traits = keysOf(CCT.traitDef, CCT.traitId).filter { it in config.traits }.toSet()
+        // Each slot's entries by the key field its rule names (issue #1854).
+        fun keysOf(slot: String) = marked(slot).mapNotNull { entry -> CCT.slotRule(slot)?.keyField?.let { entry[it].toOptStr() } }
+        val traits = keysOf(CCT.traitDef).filter { it in config.traits }.toSet()
         val generated = traits.flatMap { id ->
             config.traits.getValue(id).let { listOfNotNull(it.typeName, inlineDataTypeName(config, it)) }
         }
-        val types = keysOf(CCT.schemaDef, CCT.typeName).map { qualifyTypeName(it, config.namespace) }.filter { it in config.defs }
+        val types = keysOf(CCT.schemaDef).map { qualifyTypeName(it, config.namespace) }.filter { it in config.defs }
         return ConfigKeys(
             traits = traits,
             types = (generated + types).toSet(),
-            cfacts = keysOf(CCT.cfactDef, CCT.name).toSet(),
-            workflows = keysOf(CCT.workflowDef, CCT.workflowId).mapNotNull { id -> config.workflows[id]?.let { id to it.entry } }.toMap(),
+            cfacts = keysOf(CCT.cfactDef).toSet(),
+            workflows = keysOf(CCT.workflowDef).mapNotNull { id -> config.workflows[id]?.let { id to it.entry } }.toMap(),
             usages = marked(CCT.usageDef).isNotEmpty(),
-            reports = keysOf(CCT.reportDef, CCT.reportId).filter { it in config.reports }.toSet(),
-            fileRefs = keysOf(CCT.fileRefDef, CCT.refId).toSet(),
-            counters = keysOf(CCT.counterDef, CTR.counterId).toSet(),
+            reports = keysOf(CCT.reportDef).filter { it in config.reports }.toSet(),
+            fileRefs = keysOf(CCT.fileRefDef).toSet(),
+            counters = keysOf(CCT.counterDef).toSet(),
         )
     }
 

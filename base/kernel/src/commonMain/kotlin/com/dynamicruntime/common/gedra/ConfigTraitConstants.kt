@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.counter.CTR
+
 /**
  * The core config traits (issues #316, #625): the trait ids the storage slots are keyed by, and their data fields.
  * The traits themselves are declared in `base:common` (`CoreConfigTraits.kt`); the names are here so the frontend
@@ -49,6 +51,42 @@ object CCT {
 
     /** One counter -- what numbers a field's ids -- keyed by its counter id (issue #1849). See `CounterDef`. */
     const val counterDef = "kdr:counterDef"
+
+    /**
+     * Every slot, in the order the core config traits declare them, with what code handling slots one by one needs of
+     * each (issue #1854): the code layer reads which stand over by key, a stored override reads their key fields, and a
+     * sandbox overlay's report names an entry by its kind. One line per slot, so a new slot is told here once.
+     *
+     * Theme: #SLTKW.
+     */
+    val slotRules: List<ConfigSlotRule> = listOf(
+        ConfigSlotRule(clientDef, "definition", null, SlotStandsOver.never),
+        ConfigSlotRule(customerDef, "customer", CUST.customerId, SlotStandsOver.never),
+        ConfigSlotRule(traitDef, "trait", traitId, SlotStandsOver.byKey),
+        ConfigSlotRule(usageDef, "column", traitId, SlotStandsOver.asOneSet),
+        ConfigSlotRule(workflowDef, "workflow", workflowId, SlotStandsOver.byKey),
+        ConfigSlotRule(reportDef, "report", reportId, SlotStandsOver.byKey),
+        ConfigSlotRule(schemaDef, "type", typeName, SlotStandsOver.byKey),
+        ConfigSlotRule(fragmentDef, "copy", fileId, SlotStandsOver.never),
+        ConfigSlotRule(uiBlockDef, "block", blockId, SlotStandsOver.never),
+        ConfigSlotRule(cfactDef, "cfact", name, SlotStandsOver.byKey),
+        ConfigSlotRule(fileRefDef, "file ref", refId, SlotStandsOver.byKey),
+        ConfigSlotRule(listingDef, "listing settings", null, SlotStandsOver.never),
+        ConfigSlotRule(counterDef, "counter", CTR.counterId, SlotStandsOver.byKey),
+    )
+
+    /**
+     * Every slot, in the order the core config traits declare them (issue #1854). A test holds those traits to this list,
+     * and the places that must know every slot -- the bundle editor's labels, the code layer's keys, the sandbox's copy,
+     * the client overview, the assistant's prompt -- are held to it in turn, so a slot added here fails each place until
+     * it is told.
+     *
+     * Theme: #SLTKW.
+     */
+    val slots: List<String> = slotRules.map { it.slot }
+
+    /** The rule of [slot], or null for an id that is no slot. */
+    fun slotRule(slot: String): ConfigSlotRule? = slotRules.firstOrNull { it.slot == slot }
 
     // --- what a stored entry says of the code it stands over (issue #1634) ---
 
@@ -112,3 +150,26 @@ object CCT {
 
     const val workflowLayout = "workflowLayout"
 }
+
+/** How an entry of a configuration slot stands over another's of the same slot (issue #1854). */
+@Suppress("EnumEntryName")
+enum class SlotStandsOver {
+    /** Entry by entry, by its key: a client's trait over its template's of the same id, or a stored one over the code's. */
+    byKey,
+
+    /** All together: a configuration declaring any columns of the forms list declares all of them. */
+    asOneSet,
+
+    /**
+     * Never by a key: the slot's one entry stands over the one beneath by itself (the definition, the listing settings),
+     * its entries are layered key by key (copy, the menu and Home's cards), or only the platform declares them (customers).
+     */
+    never,
+}
+
+/**
+ * What code handling configuration slots one by one needs of [slot] (issue #1854): [kind], what a person calls one of
+ * its entries; [keyField], the field that names one, the first of its shape's `g-primaryKey` (null for a slot of one
+ * entry, which a test holds to the shape); and how one [standsOver] another.
+ */
+class ConfigSlotRule(val slot: String, val kind: String, val keyField: String?, val standsOver: SlotStandsOver)

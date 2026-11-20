@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -217,12 +218,12 @@ class GedraConfigTest : StringSpec({
     // The traits a stored client configuration is made of -- one slot per field of a GedraConfig (issue #625),
     // so a stored config round-trips faithfully rather than losing what it had no slot for. No task slot: a
     // task lives inside its workflow. No state-trait slot: state is global, and a stored config a client's (#873).
+    // And the kernel's list of them (issue #1854), which every place that must know each slot is held to. Theme: #SLTKW.
     "the core config traits declare a slot for every piece of a stored client configuration" {
         val config = coreConfigTraits(cxt)
-        config.configTraits.keys.toList() shouldContainExactly listOf(
-            CCT.clientDef, CCT.customerDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
-            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef, CCT.listingDef, CCT.counterDef,
-        )
+        withClue("A slot is added to CCT.slots and declared in coreConfigTraits, in the same order") {
+            config.configTraits.keys.toList() shouldContainExactly CCT.slots
+        }
         config.traits.isEmpty() shouldBe true
         // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/usage slots by trait id,
         // fragments/uiBlocks by their overlay id, cfacts by name, customers by id; the client is single-instance.

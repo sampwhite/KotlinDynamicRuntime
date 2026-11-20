@@ -13,6 +13,10 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
  * template's copies (`ClientExtension.clones`), and a stored entry marked `"overrides": "code"` over the client's code
  * (`CodeOverrides`). Each cuts what is stood over out of the configuration below ([cutBy]), whole, so the client holds
  * each definition once. Copy and interface are layered key by key instead, so they are never here.
+ *
+ * A slot added to `CCT.slots` is held to being here, or to a reason it is not, by `ConfigSlotGuardsTest` (issue #1854).
+ *
+ * Theme: #SLTKW.
  */
 class ConfigKeys(
     val traits: Set<String> = emptySet(),

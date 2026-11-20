@@ -51,6 +51,10 @@ names one thing in the whole client, whichever bundle holds it. The slots a clie
 | `kdr:fileRefDef` | The named images its copy shows. |
 | `kdr:counterDef` | Its counters, which number a field of its forms: a prefix, then a count. |
 
+The rest are rarer: `kdr:schemaDef` holds a type that several traits share, `kdr:cfactDef` a fact its expressions
+may name, and `kdr:listingDef` how its forms list is drawn as a whole, while `kdr:customerDef` is the platform's,
+and only the `hub` client holds any.
+
 The [client configuration reference](client-configuration.md) lists every slot, every field of their entries, and how
 an edit of one is written. A bundle is the unit of publishing: a workflow kept in a bundle of its own can be published
 on its own.
