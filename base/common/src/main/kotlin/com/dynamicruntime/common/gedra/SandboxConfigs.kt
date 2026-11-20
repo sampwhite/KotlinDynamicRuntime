@@ -123,7 +123,11 @@ object SandboxConfigs {
         parentSource: List<GedraConfig>,
         parentStored: List<GedraConfig>,
         sandboxSource: List<GedraConfig> = emptyList(),
-    ): List<GedraConfig> = parentSource.map { rebind(it) } + sandboxSource + parentStored.map { rebind(it) }
+    ): List<GedraConfig> = buildList {
+        parentSource.mapTo(this) { this@SandboxConfigs.rebind(it) }
+        addAll(sandboxSource)
+        parentStored.mapTo(this) { this@SandboxConfigs.rebind(it) }
+    }
 
     /**
      * Whether [parent] has a sandbox by the definition it runs -- the one in [configs] its own configuration

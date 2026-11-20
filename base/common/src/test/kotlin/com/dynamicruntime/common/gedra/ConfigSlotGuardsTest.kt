@@ -131,7 +131,11 @@ class ConfigSlotGuardsTest : StringSpec({
         val copied = gedraConfigToEntries(SandboxConfigs.rebind(source))
         // The definition is derived from the parent's, and the customers are left out: the platform declares each once.
         withClue("SandboxConfigs.rebind copies customers, which it leaves out on purpose") { copied[CCT.customerDef] shouldBe null }
-        for (slot in CCT.slots - CCT.clientDef - CCT.customerDef) {
+        for (slot in buildList {
+            addAll(CCT.slots)
+            remove(CCT.clientDef)
+            remove(CCT.customerDef)
+        }) {
             withClue("Slot $slot: SandboxConfigs.rebind drops or changes it") { copied[slot] shouldBe entries[slot] }
         }
     }
