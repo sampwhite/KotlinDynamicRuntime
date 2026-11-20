@@ -10,6 +10,8 @@ import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.MNU
+import com.dynamicruntime.common.gedra.workflow.CDF
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.user.UADEP
 
 /**
@@ -30,8 +32,11 @@ class ChangeWay(
     val dryRun: Boolean = false,
 )
 
-/** The kinds of change about one part of a client, under a heading of the guide. */
-class ChangeGroup(val title: String, val ways: List<ChangeWay>)
+/**
+ * The kinds of change about one part of a client, under a heading of the guide, with [notes] (Markdown, or null) on
+ * what to change as well as how, shown above the table.
+ */
+class ChangeGroup(val title: String, val ways: List<ChangeWay>, val notes: String? = null)
 
 /** Where the bundle editor is, for a change no editor makes. */
 private const val bundleEditor = "Clients page, **Sandbox and publishing**, then **Open every bundle**"
@@ -118,7 +123,8 @@ val changeGroups: List<ChangeGroup> = listOf(
         "Workflows",
         listOf(
             ChangeWay(
-                "A workflow made from a template, the starter New form among them: made, renamed, or its tasks' traits changed",
+                "A workflow made from a template, the starter New form and core details among them: made, renamed, or its " +
+                    "tasks' traits changed",
                 workflowsPanel, UADEP.clientWorkflowSave, ATOOL.saveTemplateWorkflow,
                 dryRun = true,
             ),
@@ -137,6 +143,21 @@ val changeGroups: List<ChangeGroup> = listOf(
                 bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
             ),
         ),
+        // What the configuration assistant got wrong in the first trial run (issue #1868), said where it reads first.
+        notes = """
+            **A form's fields go on both its creation and core details workflows.** The New form, which the creation
+            workflow makes, asks for them, and the core details workflow is where they are seen and changed once the form
+            exists. So a form that collects a grant's amount and description has the trait holding them on both, whether
+            or not the request names core details. The two differ only when a client wants them to, such as core details
+            asking for more than the New form, once the form exists.
+
+            **A review builds on core details.** A review workflow is made eligible once the form has the fact
+            `${CDF.coreDetailsComplete}`, so the answers it reviews are there. Its approval task collects no traits and
+            offers no save, and shows above its button the traits of tasks of its own workflow, never another
+            workflow's: the nearest task before it that collects traits, or the tasks its `${WFD.showTasks}` names. To
+            show the form's answers, the review has a task before the approval that lists their traits and offers no
+            save. [The committee review](../demo-client/committee-review.md) is a whole example.
+        """.trimIndent(),
     ),
     ChangeGroup(
         "The forms list",
@@ -303,6 +324,10 @@ cards are written as described in [Menu and home cards](menu-and-home-cards.md),
 private fun groupSection(group: ChangeGroup): String = buildString {
     appendLine("## ${group.title}")
     appendLine()
+    group.notes?.let {
+        appendLine(it)
+        appendLine()
+    }
     appendLine("| Change | Where a person makes it | Endpoint | Assistant tool | Dry run |")
     appendLine("|---|---|---|---|---|")
     for (way in group.ways) {

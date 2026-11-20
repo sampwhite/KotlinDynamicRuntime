@@ -7,11 +7,13 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import java.util.concurrent.ConcurrentHashMap
 
@@ -132,20 +134,42 @@ object AssistantPrompt {
             |  ${ATOOL.setSharedField} on every form that shows the field. When it is not plain which the administrator
             |  means, ask.
             |
-            |The New form:
+            |The New form and core details:
             |- The New form page asks for exactly the traits of the client's creation workflow: the workflow whose entry is
             |  'creation'. It has one task and one save, of kind 'create'. A client has at most one: never add a second.
-            |- A new workflow often wants something the New form does not ask for. Either add the trait to the creation
-            |  workflow's task, so every new form asks for it, or have the new workflow's own task collect it once a form
-            |  exists. Say which you chose, and why.
+            |- The core details workflow, whose entry is 'coreDetails', is also at most one per client. It is where a
+            |  form's answers are seen and changed once the form exists, and once every trait it requires has an entry,
+            |  the form has the fact '${CDF.coreDetailsComplete}'.
+            |- The two cover the same data. When the administrator asks for a form that collects some fields, the traits
+            |  holding them go on the creation workflow's task and on the core details workflow's, whether or not the
+            |  request names core details: the New form asks for them, and core details shows them and lets them be
+            |  changed. They differ only when the administrator wants them to, such as core details asking for more than
+            |  the New form, once the form exists. Say so when you make them differ.
+            |- A new workflow often wants something the forms do not ask for yet. Either add the trait to both of those
+            |  workflows, so every form has it, or have the new workflow's own task collect it once a form exists. Say
+            |  which you chose, and why.
             |- view_workflow with no workflowId shows the creation workflow as it runs, if there is one.
-            |- A workflow made from a template ('fromTemplate') -- the starter New form among them -- is changed with
-            |  save_template_workflow: its name, and per task its label and the traits it collects. It keeps everything
-            |  else the workflow says, its saves' labels and its layouts among them. Do not write such a workflow with
-            |  patch_config: a field you give there is written whole, the workflow's whole 'definition' among them, so
-            |  anything you leave out of it is lost.
-            |- The core details workflow, whose entry is 'coreDetails', is also at most one per client: it holds what every
-            |  form carries and edits after it exists. Data a form needs from its start belongs on the New form instead.
+            |- A workflow made from a template ('fromTemplate') -- the starter New form and core details among them -- is
+            |  changed with save_template_workflow: its name, and per task its label and the traits it collects. It keeps
+            |  everything else the workflow says, its saves' labels and its layouts among them. Do not write such a
+            |  workflow with patch_config: a field you give there is written whole, the workflow's whole 'definition' among
+            |  them, so anything you leave out of it is lost.
+            |
+            |Reviews and approvals:
+            |- A review works on a form's answers, so it waits for them: give it an eligibility test on
+            |  '${CDF.coreDetailsComplete}', and a form may enter it only once its core details are complete.
+            |- An approval task collects no traits and offers no saves. It is a button, pressed by whoever its
+            |  'approveWhen' admits, by default a reviewer who does not own the form ('kdr:reviewer,~kdr:isOwner').
+            |  'kdr:reviewer' comes from the task's 'userHasLabel' function, naming a label the client lists in its
+            |  'userLabels', and the fact the approval asserts is declared in '${CCT.cfactDef}'. Save a new label with
+            |  ${ATOOL.setClientDefinition} before you dry run the workflow: a dry run judges it against the client as
+            |  saved, so a label only dry-run is not there yet.
+            |- An approval shows, read-only above its button, the traits of tasks of its own workflow: the nearest task
+            |  before it that collects traits, or the tasks its 'showTasks' names. It never shows another workflow's task.
+            |  To show the form's answers, give the review a task before the approval that lists their traits and offers
+            |  no save: it shows them as the form holds them, which the eligibility test makes sure are there.
+            |- read_doc '${ConfDemo.docIdPrefix}committee-review' is a whole review: its eligibility test, a task only the
+            |  committee saves, and an approval in two steps.
             |
             |Wording:
             |- People describe words by where they see them ("the line under the title on Home", "the invitation mail").
