@@ -326,6 +326,7 @@ A signed-in caller at the `operator` level or above and holding `allClients` may
 | GET | `/operator/cache/state` |  | Reports this node's in-memory table caches and the change dates all nodes share. |
 | GET | `/operator/db/tables` |  | Lists the database tables registered for this instance. |
 | GET | `/operator/env/reference` |  | The environment variables this node declares, assembled as Markdown with each variable's resolved value here. |
+| GET | `/operator/envGate/anonymous` |  | What this node answers without env access behind its env gate: the gate's own paths, health, and the allow list. |
 | GET | `/operator/fileStore/buckets` |  | The file store's buckets -- every one a component declared -- and, in the summary, what the store is. |
 | GET | `/operator/fileStore/download` |  | One file of a bucket, as a download under the name it was stored under, else its key's last segment with its kind's extension -- checked against the hash its record holds, as every read is, so a damaged file is refused rather than handed out as good. A 404 when there is no such file. |
 | GET | `/operator/fileStore/download/meta` |  | What one file of a bucket is, without the file: its record. The download's inputs, and the same 404. |

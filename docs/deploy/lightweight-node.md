@@ -556,7 +556,9 @@ straight to Google's sign-in, with no page of the application's first, and comes
 Only an account on your admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) gets through, which needs that domain to be a Google
 Workspace domain. The sign-in grants env access for 12 hours. With nobody signed in, it also signs the person in as
 their own user; they may then sign in as, or switch to, another user and keep their env access. Every other request
-without env access is refused, except `/kda/health`.
+without env access is refused, except `/kda/health` and the endpoints the deployment's allow list (the
+`envGateAllowList` config key, which a flavor sets) names, for a public website beside the node to call. The operator
+view `/kda/operator/envGate/anonymous` lists everything the node answers without env access.
 
 It needs:
 

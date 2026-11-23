@@ -9,6 +9,10 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.context.KdrRequest
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.ETAG
+import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.KdrEndpoint
+import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.client.OutboundHttpService
@@ -17,8 +21,13 @@ import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.HttpUtil
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.http.request.SECT
+import com.dynamicruntime.common.http.request.sectionOf
 import com.dynamicruntime.common.node.NodeService
+import com.dynamicruntime.common.schema.PRES
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.sql.SecretsUtil
+import com.dynamicruntime.common.startup.hasClientCopy
 import com.dynamicruntime.common.util.base64Encode
 import com.dynamicruntime.common.util.getOptStr
 import com.dynamicruntime.common.util.jsonMap
@@ -116,6 +125,34 @@ object EGATE {
 
     /** The section a gated node still answers without env access: health, for a load balancer or a monitor. */
     const val openSection = "health"
+
+    /**
+     * Instance-config key: the **allow list** (issue #1866), the endpoints a gated node also answers for a caller
+     * without env access -- what a public website beside the node calls. A list of entries, or one text of entries
+     * separated by commas, each an endpoint as `<METHOD> <path>` under the API root, such as
+     * `POST /auth/newContact/sendVerify`. A client's own copy of an endpoint is named by its path
+     * (`POST /gedra/<client>/formDoc`), so it is open for that client alone. The roles and the read scope still
+     * apply to what it lets through: it only decides whether a caller without env access may try. Set by a flavor;
+     * the boot refuses one with the gate off, and an entry that names no endpoint.
+     */
+    const val allowList = "envGateAllowList"
+
+    /** The operator view of a gated node's anonymous surface (issue #1866). */
+    const val surfacePath = "/${SECT.operator}/envGate/anonymous"
+
+    // The operator view's types and fields.
+    const val surfaceType = "EnvGateSurface"
+    const val surfaceEntryType = "EnvGateSurfaceEntry"
+    const val gate = "gate"
+    const val entries = "entries"
+    const val method = "method"
+    const val path = "path"
+    const val source = "source"
+
+    // Where an entry of the anonymous surface comes from.
+    const val sourceGate = "gate"
+    const val sourceHealth = "health"
+    const val sourceAllowList = "allowList"
 
     /**
      * The cookie holding a gate sign-in's env access: the address Google vouched for and when the access ends,
@@ -283,10 +320,27 @@ object EnvGate {
      * on a gated node env access is the Google sign-in's alone, and an administrator's code sign-in granting it
      * (`KDR_ENV_AUTH_FROM_ADMIN_LOGIN`). And it refuses simulation outside its fence: a test instance in `local` or
      * `unit` that is not a public test deployment.
+     *
+     * The allow list ([EGATE.allowList], issue #1866) is refused with the gate off, where it would mean nothing, and
+     * when an entry does not parse or names no endpoint among [endpoints] -- the shared surface, before any client's
+     * copies are made, so a client's own path is held to the shared endpoint it copies. A typo would otherwise quietly
+     * keep a path closed, or open the wrong one.
      */
-    fun checkBoot(config: KdrInstanceConfig) {
+    fun checkBoot(config: KdrInstanceConfig, endpoints: Collection<KdrEndpoint>) {
         fun refuse(why: String): Nothing = throw KdrException("Refusing to start: $why")
         val mode = mode(config)
+        val allowed = try {
+            allowList(config)
+        } catch (e: KdrException) {
+            refuse(e.message.orEmpty())
+        }
+        if (allowed.isNotEmpty() && mode == EnvGateMode.none) {
+            refuse("'${EGATE.allowList}' is set, but the env gate is off (${EGATE.envGateEnvVar}): it would open nothing.")
+        }
+        val unknown = allowed.filter { !namesEndpoint(it, endpoints) }
+        if (unknown.isNotEmpty()) {
+            refuse("'${EGATE.allowList}' names no endpoint at ${unknown.joinToString { "'$it'" }}.")
+        }
         val explicitSimulate = config.get(EGATE.simulate) as? Boolean
         if (explicitSimulate == true) {
             val fenced = config.isTestInstance && (config.env == ENV.local || config.env == ENV.unit) &&
@@ -382,6 +436,7 @@ object EnvGate {
         }
         if (cxt.envAuthEmail != null) return false
         if (focus == ContextFocus.api && handler.section == EGATE.openSection) return false
+        if (focus == ContextFocus.api && "${handler.method} ${handler.appPath}" in allowList(config)) return false
         // A page -- the web app's or the portal's, the documents among them -- is a visit a browser makes, so it goes to
         // Google; anything else is answered with the 401 a page's own code follows.
         if ((focus == ContextFocus.app || focus == ContextFocus.content) && (handler.method == "GET" || handler.method == "HEAD")) {
@@ -650,6 +705,124 @@ object EnvGate {
 
     /** The state cookie for the sign-in whose state is [state]. */
     private fun stateCookieName(state: String): String = "${EGATE.stateCookie}-$state"
+
+    /**
+     * The allow list ([EGATE.allowList]): its entries as `<METHOD> <path>`, the method upper-cased and one space
+     * between. Throws when an entry is not of that shape.
+     */
+    fun allowList(config: KdrInstanceConfig): Set<String> {
+        val raw = when (val value = config.get(EGATE.allowList)) {
+            null -> return emptySet()
+            is Collection<*> -> value.map { it?.toString().orEmpty() }
+            else -> value.toString().split(',')
+        }
+        return raw.map { it.trim() }.filter { it.isNotEmpty() }.map { entry ->
+            val parts = entry.split(Regex("\\s+"))
+            val method = parts.first().uppercase()
+            if (parts.size != 2 || HttpMethod.entries.none { it.name == method } || !parts[1].startsWith("/")) {
+                throw KdrException(
+                    "'${EGATE.allowList}' entry '$entry' is not '<METHOD> <path>', such as 'POST /auth/newContact/sendVerify'.",
+                )
+            }
+            "$method ${parts[1]}"
+        }.toSet()
+    }
+
+    /**
+     * Whether the allow-list [entry] names one of [endpoints], or a client's own copy of one: a path whose second
+     * segment is a client, over a shared endpoint that has a copy per client.
+     */
+    private fun namesEndpoint(entry: String, endpoints: Collection<KdrEndpoint>): Boolean {
+        val method = entry.substringBefore(' ')
+        val path = entry.substringAfter(' ')
+        fun named(p: String, copied: Boolean) =
+            endpoints.any { it.method.name == method && it.path == p && it.client == null && (!copied || hasClientCopy(it)) }
+        if (named(path, copied = false)) return true
+        val segments = path.removePrefix("/").split('/')
+        if (segments.size < 2) return false
+        val shared = "/" + (listOf(segments[0]) + segments.drop(2)).joinToString("/")
+        return named(shared, copied = true)
+    }
+
+    /**
+     * One path a gated node answers without env access (issue #1866): an endpoint's [method] and full [path], under
+     * the API root, and where it comes from ([EGATE.sourceGate], [EGATE.sourceHealth], [EGATE.sourceAllowList]).
+     * Reads as `GET /kda/health`.
+     */
+    data class AnonymousPath(val method: String, val path: String, val source: String) {
+        override fun toString(): String = "$method $path"
+    }
+
+    /**
+     * Every path this node answers without env access, when its env gate is on (issue #1866): the gate's own two
+     * paths, the `health` section's endpoints, and the allow list. Empty with the gate off, where the sections decide
+     * instead. Made from what the node actually loaded, so an endpoint a component outside this repository adds shows
+     * here, where the generated endpoint reference never sees it. Sorted by path, then method.
+     *
+     * Theme: #ENVAT.
+     */
+    fun anonymousSurface(cxt: KdrCxt): List<AnonymousPath> {
+        val config = cxt.instanceConfig
+        if (!isOn(config)) return emptyList()
+        val api = "/" + ContextRoot.apiOf(config)
+        val gatePaths = listOf(EGATE.startPath, EGATE.callbackPath).map { AnonymousPath(HttpMethod.GET.name, api + it, EGATE.sourceGate) }
+        val health = cxt.getGlobalSchema().endpoints.values
+            .filter { it.client == null && sectionOf(it.path) == EGATE.openSection }
+            .map { AnonymousPath(it.method.name, api + it.path, EGATE.sourceHealth) }
+        val allowed = allowList(config).map { AnonymousPath(it.substringBefore(' '), api + it.substringAfter(' '), EGATE.sourceAllowList) }
+        return (gatePaths + health + allowed).distinctBy { it.toString() }.sortedWith(compareBy({ it.path }, { it.method }))
+    }
+
+    /**
+     * For a component's own tests (issue #1866): throws, saying what differs, unless [cxt]'s anonymous surface is
+     * exactly [expected], each written as `<METHOD> <path>` with the API root (`GET /kda/health`). Plain Kotlin, so a
+     * test in any framework can call it; a new public path then fails the test of whichever component added it.
+     */
+    fun requireAnonymousSurface(cxt: KdrCxt, expected: Collection<String>) {
+        val actual = anonymousSurface(cxt).map { it.toString() }.toSet()
+        val wanted = expected.toSet()
+        if (actual == wanted) return
+        val added = (actual - wanted).sorted()
+        val missing = (wanted - actual).sorted()
+        throw IllegalStateException(
+            "The anonymous surface differs from what was expected." +
+                (if (added.isEmpty()) "" else " Answers without env access, unexpectedly: ${added.joinToString()}.") +
+                (if (missing.isEmpty()) "" else " Expected but not answered: ${missing.joinToString()}."),
+        )
+    }
+
+    /** The operator view of [anonymousSurface] (issue #1866), in the operator section's module. */
+    fun defineOperatorEndpoint(builder: SchModuleBuilder) = with(builder) {
+        type(EGATE.surfaceEntryType) {
+            type = SCT.kObject
+            presentation = PRES.table
+            property(EGATE.method, "The HTTP method.", required = true)
+            property(EGATE.path, "The path, under the API root.", required = true) { presentation = PRES.identifier }
+            property(EGATE.source, "Why it answers: the gate's own path, the health section, or the allow list.", required = true)
+        }
+        type(EGATE.surfaceType) {
+            type = SCT.kObject
+            property(EGATE.gate, "The env gate's mode on this node.", required = true)
+            property(EGATE.entries, "Every path this node answers without env access; empty with the gate off.", required = true) {
+                type = SCT.array
+                items { ref(EGATE.surfaceEntryType) }
+            }
+        }
+        generalEndpoint(
+            EGATE.surfacePath,
+            "What this node answers without env access behind its env gate: the gate's own paths, health, and the allow list.",
+            HttpMethod.GET,
+            outputRef = EGATE.surfaceType,
+            tags = setOf(ETAG.internal),
+        ) { c, _ ->
+            mapOf(
+                EGATE.gate to mode(c.instanceConfig).name,
+                EGATE.entries to anonymousSurface(c).map {
+                    mapOf(EGATE.method to it.method, EGATE.path to it.path, EGATE.source to it.source)
+                },
+            )
+        }
+    }
 
     /**
      * A gate sign-in's env access, in [EGATE.accessCookie]: the address Google vouched for, and when the access ends.

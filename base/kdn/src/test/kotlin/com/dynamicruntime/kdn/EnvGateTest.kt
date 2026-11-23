@@ -13,6 +13,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.EGATE
 import com.dynamicruntime.common.user.INVITE
@@ -319,6 +320,60 @@ class EnvGateTest : StringSpec({
         after.createdCxt?.envAuthEmail shouldBe "bo.apart@$domain"
     }
 
+    // --- The allow list and the anonymous surface (issue #1866) ---
+
+    "the allow list opens the endpoints it names to a caller without env access, and nothing beside them" {
+        val cxt = Startup.mkTestBootCxt(
+            "gateAllow", "envGateAllow",
+            gateSettings(mapOf(EGATE.allowList to listOf("GET /auth/ui/config", "get  /gedra/acme/formDoc"))),
+        )
+        val client = TestHttpClient(cxt.instanceConfig)
+        client.sendGetRequest(AEP.authUiConfig).rptStatusCode shouldBe EXC.ok
+        // Its neighbor in the same section is not on the list.
+        client.sendGetRequest(AEP.selfInfo).rptStatusCode shouldBe EXC.authNeeded
+        // An entry is normalized: the method upper-cased, one space.
+        EnvGate.allowList(cxt.instanceConfig) shouldBe setOf("GET /auth/ui/config", "GET /gedra/acme/formDoc")
+    }
+
+    "the anonymous surface is the gate's paths, health, and the allow list, and a test can hold a node to it" {
+        val cxt = Startup.mkTestBootCxt(
+            "gateSurface", "envGateSurface",
+            gateSettings(mapOf(EGATE.allowList to "GET /auth/ui/config, POST /auth/newContact/sendVerify")),
+        )
+        val expected = listOf(
+            "GET /kda/auth/envGate/callback", "GET /kda/auth/envGate/start", "POST /kda/auth/newContact/sendVerify",
+            "GET /kda/auth/ui/config", "GET /kda/health",
+        )
+        val surface = EnvGate.anonymousSurface(cxt)
+        surface.map { it.toString() } shouldBe expected
+        surface.first { it.path == "/kda/health" }.source shouldBe EGATE.sourceHealth
+        surface.first { it.path == "/kda/auth/ui/config" }.source shouldBe EGATE.sourceAllowList
+        EnvGate.requireAnonymousSurface(cxt, expected)
+        shouldThrow<IllegalStateException> { EnvGate.requireAnonymousSurface(cxt, expected - "GET /kda/auth/ui/config") }
+            .message.orEmpty() shouldContain "unexpectedly: GET /kda/auth/ui/config"
+    }
+
+    "the operator view shows the anonymous surface, and no gate means no surface" {
+        val cxt = TestInstances.default("gateSurfaceView")
+        val admin = TestUser.createFullAdmin(cxt, "surface.admin@example.com")
+        val view = admin.getData(EGATE.surfacePath)
+        view[EGATE.gate] shouldBe "none"
+        view[EGATE.entries] shouldBe emptyList<Any?>()
+    }
+
+    "the boot refuses an allow list with the gate off, one that does not parse, and one that names no endpoint" {
+        fun refusal(name: String, settings: Map<String, Any?>): String =
+            shouldThrow<KdrException> { Startup.mkTestBootCxt(name, "${name}Inst", settings) }.message.orEmpty()
+
+        refusal("allowGateOff", mapOf(EGATE.allowList to listOf("GET /auth/ui/config"))) shouldContain "gate is off"
+        refusal("allowShape", gateSettings(mapOf(EGATE.allowList to listOf("/auth/ui/config")))) shouldContain "is not '<METHOD> <path>'"
+        refusal("allowUnknown", gateSettings(mapOf(EGATE.allowList to listOf("GET /auth/no/such")))) shouldContain "'GET /auth/no/such'"
+        // A wrong method is no endpoint either, nor a client path over a section that has no copies.
+        refusal("allowMethod", gateSettings(mapOf(EGATE.allowList to listOf("POST /auth/ui/config")))) shouldContain "names no endpoint"
+        refusal("allowNotCopied", gateSettings(mapOf(EGATE.allowList to listOf("GET /auth/acme/ui/config")))) shouldContain
+            "names no endpoint"
+    }
+
     "a simulated sign-in on an admin host under localhost lands as the simulated user, with no trip to Google" {
         val cxt = Startup.mkTestBootCxt(
             "gateSimulated", "envGateSimulated",
@@ -385,8 +440,8 @@ class EnvGateTest : StringSpec({
             for ((k, v) in gateSettings()) put(k, v)
             if (publicUrl != null) put(INVITE.publicUrl.name, publicUrl)
         }
-        shouldThrow<KdrException> { EnvGate.checkBoot(realNode(null)) }.message.orEmpty() shouldContain INVITE.publicUrl.name
-        EnvGate.checkBoot(realNode("https://gate.example"))
+        shouldThrow<KdrException> { EnvGate.checkBoot(realNode(null), emptyList()) }.message.orEmpty() shouldContain INVITE.publicUrl.name
+        EnvGate.checkBoot(realNode("https://gate.example"), emptyList())
 
         // On a public test deployment (a test instance the public can reach, in `dev`), which passes its own checks.
         fun publicRefusal(name: String, settings: Map<String, Any?>): String = shouldThrow<KdrException> {
