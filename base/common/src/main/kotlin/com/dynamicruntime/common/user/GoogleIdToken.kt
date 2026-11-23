@@ -64,6 +64,12 @@ object GOOG {
     const val name = "name"
 
     /**
+     * The `nonce` claim: the value the sign-in that asked for the token sent, echoed inside the signed token, so a
+     * token cannot be replayed into another sign-in (the env gate's redirect flow, issue #1865).
+     */
+    const val nonce = "nonce"
+
+    /**
      * The Google Workspace *hosted domain* claim. Present -- and inside the signed token -- only for a Workspace
      * account; a consumer Gmail account carries none. Google's backend-auth guidance names this the claim that
      * makes it authoritative for the address's domain (issue #429). The request parameter of the same name is
@@ -140,6 +146,11 @@ class GoogleIdToken(
      * decision (see [AddressRules.isGoogleAuthoritative] and the edge's Env Auth gate, issue #429).
      */
     val hostedDomain: String?,
+    /**
+     * The `nonce` claim, or null when the token carries none. Carried, not checked here: only the sign-in that sent
+     * one knows what it must be (`EnvGate`, issue #1865).
+     */
+    val nonce: String? = null,
 )
 
 /**
@@ -301,6 +312,7 @@ class GoogleIdTokenVerifier(private val clientId: String, private val keySource:
             emailVerified = claims.getOptBool(GOOG.emailVerified) == true,
             displayName = claims.getOptStr(GOOG.name),
             hostedDomain = claims.getOptStr(GOOG.hd),
+            nonce = claims.getOptStr(GOOG.nonce),
         )
     }
 

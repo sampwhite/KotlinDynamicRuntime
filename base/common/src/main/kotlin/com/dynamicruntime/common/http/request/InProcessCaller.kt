@@ -124,7 +124,8 @@ object InProcessCaller {
      * Never env-authed: env auth is a fact about a channel -- an edge vouching, or a node assuming it of a request that
      * came straight to it -- and a call made in this process came through no channel. A node that assumes env auth of a
      * request with no forwarding header would otherwise assume it of every in-process call, and with it test access and
-     * the `_debug` tags, which the person need not hold.
+     * the `_debug` tags, which the person need not hold. The env gate (issue #1865) lets such a call through all the same,
+     * without granting it env auth: the person it acts for passed the gate to ask for it.
      *
      * Themes: #ENVAT, #SBXAU.
      */

@@ -99,6 +99,12 @@ The environment name -- `local`, `unit`, `prod`. Drives environment-specific beh
 
 On a public test deployment with **no edge** -- an ephemeral instance, whose database is refreshed or discarded -- a signed-in user is env-authed when their address is on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`) and they hold `allClients`, read live (issue #1150). Such an address may also sign in, and is mailed its codes for real, whatever `KDR_PUBLIC_SIGN_IN` says. Refused unless `KDR_PUBLIC_TEST_DEPLOYMENT` is on, `KDR_TRUST_ENV_AUTH_HEADER` is off (there is no edge to strip it), and the admin domain is set and is not a consumer mail domain, every address of which would be an administrator's.
 
+### `KDR_ENV_GATE`
+
+**Default when unset:** none
+
+Puts the whole deployment behind a Google sign-in (issue #1865): `googleChallenge` sends a visit to a page (the web app's or the portal's) without env access straight into Google's sign-in, with no page of ours first, and back to the page asked for; any other request without env access is refused. Only an account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for it, gets through. Its env access is kept apart from the user signed in, and with nobody signed in the sign-in signs the person in as their own user too. Google stands in for a VPN and SSO. `none` (the default) leaves the node as its sections say. Needs `KDR_GOOGLE_CLIENT_ID`, the client secret in the secrets file, and `KDR_PUBLIC_URL`. The `envGate` config option wins over this.
+
 ### `KDR_FLAVOR_DIR`
 
 **Default when unset:** `flavor-overlays` under the workspace
@@ -185,9 +191,9 @@ Forces this to be a test instance, independent of environment -- exposing `forTe
 
 ### `KDR_TRUST_ENV_AUTH_HEADER`
 
-**Default when unset:** on for a test instance, off otherwise
+**Default when unset:** on for a test instance not behind the env gate, off otherwise
 
-Whether this node believes the `X-Kdr-Env-Email` header an edge server sets on a request it has already authenticated. A node cannot verify that claim -- the real guarantee is that only the edge can reach it, a network property -- so the deployment asserts it here. A node not behind an edge leaves it off. Env auth is a property of the channel, not the user: it grants no role and never stands in for a login. The `trustEnvAuthHeader` config option wins over this.
+Whether this node believes the `X-Kdr-Env-Email` header an edge server sets on a request it has already authenticated. A node cannot verify that claim -- the real guarantee is that only the edge can reach it, a network property -- so the deployment asserts it here. A node not behind an edge leaves it off. Env auth is a property of the channel, not the user: it grants no role and never stands in for a login. Behind the env gate (`KDR_ENV_GATE`) env access is the Google sign-in's alone, so it defaults off there, and turning it on is refused. The `trustEnvAuthHeader` config option wins over this.
 
 ### `KDR_WORKSPACE_DIR`
 

@@ -418,15 +418,34 @@ class AuthFormHandler(
             ?: throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.googleNotConfigured), code = EXC.notFound)
         // Google throttles its own side, but this endpoint still accepts an attacker-supplied blob and does
         // RSA work on it, so it gets the same per-IP ceiling the password path has.
-        val ip = cxt.forwardedFor ?: unknownIp
-        if (!rateLimiter.allow("goog:$ip", RL.pwPerIpMax, RL.pwWindowMs, cxt.now().toEpochMilliseconds())) {
+        if (!allowGoogleAttempt(cxt, cxt.forwardedFor)) {
             throw KdrException.mkMsg(KdrMsg(AFRAG.auth, AERR.ns, AERR.tooManyLoginAttempts), code = EXC.tooManyRequests)
         }
-        val token = verifier.verify(cxt, credential)
+        return loginByGoogleToken(cxt, verifier.verify(cxt, credential))
+    }
 
+    /**
+     * Whether a Google sign-in attempt from [ip] is within the per-IP ceiling the password path has, counting it: the
+     * one ceiling for this endpoint and the env gate's callback (issue #1865), which both do RSA work on what a caller
+     * sent, and the second a call out to Google too.
+     */
+    fun allowGoogleAttempt(cxt: KdrCxt, ip: String?): Boolean =
+        rateLimiter.allow("goog:${ip ?: unknownIp}", RL.pwPerIpMax, RL.pwWindowMs, cxt.now().toEpochMilliseconds())
+
+    /**
+     * Signs in as the person a **verified** Google ID token names: the Google sign-in's own path after the token is
+     * checked, shared by [loginByGoogle] and the env gate's redirect flow (`EnvGate`, issue #1865), so the two find
+     * and make users alike. The gate checks its own admission rules before calling this.
+     *
+     * Without [link], the Google account is neither looked up nor linked, and the sign-in lands by the verified address
+     * alone: for the gate's simulated sign-in, whose subject is made up.
+     */
+    fun loginByGoogleToken(cxt: KdrCxt, token: GoogleIdToken, link: Boolean = true): Map<String, Any?> {
         // An identity we have seen before: the link is the answer, and the email is not consulted at all.
-        userService.queryLinkedIdentity(cxt, LSRC.google, token.subject)?.let { linked ->
-            return completeLogin(cxt, googleUserOf(cxt, linked), byCode = false)
+        if (link) {
+            userService.queryLinkedIdentity(cxt, LSRC.google, token.subject)?.let { linked ->
+                return completeLogin(cxt, googleUserOf(cxt, linked), byCode = false)
+            }
         }
 
         // First sight of this Google account -- the only path that may touch an existing local user.
@@ -443,6 +462,7 @@ class AuthFormHandler(
         // The existing identity at the address, marked verified by Google's word for it, or a new one.
         val identity = userService.getOrCreateIdentity(cxt, email, verifiedAt = cxt.now())
         val row = googleUserOf(cxt, identity)
+        if (!link) return completeLogin(cxt, row, byCode = false)
         userService.insertLinkedIdentity(
             cxt, LSRC.google, token.subject, identity.identityId,
             // Captured for support and for showing the user what is linked -- never read back as an authority

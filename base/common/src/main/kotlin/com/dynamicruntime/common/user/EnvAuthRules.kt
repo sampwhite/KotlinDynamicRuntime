@@ -26,12 +26,15 @@ object ENVA {
 
     /** Env var that defaults [ACFG.trustEnvAuthHeader] when the config option is unset. */
     val trustEnvAuthHeaderEnvVar = EnvVarDef(
-        "KDR_TRUST_ENV_AUTH_HEADER", group = ENVGRP.application, defaultDoc = "on for a test instance, off otherwise",
+        "KDR_TRUST_ENV_AUTH_HEADER", group = ENVGRP.application,
+        defaultDoc = "on for a test instance not behind the env gate, off otherwise",
         description = "Whether this node believes the `X-Kdr-Env-Email` header an edge server sets on a request " +
             "it has already authenticated. A node cannot verify that claim -- the real guarantee is that only " +
             "the edge can reach it, a network property -- so the deployment asserts it here. A node not behind " +
             "an edge leaves it off. Env auth is a property of the channel, not the user: it grants no role and " +
-            "never stands in for a login. The `trustEnvAuthHeader` config option wins over this.",
+            "never stands in for a login. Behind the env gate (`KDR_ENV_GATE`) env access is the Google sign-in's " +
+            "alone, so it defaults off there, and turning it on is refused. The `trustEnvAuthHeader` config option " +
+            "wins over this.",
     )
 
     /** Env var that defaults [ACFG.assumeEnvAuth] when the config option is unset. */
@@ -132,12 +135,18 @@ object EnvAuthRules {
      * instance outside `local`/`unit` refuses to start, so the default cannot reach a real environment. The
      * config option and env var override it in **either** direction, so a test can exercise the untrusted path.
      *
+     * **Off by default behind the env gate** (issue #1865), test instance or not: there env access is the Google
+     * sign-in's alone, so the default must not hand it to a header, and a test instance must still be able to test
+     * the Google sign-in. Set explicitly on, it is refused at boot ([EnvGate.checkBoot]).
+     *
      * Theme: #ENVAT.
      */
     fun isTrusted(config: KdrInstanceConfig): Boolean =
-        (config.get(ACFG.trustEnvAuthHeader) as? Boolean)
-            ?: config.getEnvBool(ENVA.trustEnvAuthHeaderEnvVar)
-            ?: config.isTestInstance
+        explicitTrust(config) ?: (config.isTestInstance && !EnvGate.isOn(config))
+
+    /** The trust this node's configuration states -- the config option, else the env var -- or null when it states none. */
+    fun explicitTrust(config: KdrInstanceConfig): Boolean? =
+        (config.get(ACFG.trustEnvAuthHeader) as? Boolean) ?: config.getEnvBool(ENVA.trustEnvAuthHeaderEnvVar)
 
     /**
      * Whether this node **invents** env auth for a request that did not come through a proxy.
