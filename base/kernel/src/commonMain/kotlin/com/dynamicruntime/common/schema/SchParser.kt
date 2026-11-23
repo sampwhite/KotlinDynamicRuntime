@@ -175,7 +175,7 @@ class PendingFileRowRef(val field: SchType, val refName: String, val path: Strin
  * field, whose columns are -- and [where] names it.
  */
 @KdrPrivate
-class PendingKeyedType(val type: SchType, val path: String, val where: String)
+class PendingTypeCheck(val type: SchType, val path: String, val where: String)
 
 /** One declared branch: parsed in place ([inline]) or named for the resolution pass ([refName]). */
 @KdrPrivate
@@ -518,10 +518,10 @@ fun parseNode(
     if (tableRows.refName != null) {
         state.pendingFileRowRefs.add(PendingFileRowRef(schType, tableRows.refName, childPath(state.path().orEmpty(), SCH.fileRows)))
     }
-    if (schType.isDataTable()) state.pendingTableTypes.add(PendingKeyedType(schType, state.path().orEmpty(), where))
+    if (schType.isDataTable()) state.pendingTableTypes.add(PendingTypeCheck(schType, state.path().orEmpty(), where))
     // Its key's fields are judged once their `$ref`s are bound (issue #1521): a field's type may be a reference.
     if (schType.primaryKey.isNotEmpty()) {
-        state.pendingKeyedTypes.add(PendingKeyedType(schType, state.path().orEmpty(), where))
+        state.pendingKeyedTypes.add(PendingTypeCheck(schType, state.path().orEmpty(), where))
     }
     // The union was parsed before the type that owns it existed; give the boot check the name to complain
     // about now that it does.

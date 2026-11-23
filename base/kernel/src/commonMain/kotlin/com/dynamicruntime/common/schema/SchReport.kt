@@ -126,9 +126,9 @@ class SchParseState {
     val pendingItemRefs = mutableListOf<PendingItemRef>()
     val pendingMapValueRefs = mutableListOf<PendingMapValueRef>()
     val pendingBranchRefs = mutableListOf<PendingBranchRef>()
-    val pendingKeyedTypes = mutableListOf<PendingKeyedType>()
+    val pendingKeyedTypes = mutableListOf<PendingTypeCheck>()
     val pendingFileRowRefs = mutableListOf<PendingFileRowRef>()
-    val pendingTableTypes = mutableListOf<PendingKeyedType>()
+    val pendingTableTypes = mutableListOf<PendingTypeCheck>()
     private val segments = ArrayDeque<String>()
 
     fun enter(segment: String) = segments.addLast(segment)

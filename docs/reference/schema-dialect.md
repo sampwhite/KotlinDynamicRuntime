@@ -75,7 +75,7 @@ Wherever a schema is written: a type declared by name, a field's own schema, or 
 | `g-longText` | True or false | Marks a string as long text, free text that may run over several lines, which a form draws as a text area. |
 | `g-fileKinds` | A list of text | On a field of format 'gedra-file', the kinds of file it may hold, such as 'png' or 'mp4'. A file's kind is told by its bytes. |
 | `g-fileMaxSize` | A whole number of bytes | On a field of format 'gedra-file', the largest file it may hold, in bytes. A file is held to the smaller of this and its kind's own largest. |
-| `g-fileRows` | An object | On a file field holding a CSV table (kind 'csv'), the type of one row: its properties are the table's columns, each a scalar, and a table is checked against it when its form is saved. |
+| `g-fileRows` | A schema object | On a file field holding a CSV table (kind 'csv'), the type of one row: its properties are the table's columns, each a scalar, and a table is checked against it when its form is saved. |
 | `g-fileMaxRows` | A whole number of rows | On a file field holding a CSV table, the most rows its table may hold: 1 to 5,000, and 1,000 when unset. |
 | `g-derived` | True, false or an object | Marks a property the caller does not supply, because something else produces it. |
 | `g-counter` | Text | The client's counter that numbers this plain string: a form shows the next id before it is saved, and it does not change once stored. |

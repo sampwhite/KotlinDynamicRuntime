@@ -65,7 +65,13 @@ class DataTableTest {
         // A whole-number column takes a whole number written with a fraction, and nothing else.
         assertEquals(3L, typedCell("3.0", col("count")).value)
         assertEquals("'3.5' is not a whole number.", typedCell("3.5", col("count")).problem)
-        assertEquals("'1e21' is not a whole number.", typedCell("1e21", col("count")).problem)
+        // Whole, but too large to hold exactly, is said to be so.
+        assertEquals("'1e21' is too large a whole number.", typedCell("1e21", col("count")).problem)
+        assertEquals(
+            "'12345678901234567890' is too large a whole number.",
+            typedCell("12345678901234567890", col("count")).problem,
+        )
+        assertEquals(1.5e20, typedCell("150000000000000000000", col("amount")).value)
     }
 
     @Test
@@ -82,7 +88,21 @@ class DataTableTest {
         assertEquals("meal", typedCell("Meal", col("category")).value)
         assertEquals("meal", typedCell("MEAL", col("category")).value)
         assertEquals("'hotel' is not one of the choices.", typedCell("hotel", col("category")).problem)
-        assertEquals(" as typed ", typedCell(" as typed ", col("note")).value)
+        // Free text is read without the spaces around it, as a form's field is.
+        assertEquals("as typed", typedCell(" as typed ", col("note")).value)
+    }
+
+    @Test
+    fun aColumnThatKeepsItsSpacesKeepsThem() {
+        val kept = parseSchemaTypes(
+            mapOf(
+                "ns.Row" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf("code" to mapOf(SCH.type to SCT.string, SCH.outerWhitespace to "keep")),
+                ),
+            ),
+        ).getValue("ns.Row")
+        assertEquals(" A1 ", typedCell(" A1 ", tableColumns(kept).single()).value)
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
@@ -129,6 +130,14 @@ class DataTableLinkTest : StringSpec({
         refusal(upload("tip.csv", "day,amount,tip\n2026-11-02,5,1\n")) shouldContain "'tip', which is not a column"
         refusal(upload("noday.csv", "amount\n5\n")) shouldContain "no 'day'"
         refusal(upload("long.csv", "day,amount\n" + (1..4).joinToString("") { "2026-11-0$it,$it\n" })) shouldContain "The table has 4 rows; this field holds at most 3."
+    }
+
+    "a table whose bytes are gone from the store refuses the save, as any unusable file does" {
+        val text = "day,amount\n2026-11-09,9\n"
+        val lines = upload("gone.csv", text)
+        val hash = owner.getItem(DFILE.infoPath, mapOf(DFILE.fileId to lines))[DFILE.hash].toOptStr().shouldNotBeNull()
+        FileStoreService.get(cxt).forOwner(cxt, client).delete(cxt, DFILE.bucket, "clients/$client/files/$hash") shouldBe true
+        refusal(lines) shouldContain "whose content is no longer stored"
     }
 
     "a table field takes only a CSV table" {

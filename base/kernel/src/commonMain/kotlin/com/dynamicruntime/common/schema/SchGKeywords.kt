@@ -33,7 +33,8 @@ object SchGKeywords {
         SCH.longText to boolean,
         SCH.fileKinds to textList,
         SCH.fileMaxSize to SchKeywordShape("a whole number of bytes", SchShapeForm.NumberLike),
-        SCH.fileRows to obj,
+        // A schema node, as `items` is: the walk of a stored schema descends into an inline row type.
+        SCH.fileRows to SchKeywordShape("a schema object", SchShapeForm.Node),
         SCH.fileMaxRows to SchKeywordShape("a whole number of rows", SchShapeForm.NumberLike),
         SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
         SCH.counter to text,

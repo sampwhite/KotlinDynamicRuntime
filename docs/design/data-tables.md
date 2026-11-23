@@ -71,7 +71,9 @@ fewer columns, fewer choices, more required. A `$ref` row type is the shared typ
 - **Each cell** is read as its column's type (`typedCell`) by the same code on both sides: a number by
   `plainNumberOrNull` -- not `toDoubleOrNull`, which reads `7d` on the JVM and not in JS -- kept whole when it is
   whole, so `12.0` is 12; an integer column refuses a fraction; a boolean by its spellings (yes, true, ...); a day as
-  `yyyy-MM-dd`; a choice by its value, then its label, ignoring case. An empty cell is no value.
+  `yyyy-MM-dd`; a choice by its value, then its label, ignoring case. Every cell is read without the spaces around
+  it, as a form's field is -- free text too, unless its column keeps them (`g-outerWhitespace: keep`) -- and an empty
+  cell is no value. A whole number too large to hold exactly is refused as that, not as a fraction.
 - **Each row** is then checked against the row type by the validator, so a bound or a required column fails as it
   would in a form. Then the key, when the row type declares one.
 
@@ -85,7 +87,8 @@ A table field's newly named file is read when its form is saved (`DataFileLinks`
 a table that does not fit the field's columns refuses the save with its first problem and a count of the rest. Only a
 file the write newly names is judged, as for any file field. `DataTables` reads a file's bytes and keeps its parse in a
 small node-local cache by content hash -- bytes under a hash never change, so an entry is never stale, only evicted --
-with its reads against each row type asked for, so a reload of a client's schema reads it afresh. `readFor` is what a
+with its reads against the last few row types asked for, so a reload of a client's schema reads it afresh. A file whose
+bytes are gone from the store refuses the save as any unusable file does. `readFor` is what a
 computation on a form's data uses to read the table a field names.
 
 Until the grid (#1885), a table field is drawn as any file field is: a CSV file is picked and uploaded, and the save

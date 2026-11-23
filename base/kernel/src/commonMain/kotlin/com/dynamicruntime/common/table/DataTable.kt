@@ -3,7 +3,9 @@ package com.dynamicruntime.common.table
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.plainNumberOrNull
 import com.dynamicruntime.common.gedra.report.reportKindOf
+import com.dynamicruntime.common.gedra.report.reportNumber
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOuterWhitespace
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.parseExactBool
@@ -20,9 +22,6 @@ object DTAB {
 
     /** The most problems a read of a table reports: enough to fix a file by, a page's worth. */
     const val maxProblems = 20
-
-    /** The largest whole number a Double holds exactly, 2^53: the bound of a whole number written with a fraction. */
-    const val maxExactWhole = 9007199254740992.0
 }
 
 /**
@@ -60,9 +59,13 @@ class TypedCell(val value: Any?, val problem: String? = null)
 /**
  * [text], a cell of [column], read as the column's type (issue #1882): an empty cell is no value; a number by
  * [plainNumberOrNull], the same on the JVM and in JS -- a whole number kept whole, and one written with a fraction that
- * is whole (`12.0`) read as the whole number it is; a boolean by its spellings ([parseExactBool]); a day as
- * `yyyy-MM-dd`; and a choice by its value, then by its label, ignoring case. Free text is taken as it is. What else
- * the column asks -- bounds, required, a pattern -- is the validator's to judge ([readTable]).
+ * is whole (`12.0`) read as the whole number it is ([reportNumber], a report's rule); a boolean by its spellings
+ * ([parseExactBool]); a day as `yyyy-MM-dd`; and a choice by its value, then by its label, ignoring case. Every cell is
+ * read without the spaces around it, as a form's field is (issue #765) -- free text too, unless its column keeps them
+ * ([SchOuterWhitespace.keep]). What else the column asks -- bounds, required, a pattern -- is the validator's to judge
+ * ([readTable]).
+ *
+ * Theme: #DTABL.
  */
 fun typedCell(text: String, column: TableColumn): TypedCell {
     val cell = text.trim()
@@ -70,14 +73,13 @@ fun typedCell(text: String, column: TableColumn): TypedCell {
     val shown = if (cell.length > 40) cell.take(40) + "…" else cell
     return when (column.kind) {
         ReportKind.number -> {
-            val whole = cell.toLongOrNull() ?: plainNumberOrNull(cell)?.let { d ->
-                if (d == kotlin.math.floor(d) && kotlin.math.abs(d) < DTAB.maxExactWhole) d.toLong() else null
-            }
+            val number = cell.toLongOrNull() ?: plainNumberOrNull(cell)?.let { reportNumber(it) }
             when {
-                whole != null -> TypedCell(whole)
-                column.whole -> TypedCell(null, "'$shown' is not a whole number.")
-                else -> plainNumberOrNull(cell)?.takeIf { it.isFinite() }?.let { TypedCell(it) }
-                    ?: TypedCell(null, "'$shown' is not a number.")
+                number == null -> TypedCell(null, "'$shown' is not a number.")
+                number is Long || !column.whole -> TypedCell(number)
+                // Whole, but past what a Double holds exactly, which a Long would invent digits for.
+                number.toDouble() == kotlin.math.floor(number.toDouble()) -> TypedCell(null, "'$shown' is too large a whole number.")
+                else -> TypedCell(null, "'$shown' is not a whole number.")
             }
         }
         ReportKind.boolean -> parseExactBool(cell)?.let { TypedCell(it) }
@@ -86,14 +88,15 @@ fun typedCell(text: String, column: TableColumn): TypedCell {
             ?: TypedCell(null, "'$shown' is not a day (yyyy-MM-dd).")
         ReportKind.string -> {
             val options = column.type.options
-            if (options == null) return TypedCell(text)
+            val free = if (column.type.outerWhitespace == SchOuterWhitespace.keep) text else cell
+            if (options == null) return TypedCell(free)
             val chosen = options.firstOrNull { it.value == cell }
                 ?: options.firstOrNull { it.label.equals(cell, ignoreCase = true) }
                 ?: options.firstOrNull { it.value.equals(cell, ignoreCase = true) }
             when {
                 chosen != null -> TypedCell(chosen.value)
                 column.closedChoices -> TypedCell(null, "'$shown' is not one of the choices.")
-                else -> TypedCell(text)
+                else -> TypedCell(free)
             }
         }
     }
@@ -147,6 +150,8 @@ class TableRead(
  *
  * Problems read as a person fixes them -- "Row 4, Amount: 'abc' is not a number." -- and at most [DTAB.maxProblems] of
  * them are reported.
+ *
+ * Theme: #DTABL.
  */
 fun readTable(rowType: SchType, text: String, maxRows: Int = DTAB.defaultMaxRows): TableRead =
     readTable(rowType, Csv.parse(text), maxRows)
