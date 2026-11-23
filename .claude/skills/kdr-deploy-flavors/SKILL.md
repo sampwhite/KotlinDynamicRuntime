@@ -115,7 +115,7 @@ The boot is refused for:
 - a flavor declared twice;
 - a contribution to an undeclared flavor;
 - two contributions to one flavor setting the same key or variable;
-- a key one contribution sets and another adds to, in any flavor;
+- a key that is both set and added to, by one contribution or two, in any flavor;
 - a default for an `EnvVarDef` marked `bootstrap` -- one read before flavors resolve (`KDR_ENV`,
   `KDR_WORKSPACE_DIR`, `KDR_DEFAULTS_FILE`, `KDR_CUSTOM_CONFIG`, the log levels, `KDR_DEPLOY_FLAVORS` itself).
   Mark any new variable read at pre-boot the same way.

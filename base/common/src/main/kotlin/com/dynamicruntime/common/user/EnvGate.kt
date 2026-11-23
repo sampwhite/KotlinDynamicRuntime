@@ -127,6 +127,9 @@ object EGATE {
     /** The section a gated node still answers without env access: health, for a load balancer or a monitor. */
     const val openSection = "health"
 
+    /** Instance-config key holding [allowList] parsed, as the boot made it, so a request does not parse it again. */
+    const val allowListParsed = "envGateAllowListParsed"
+
     /**
      * Instance-config key: the **allow list** (issue #1866), the endpoints a gated node also answers for a caller
      * without env access -- what a public website beside the node calls. A list of entries, or one text of entries
@@ -257,6 +260,9 @@ class GoogleTokenEndpoint(private val clientId: String, private val clientSecret
 object EnvGate {
     private val random = SecureRandom()
 
+    /** What separates an allow-list entry's method from its path. */
+    private val whitespace = Regex("\\s+")
+
     /** What a sign-in that cannot go on says: the way forward is a fresh start. */
     private const val startOver = "That sign-in could not be completed. Open the app again to start over."
 
@@ -340,10 +346,9 @@ object EnvGate {
         if (allowed.isNotEmpty() && mode == EnvGateMode.none) {
             refuse("'${EGATE.allowList}' is set, but the env gate is off (${EGATE.envGateEnvVar}): it would open nothing.")
         }
-        val unknown = allowed.filter { !namesEndpoint(it, endpoints) }
-        if (unknown.isNotEmpty()) {
-            refuse("'${EGATE.allowList}' names no endpoint at ${unknown.joinToString { "'$it'" }}.")
-        }
+        allowed.firstNotNullOfOrNull { entryProblem(it, endpoints) }?.let { refuse(it) }
+        // Parsed once, here: the gate reads it on every request without env access.
+        config.put(EGATE.allowListParsed, allowed)
         val explicitSimulate = config.get(EGATE.simulate) as? Boolean
         if (explicitSimulate == true) {
             val fenced = config.isTestInstance && (config.env == ENV.local || config.env == ENV.unit) &&
@@ -714,6 +719,8 @@ object EnvGate {
      * between. Throws when an entry is not of that shape.
      */
     fun allowList(config: KdrInstanceConfig): Set<String> {
+        @Suppress("UNCHECKED_CAST")
+        (config.get(EGATE.allowListParsed) as? Set<String>)?.let { return it }
         val raw = when (val value = config.get(EGATE.allowList)) {
             null -> return emptySet()
             is Collection<*> -> value.map { it?.toString().orEmpty() }
@@ -724,7 +731,7 @@ object EnvGate {
 
     /** An allow-list [entry] as `<METHOD> <path>`, the method upper-cased and one space between; throws when it is not. */
     private fun normalizeEntry(entry: String): String {
-        val parts = entry.trim().split(Regex("\\s+"))
+        val parts = entry.trim().split(whitespace)
         val method = parts.first().uppercase()
         if (parts.size != 2 || HttpMethod.entries.none { it.name == method } || !parts[1].startsWith("/")) {
             throw KdrException(
@@ -735,25 +742,38 @@ object EnvGate {
     }
 
     /**
-     * Whether the allow-list [entry] names one of [endpoints], or a client's own copy of one: a path whose second
-     * segment is a client, over a shared endpoint that has a copy per client.
+     * What is wrong with the allow-list [entry], or null when it names one of [endpoints], or a client's own copy of
+     * one: a path whose second segment is a client, over a shared endpoint that has a copy per client.
+     *
+     * The boot knows no clients yet, so a client's path is held to its shape. A second segment that is itself a
+     * segment of the section's own paths is refused: `GET /gedra/locks/formDoc` is far likelier a misordered
+     * `GET /gedra/formDoc/locks` than the copy for a client named `locks`, and accepting it would quietly leave the
+     * intended endpoint closed.
      */
-    private fun namesEndpoint(entry: String, endpoints: Collection<KdrEndpoint>): Boolean {
+    private fun entryProblem(entry: String, endpoints: Collection<KdrEndpoint>): String? {
         val method = entry.substringBefore(' ')
         val path = entry.substringAfter(' ')
         fun named(p: String, copied: Boolean) =
             endpoints.any { it.method.name == method && it.path == p && it.client == null && (!copied || hasClientCopy(it)) }
-        if (named(path, copied = false)) return true
+        if (named(path, copied = false)) return null
         val segments = path.removePrefix("/").split('/')
-        if (segments.size < 2) return false
-        val shared = "/" + (listOf(segments[0]) + segments.drop(2)).joinToString("/")
-        return named(shared, copied = true)
+        val shared = if (segments.size < 2) null else "/" + (listOf(segments[0]) + segments.drop(2)).joinToString("/")
+        if (shared == null || !named(shared, copied = true)) return "'${EGATE.allowList}' names no endpoint at '$entry'."
+        val client = segments[1]
+        val sectionSegments = endpoints.filter { it.client == null && sectionOf(it.path) == segments[0] }
+            .flatMap { it.path.removePrefix("/").split('/').drop(1) }.toSet()
+        if (client in sectionSegments) {
+            return "'${EGATE.allowList}' entry '$entry' reads as client '$client''s copy of '$method $shared', but " +
+                "'$client' is a segment of the '${segments[0]}' section's own paths; a client's path names the client second."
+        }
+        return null
     }
 
     /**
      * One path a gated node answers without env access (issue #1866): an endpoint's [method] and full [path], under
      * the API root, and where it comes from ([EGATE.sourceGate], [EGATE.sourceHealth], [EGATE.sourceAllowList]) --
-     * for an allow-list entry a flavor added, also the [component] that added it. Reads as `GET /kda/health`.
+     * for an allow-list entry flavors added, also the [component] or components that added it, comma-separated.
+     * Reads as `GET /kda/health`.
      */
     data class AnonymousPath(val method: String, val path: String, val source: String, val component: String? = null) {
         override fun toString(): String = "$method $path"
@@ -778,7 +798,8 @@ object EnvGate {
         // Who added each entry, where a flavor did (`add`): the components that open what, for the operator to see.
         val addedBy = DeployFlavors.get(cxt).values
             .filter { it.name == EGATE.allowList && it.added && it.applied }
-            .associate { normalizeEntry(it.value.toString()) to it.component }
+            .groupBy({ normalizeEntry(it.value.toString()) }, { it.component })
+            .mapValues { (_, components) -> components.distinct().joinToString(", ") }
         val allowed = allowList(config).map {
             AnonymousPath(it.substringBefore(' '), api + it.substringAfter(' '), EGATE.sourceAllowList, addedBy[it])
         }
@@ -811,7 +832,7 @@ object EnvGate {
             property(EGATE.method, "The HTTP method.", required = true)
             property(EGATE.path, "The path, under the API root.", required = true) { presentation = PRES.identifier }
             property(EGATE.source, "Why it answers: the gate's own path, the health section, or the allow list.", required = true)
-            property(EGATE.component, "The component whose flavor contribution added the entry to the allow list, if one did.")
+            property(EGATE.component, "The components whose flavor contributions added the entry to the allow list, if any did.")
         }
         type(EGATE.surfaceType) {
             type = SCT.kObject

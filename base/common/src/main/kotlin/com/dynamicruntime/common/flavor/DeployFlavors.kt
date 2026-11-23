@@ -136,7 +136,6 @@ class FlavorContributionBuilder(private val flavor: String) {
      */
     fun set(key: String, value: Any) {
         require(key !in configValues) { "Flavor '$flavor' sets '$key' twice in one contribution." }
-        require(key !in addedValues) { "Flavor '$flavor' both adds to and sets '$key'." }
         configValues[key] = value
     }
 
@@ -145,10 +144,9 @@ class FlavorContributionBuilder(private val flavor: String) {
      * any number of components may add to one key: the active flavors' entries for it, in flavor order and then
      * component order, go into one list, each entry once. The key reads that list, unless the deployment's own
      * configuration (or a test's boot configuration) set the key, which then wins outright. A key is either added to
-     * or set, never both, by any contribution.
+     * or set, never both, by any contribution, this one included: the boot refuses both, naming who did which.
      */
     fun add(key: String, vararg values: Any) {
-        require(key !in configValues) { "Flavor '$flavor' both sets and adds to '$key'." }
         addedValues.getOrPut(key) { mutableListOf() }.addAll(values)
     }
 
@@ -509,7 +507,7 @@ class DeployFlavors(
                 FlavorValue(c.flavor, c.component, c.name, false, c.value, applied = overriddenBy == null, overriddenBy, added = true)
             }
 
-            return addedValues + candidates.map { c ->
+            val setValues = candidates.map { c ->
                 val winner = winners.getValue(c.isEnvVar to c.name)
                 val explicit = when {
                     c.isEnvVar -> config.resolveEnvVar(envVarDefs.getValue(c.name)).source.takeIf { it != EVSRC.flavor }
@@ -524,6 +522,11 @@ class DeployFlavors(
                 }
                 FlavorValue(c.flavor, c.component, c.name, c.isEnvVar, c.value, applied = overriddenBy == null, overriddenBy)
             }
+            // The report in flavor order and then component order, a contribution's set values before its added entries:
+            // a stable sort by where each contribution stands.
+            val order = active.flatMap { name -> contributions.filter { it.second.flavor == name }.map { name to it.first } }
+                .distinct().withIndex().associate { it.value to it.index }
+            return (setValues + addedValues).sortedBy { order[it.flavor to it.component] ?: Int.MAX_VALUE }
         }
     }
 }

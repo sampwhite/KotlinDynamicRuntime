@@ -158,8 +158,24 @@ class DeployFlavorsTest : StringSpec({
     "a key is either set or added to, never both" {
         val setter = FlavorComponent("setter", contributions = listOf(flavor("listB") { set("paths", listOf("x")) }))
         refusal(emptyMap(), listOf(listOwner, setter)) shouldContain "'paths' is set by setter (listB) and added to by listOwner"
-        shouldThrow<IllegalArgumentException> { flavor("listA") { add("k", 1); set("k", 2) } }
-        shouldThrow<IllegalArgumentException> { flavor("listA") { set("k", 2); add("k", 1) } }
+        // In one contribution too, refused at boot as the other is, naming who did it.
+        val both = FlavorComponent("both", contributions = listOf(flavor("listA") { add("k", 1); set("k", 2) }))
+        refusal(emptyMap(), listOf(listOwner, both)) shouldContain "'k' is set by both (listA) and added to by both (listA)"
+    }
+
+    "the report keeps flavor and then component order, a contribution's set values before its added entries" {
+        val mixed = FlavorComponent(
+            "mixed",
+            defs = listOf(FlavorDef("orderA", "First."), FlavorDef("orderB", "Second.")),
+            contributions = listOf(
+                flavor("orderA") { add("list", "a1"); set("scalarA", 1) },
+                flavor("orderB") { set("scalarB", 2); add("list", "b1") },
+            ),
+        )
+        val rows = resolve(mapOf(flavors to "orderA,orderB"), listOf(mixed)).second.values
+        rows.map { it.flavor to it.name } shouldContainExactly listOf(
+            "orderA" to "scalarA", "orderA" to "list", "orderB" to "scalarB", "orderB" to "list",
+        )
     }
 
     "a flavor may not default a variable read before flavors resolve" {

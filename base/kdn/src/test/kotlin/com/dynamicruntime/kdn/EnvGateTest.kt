@@ -372,12 +372,14 @@ class EnvGateTest : StringSpec({
             additionalComponents = listOf(
                 SiteComponent("siteLeads", defines = true, entry = "POST /auth/newContact/sendVerify"),
                 SiteComponent("siteVideos", defines = false, entry = "GET /auth/ui/config"),
+                // Two components may add one entry; the surface names both.
+                SiteComponent("siteLeads2", defines = false, entry = "GET /auth/ui/config"),
             ),
         )
         EnvGate.allowList(cxt.instanceConfig) shouldBe setOf("POST /auth/newContact/sendVerify", "GET /auth/ui/config")
         val byPath = EnvGate.anonymousSurface(cxt).associateBy { it.path }
         byPath.getValue("/kda/auth/newContact/sendVerify").component shouldBe "siteLeads"
-        byPath.getValue("/kda/auth/ui/config").component shouldBe "siteVideos"
+        byPath.getValue("/kda/auth/ui/config").component shouldBe "siteVideos, siteLeads2"
         byPath.getValue("/kda/health").component.shouldBeNull()
         TestHttpClient(cxt.instanceConfig).sendGetRequest(AEP.authUiConfig).rptStatusCode shouldBe EXC.ok
     }
@@ -401,6 +403,9 @@ class EnvGateTest : StringSpec({
         refusal("allowMethod", gateSettings(mapOf(EGATE.allowList to listOf("POST /auth/ui/config")))) shouldContain "names no endpoint"
         refusal("allowNotCopied", gateSettings(mapOf(EGATE.allowList to listOf("GET /auth/acme/ui/config")))) shouldContain
             "names no endpoint"
+        // A misordered path that would read as a client's copy is refused, not taken for a client named 'locks'.
+        refusal("allowMisordered", gateSettings(mapOf(EGATE.allowList to listOf("GET /gedra/locks/formDoc")))) shouldContain
+            "a segment of the 'gedra' section's own paths"
     }
 
     "a simulated sign-in on an admin host under localhost lands as the simulated user, with no trip to Google" {
