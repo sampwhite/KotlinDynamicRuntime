@@ -651,7 +651,7 @@ object EnvGate {
         val signsIn = !cxt.userProfile.isLoggedIn
         if (signsIn) {
             // The sign-in completes as any other does (AuthFormHandler.completeLogin), which reads the request it is in.
-            cxt.request = KdrRequest(cxt, emptyMap(), null, handler)
+            cxt.request = KdrRequest(cxt, webRequest = handler)
             UserService.get(cxt).authFormHandler.loginByGoogleToken(cxt, token, link = !simulated)
             RequestService.get(cxt).checkAddAuthCookies(cxt, handler)
         }

@@ -779,11 +779,7 @@ class RequestService : ServiceInitializer {
         }
 
         val requestData = result.value?.toJsonMap() ?: emptyMap()
-
-        val requestInfo = RequestInfo(
-            handler.userAgent, handler.forwardedFor, handler.isFromLoadBalancer, handler.queryParams, handler.postData,
-        )
-        cxt.request = KdrRequest(cxt, requestData, endpoint, handler, requestInfo)
+        cxt.request = KdrRequest(cxt, endpoint, handler)
 
         // A sign-in step answers no sooner than the floor, failing or not (issue #1299): padded here, after the
         // handler and before anything is sent, since once the answer is written no wait changes when it arrived.

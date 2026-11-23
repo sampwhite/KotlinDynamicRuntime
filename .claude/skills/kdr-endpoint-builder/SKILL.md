@@ -417,9 +417,10 @@ paths, the API context root included. Mark an endpoint only when its input genui
 
 ## Request context
 
-`cxt.request` (`KdrRequest?`) carries the original request data deep in the stack; `cxt.userProfile` carries
-identity + `roles`. `cxt.request.responseMeta` is a mutable map a handler can add to; if non-empty it travels
-on the response under the off-contract `_meta` key.
+`cxt.request` (`KdrRequest?`) gives code deep in the stack the endpoint being applied and the web request itself
+(`webRequest`: headers, query, body); the validated input is the handler's parameter, passed on as needed
+(issue #1879). `cxt.userProfile` carries identity + `roles`. `cxt.request.responseMeta` is a mutable map a handler can
+add to; if non-empty it travels on the response under the off-contract `_meta` key.
 
 ## List paging: `numAvailable` and `ListPage` (issue #499)
 
