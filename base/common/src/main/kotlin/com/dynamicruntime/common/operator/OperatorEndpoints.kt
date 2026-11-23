@@ -272,9 +272,9 @@ private const val bytesPerGb = 1_073_741_824.0
  * Formatted against [Locale.ROOT], not the JVM default: a deployment's locale must not decide whether the page
  * (and the test that reads it) sees `6.00 GB` or `6,00 GB`.
  */
-private fun formatGb(bytes: Long?): String = when {
-    bytes == null -> ""
-    bytes == -1L || bytes == Long.MAX_VALUE -> "unbounded"
+private fun formatGb(bytes: Long?): String = when (bytes) {
+    null -> ""
+    -1L, Long.MAX_VALUE -> "unbounded"
     else -> "%.2f GB".format(Locale.ROOT, bytes / bytesPerGb)
 }
 

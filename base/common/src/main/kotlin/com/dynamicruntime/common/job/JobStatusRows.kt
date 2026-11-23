@@ -285,8 +285,8 @@ object JobStatusRows {
     fun requestAbort(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false, client: String? = null): Boolean {
         // Read first: the transaction would insert the row if it were missing, and a job that never ran should
         // not gain an empty one because somebody asked it to stop.
-        if (readLaunch(cxt, jobType, kind, dryRun, client)?.runStatus != JobRunStatus.active) return false
-        return inRowTran(cxt, "jobRequestAbort", JOB.jobStatus, launchKey(jobType, kind, client, dryRun)) { tran ->
+        return readLaunch(cxt, jobType, kind, dryRun, client)?.runStatus == JobRunStatus.active &&
+                inRowTran(cxt, "jobRequestAbort", JOB.jobStatus, launchKey(jobType, kind, client, dryRun)) { tran ->
             if (JobStatusRow(tran.row).runStatus != JobRunStatus.active) {
                 tran.noWrite()
                 false
