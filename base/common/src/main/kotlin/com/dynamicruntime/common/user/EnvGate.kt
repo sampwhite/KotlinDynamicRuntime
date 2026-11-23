@@ -803,7 +803,11 @@ object EnvGate {
         val allowed = allowList(config).map {
             AnonymousPath(it.substringBefore(' '), api + it.substringAfter(' '), EGATE.sourceAllowList, addedBy[it])
         }
-        return (gatePaths + health + allowed).distinctBy { it.toString() }.sortedWith(compareBy({ it.path }, { it.method }))
+        return buildList {
+            addAll(gatePaths)
+            addAll(health)
+            addAll(allowed)
+        }.distinctBy { it.toString() }.sortedWith(compareBy({ it.path }, { it.method }))
     }
 
     /**
