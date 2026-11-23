@@ -358,6 +358,33 @@ class DataFileUploadTest : StringSpec({
         GedraDataService.get(cxt).liveGedraIds(cxt, GedraDataType.dataFile, client).size shouldBe before
     }
 
+    "a CSV table is told by parsing it whole: one that parses is ready, and another kind or bad text is refused" {
+        val table = ascii("﻿day,amount\r\n2026-11-02,12.50\r\n2026-11-03,\"1,200\"\r\n")
+        val whole = uploadWhole(owner, "claims.csv", "text/csv", table)
+        whole[EP.status] shouldBe null
+        val record = whole[EP.results].toJsonMapOrEmpty()
+        record[DFILE.kind] shouldBe "csv"
+        record[DFILE.status] shouldBe DFSTAT.ready
+        val content = owner.client.sendGetRequest(DFILE.contentPath, mapOf(DFILE.fileId to record[DFILE.fileId]))
+        content.rptStatusCode shouldBe 200
+        content.rptResponseMimeType shouldBe "text/csv"
+        // Excel on Windows declares a CSV file so.
+        uploadWhole(owner, "excel.csv", "application/vnd.ms-excel", ascii("a\r\n1\r\n"))[EP.status] shouldBe null
+
+        val before = GedraDataService.get(cxt).liveGedraIds(cxt, GedraDataType.dataFile, client).size
+        fun refusal(name: String, bytes: ByteArray): String {
+            val answer = uploadWhole(owner, name, "text/csv", bytes)
+            answer[EP.status] shouldBe EXC.badInput.toLong()
+            return answer[EP.errorMessage].toOptStr().shouldNotBeNull()
+        }
+        refusal("image.csv", png) shouldContain "its content is a PNG file"
+        refusal("latin1.csv", ascii("name\r\n") + byteArrayOf(0xE9.toByte(), 0x0D, 0x0A)) shouldContain "not UTF-8"
+        refusal("ragged.csv", ascii("a,b,c\r\n1,2,3\r\n4,5\r\n")) shouldContain "Line 3: row 2 has 2 cells; the header has 3."
+        refusal("quote.csv", ascii("a,b\r\n1,\"open\r\n")) shouldContain "no closing quote"
+        refusal("binary.csv", ascii("a\r\n") + ByteArray(40)) shouldContain "control character"
+        GedraDataService.get(cxt).liveGedraIds(cxt, GedraDataType.dataFile, client).size shouldBe before
+    }
+
     "a data file holds no entries, so nothing that writes entries makes one" {
         val gedras = GedraDataService.get(cxt)
         val bound = cxt.mkSubContext("files", client).also { it.userId = owner.userId }

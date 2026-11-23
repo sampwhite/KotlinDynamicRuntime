@@ -32,7 +32,7 @@ soft-deleted as every gedra is. It holds no entries: its metadata is under `data
 | Field | What it is |
 | --- | --- |
 | `name` | The name it was picked under. |
-| `kind` | Its kind (`FileKinds`): png, jpeg, webp, gif, mp4, webm, or pdf, told by its bytes. |
+| `kind` | Its kind (`FileKinds`): png, jpeg, webp, gif, mp4, webm, pdf, or csv, told by its bytes. |
 | `mimeType` | The type it is served as: its kind's. |
 | `size` | Its size in bytes; while uploading, the size it said it would be. |
 | `hash` | The SHA-256 of its bytes, once its upload has finished. |
@@ -63,7 +63,7 @@ A larger file -- a video, above all -- comes **in chunks, in order**, so a lost 
 file:
 
 1. **Begin** (`POST /files/upload/begin {name, mimeType, declaredSize}`). The type must be one of the data kinds, and the
-   size at most its kind's largest (video 2 GB, an image 20 MB, a PDF 50 MB), and the client's plan must have room
+   size at most its kind's largest (video 2 GB, an image 20 MB, a PDF 50 MB, a CSV table 4 MiB), and the client's plan must have room
    (below). It makes the record, `uploading`, and the upload's row, and answers the chunk size: 8 MiB.
 2. **Chunks** (`POST /files/upload/chunk?fileId=&offset=&chunkHash=`, the chunk the raw body, as
    `application/octet-stream`). Each is the next one, at the offset the upload has reached, the chunk size long unless it
@@ -112,6 +112,16 @@ The chunks are put together, and the file is checked before it is ready:
   name is refused by it: a ProRes master is told "ProRes ('apcn')", not only its code. **Its audio is not checked**, as an MP4's is not: AAC, what is exported, plays
   everywhere, while uncompressed PCM, rare outside an editor's masters, may play without sound.
 - **A WebM** is checked by its EBML document type.
+- **A CSV table is read whole** (#1881). Text has no mark, so a CSV table is the one kind told by parsing rather than
+  by its first bytes (`FileKinds.parsedKinds`), and `FileKindSniff` never answers it: arbitrary text cannot pass as
+  another kind. A file sent as CSV is refused when its first bytes are another kind's mark, when it is not UTF-8, and
+  when the kernel's codec (`Csv`, in `common.table`) does not read it as a table: a header naming each column once,
+  every row as wide, quotes where RFC 4180 puts them, no control characters but a tab and the line ends, and at most
+  5,000 rows, 100 columns, and 10,000 characters a cell. The refusal names the line. Excel's `application/vnd.ms-excel`
+  and `text/x-csv` are taken as CSV too, and a CSV file is served as a download, never shown in the page. No field
+  may hold one until a field can declare a table's columns (#1882), so for now one is uploaded but linked by no form.
+  The stored text is never rewritten -- not even to keep a cell from being read as a formula, which is done only to a
+  copy made for a spreadsheet (`Csv.spreadsheetSafe`). Theme: #DTABL.
 - **The plan still has room**: asked again, since two uploads begun at once can each have found room the other took.
 
 A file that fails is removed, record and bytes, and the refusal says why -- an MP4 whose boxes are no video we can read
