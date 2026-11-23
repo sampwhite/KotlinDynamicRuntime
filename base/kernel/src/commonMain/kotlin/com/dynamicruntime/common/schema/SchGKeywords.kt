@@ -33,6 +33,8 @@ object SchGKeywords {
         SCH.longText to boolean,
         SCH.fileKinds to textList,
         SCH.fileMaxSize to SchKeywordShape("a whole number of bytes", SchShapeForm.NumberLike),
+        SCH.fileRows to obj,
+        SCH.fileMaxRows to SchKeywordShape("a whole number of rows", SchShapeForm.NumberLike),
         SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
         SCH.counter to text,
         SCH.onWrite to SchKeywordShape("a list of function objects", SchShapeForm.ListOf(SchShapeForm.Obj)),
@@ -70,6 +72,10 @@ object SchGKeywords {
             "'mp4'. A file's kind is told by its bytes.",
         SCH.fileMaxSize to "On a field of format '${SFMT.dataFile}', the largest file it may hold, in bytes. A file " +
             "is held to the smaller of this and its kind's own largest.",
+        SCH.fileRows to "On a file field holding a CSV table (kind 'csv'), the type of one row: its properties are the " +
+            "table's columns, each a scalar, and a table is checked against it when its form is saved.",
+        SCH.fileMaxRows to "On a file field holding a CSV table, the most rows its table may hold: 1 to 5,000, and " +
+            "1,000 when unset.",
         SCH.outerWhitespace to "What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a " +
             "value that has any, or 'keep' it. Unset, a plain string is trimmed when it arrives in a request, and left " +
             "as it is when stored or sent back.",
@@ -112,6 +118,8 @@ object SchGKeywords {
         SCH.longText to SchKeywordPlace.schema,
         SCH.fileKinds to SchKeywordPlace.schema,
         SCH.fileMaxSize to SchKeywordPlace.schema,
+        SCH.fileRows to SchKeywordPlace.schema,
+        SCH.fileMaxRows to SchKeywordPlace.schema,
         SCH.derived to SchKeywordPlace.schema,
         SCH.counter to SchKeywordPlace.schema,
         SCH.onWrite to SchKeywordPlace.namedType,

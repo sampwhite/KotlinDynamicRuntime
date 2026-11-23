@@ -440,7 +440,7 @@ fun walkReportFields(type: SchType, fields: List<String>): Parsed<ReportFieldTar
         if (leaf.format != SFMT.date) everyLeafADay = false
         leaf.options?.forEach { if (it.value !in choices) choices[it.value] = it }
         kinds.add(
-            scalarKind(leaf) ?: return Parsed.failed(
+            reportKindOf(leaf) ?: return Parsed.failed(
                 ReportBindProblem.notScalar,
                 "'$walked' is ${leaf.jsonType?.let { "an $it" } ?: "a value with no type"}, not a value a column can " +
                     "show; name a field inside it.",
@@ -489,8 +489,11 @@ private fun propertiesOf(type: SchType, name: String, depth: Int): List<SchPrope
     return (v.branches + listOfNotNull(v.defaultBranch)).flatMap { propertiesOf(it, name, depth + 1) }
 }
 
-/** The report kind of a scalar [type], or null for anything else. A date is a string with a date format. */
-private fun scalarKind(type: SchType): ReportKind? = when (type.jsonType) {
+/**
+ * The report kind of a scalar [type], or null for anything else. A date is a string with a date format. Shared with a
+ * table's columns (issue #1882), which a table's summaries combine as a report's do.
+ */
+fun reportKindOf(type: SchType): ReportKind? = when (type.jsonType) {
     SCT.string -> if (isDateFormat(type.format)) ReportKind.date else ReportKind.string
     SCT.integer, SCT.number -> ReportKind.number
     SCT.boolean -> ReportKind.boolean

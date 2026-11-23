@@ -58,6 +58,32 @@ class DataFileUploadTest {
     }
 
     @Test
+    fun aTableIsTakenByWhatItIsNot() {
+        // A CSV table has no mark: a table field takes a pick that is no other kind, and the server parses it.
+        val lines = parseSchemaTypes(
+            mapOf(
+                "t.Line" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("a" to mapOf(SCH.type to SCT.string))),
+                "t.T" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "f" to mapOf(
+                            SCH.type to SCT.string, SCH.format to SFMT.dataFile, SCH.fileKinds to listOf(FKIND.csv),
+                            SCH.fileRows to mapOf(SCH.dRef to "t.Line"),
+                        ),
+                    ),
+                ),
+            ),
+        ).getValue("t.T").properties.getValue("f").valueType
+        assertEquals(FKIND.csv, judgePick(lines, "a\r\nx\r\n".encodeToByteArray(), 6).kind?.id)
+        assertEquals("This field takes only CSV table; this file is a PNG file.", judgePick(lines, png, 64).problem)
+        // A field that takes no table takes no text.
+        assertEquals(
+            "This field takes only PNG; this file is none of these.",
+            judgePick(fileField(FKIND.png), "a\r\nx\r\n".encodeToByteArray(), 6).problem,
+        )
+    }
+
+    @Test
     fun thePickerOffersTheFieldsKindsAndTheNoteSaysThem() {
         val photo = fileField(FKIND.png, FKIND.jpeg, maxSize = 5 * mb)
         assertEquals(listOf("image/png", ".png", "image/jpeg", "image/jpg", "image/pjpeg", ".jpg"), dataFileAccept(photo))

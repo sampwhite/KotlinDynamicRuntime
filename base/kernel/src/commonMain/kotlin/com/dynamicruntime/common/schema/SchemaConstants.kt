@@ -239,6 +239,19 @@ object SCH {
     const val fileMaxSize = "g-fileMaxSize"
 
     /**
+     * On a [SFMT.dataFile] field holding a CSV table, the type of one of its rows (issue #1882): a schema object, a
+     * `$ref` to a named type or inline, whose properties are the table's columns -- each a scalar -- and whose
+     * `required`, choices, bounds, and `g-primaryKey` (unique across the rows) a table is checked against when a form
+     * naming it is saved. A field with it holds only the `csv` kind, and one holding `csv` must have it.
+     */
+    const val fileRows = "g-fileRows"
+
+    /**
+     * On a table field ([fileRows]), the most rows its table may hold (issue #1882): 1 to 5,000, and 1,000 when unset.
+     */
+    const val fileMaxRows = "g-fileMaxRows"
+
+    /**
      * Marks a property the client does not supply -- something else produces it (issue #254).
      *
      * Two forms, both accepted from the start so that widening later is not a migration of stored documents:

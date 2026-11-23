@@ -48,13 +48,6 @@ class SchDataFileParseTest {
         assertTrue("twice" in refusal(file(SCH.fileKinds to listOf(FKIND.png, FKIND.png))))
     }
 
-    @Test
-    fun aFileFieldCannotHoldACsvTableYet() {
-        // A table's kind waits for a field that declares its columns (issue #1882).
-        val csv = refusal(file(SCH.fileKinds to listOf(FKIND.png, FKIND.csv)))
-        assertTrue("'csv'" in csv && "declares its columns" in csv, csv)
-        assertTrue(", csv" !in csv && "pdf." in csv, csv)
-    }
 
     @Test
     fun aLargestSizeMustBeAWholeNumberThatConstrains() {

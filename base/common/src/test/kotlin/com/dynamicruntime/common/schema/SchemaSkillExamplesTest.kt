@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitKeyOf
+import com.dynamicruntime.common.table.readTable
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -136,6 +137,35 @@ class SchemaSkillExamplesTest : StringSpec({
         field.fileSizeLimit(FileKinds.png) shouldBe null
         isNonTextFormat(SFMT.dataFile) shouldBe true
         DataFileFields.collect(type, mapOf("clip" to "gd.df.acme.c1")).map { it.fileId } shouldBe listOf("gd.df.acme.c1")
+    }
+
+    // "dataTable("ExpenseLine", maxRows = 500) -> a csv file field whose g-fileRows type's properties are its columns".
+    "a CSV table in a form's data is a file field whose row type is its columns" {
+        val defs = schemaDefs(cxt, "fmt") {
+            type("ExpenseLine") {
+                type = SCT.kObject
+                property("day", "The day it was spent.", required = true) { dayOnlyDate() }
+                property("amount", "How much.", required = true) {
+                    type = SCT.number
+                    minimum = 0
+                }
+            }
+            type("Claim") {
+                type = SCT.kObject
+                property("lines", "What was spent.") { dataTable("ExpenseLine", maxRows = 500) }
+            }
+        }
+        val lines = defs["fmt.Claim"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()["lines"].toJsonMapOrEmpty()
+        lines["g-fileKinds"] shouldBe listOf("csv")
+        lines["g-fileRows"] shouldBe mapOf("\$ref" to "#/\$defs/fmt.ExpenseLine")
+        lines["g-fileMaxRows"] shouldBe 500
+        val field = parseSchemaTypes(defs).getValue("fmt.Claim").properties.getValue("lines").valueType
+        field.isDataTable() shouldBe true
+        field.tableRowLimit() shouldBe 500
+        val rowType = field.fileRowType!!
+        readTable(rowType, "amount,day\r\n12.50,2026-11-02\r\n", field.tableRowLimit()).ok shouldBe true
+        readTable(rowType, "day,amount\r\n2026-11-02,abc\r\n").problems.single().message shouldBe
+            "Row 1, amount: 'abc' is not a number."
     }
 
     // "A binary-format field is exempt from all of it, though required still applies."

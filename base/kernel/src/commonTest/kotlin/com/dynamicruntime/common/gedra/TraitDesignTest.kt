@@ -166,6 +166,9 @@ class TraitDesignTest {
             SCH.optionsSource to Pair(text + (SCH.optionsSource to "clients"), null),
             SCH.fileKinds to Pair(text + (SCH.format to SFMT.dataFile) + (SCH.fileKinds to listOf("png")), null),
             SCH.fileMaxSize to Pair(text + (SCH.format to SFMT.dataFile) + (SCH.fileMaxSize to 1000), null),
+            // A table field (issue #1882) is a file field, which the editor refuses as it does any.
+            SCH.fileRows to Pair(text + (SCH.format to SFMT.dataFile) + (SCH.fileRows to mapOf(SCH.type to SCT.kObject)), null),
+            SCH.fileMaxRows to Pair(text + (SCH.format to SFMT.dataFile) + (SCH.fileMaxRows to 10), null),
             SCH.schemaDocument to Pair(mapOf(SCH.type to SCT.kObject, SCH.schemaDocument to true), null),
         )
         // Kept on a text field as written, since the design owns none of them.

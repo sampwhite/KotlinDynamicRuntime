@@ -35,6 +35,8 @@ class AssistantTaughtTest : StringSpec({
         SCH.outerWhitespace to checking,
         SCH.fileKinds to fileField,
         SCH.fileMaxSize to fileField,
+        SCH.fileRows to fileField,
+        SCH.fileMaxRows to fileField,
         SCH.derived to notTaught("The platform's: a value something other than a person fills in."),
         SCH.onWrite to notTaught("The platform's: functions run on a write, which no client's trait declares."),
         SCH.schemaDocument to notTaught("The platform's: a value that is itself a schema."),
