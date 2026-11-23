@@ -126,6 +126,14 @@ object WFD {
     const val showTasks = "showTasks"
 
     /**
+     * On an approval (issue #1875): the traits the approval shows, read-only, above its prompt, by id -- in place of
+     * [showTasks] and the default, never beside them. Each is drawn from the form's entry for it, whichever workflow
+     * collected it, so a review can show the answers of the form it approves. An approval names these or [showTasks],
+     * not both.
+     */
+    const val showTraits = "showTraits"
+
+    /**
      * On an approval (issue #1702): its **ordered steps**, each given by a person in turn -- a step's [id], [label],
      * [prompt], [button], [approveWhen], [waiting], and optional [cfact]. Absent, the approval is one implicit step made
      * of its own [prompt], [button], and [approveWhen].
@@ -363,6 +371,14 @@ object WVF {
      * either surface identically.
      */
     const val fieldLayouts = "fieldLayouts"
+
+    /**
+     * On an approval (issue #1875): the traits its [WFD.showTraits] names, each a trait ref as a task's are
+     * (`traitId`, `schemaRef`), resolved against the view's `$defs`. Beside them, [entries] holds the form's entries
+     * for those traits, whichever workflow collected them. And on any approval that alters the layouts of what it
+     * shows ([WFD.types]), [fieldLayouts] holds its own layouts for those types, in place of the view's.
+     */
+    const val shownTraits = "shownTraits"
 
     /**
      * On a task: its **status** for the task rail (issue #700) -- `complete` / `valid` / `missingTraits` /
@@ -638,6 +654,18 @@ class WfApproval(
      * which is one implicit step ([effectiveSteps]).
      */
     val steps: List<WfApprovalStep> = emptyList(),
+    /**
+     * The traits it shows, read-only, above its prompt (issue #1875), by id, in place of [showTasks]; null when it names
+     * none. See [WFD.showTraits].
+     */
+    val showTraits: List<String>? = null,
+    /**
+     * The approval's own alterations of types (issue #1875), by qualified type name: a field layout for what it shows,
+     * applied over the workflow's ([WfDef.typeAlterations]) on the approval alone, in the same shape.
+     */
+    val typeAlterations: Map<String, Map<String, Any?>> = emptyMap(),
+    /** The basis of each layout entry the approval alters, as the workflow's [WfDef.typeBasis] (issue #1875). */
+    val typeBasis: Map<String, Map<String, Any?>> = emptyMap(),
 ) {
     /**
      * The steps a person gives in turn (issue #1702): [steps], or for an approval without them one implicit step, its id
@@ -1160,6 +1188,29 @@ class WfDef(
                     )
                 }
             }
+            val approval = task.approval ?: continue
+            // Or it names the traits it shows (issue #1875): one list or the other, since together they would read as
+            // two answers to one question.
+            val traitsShown = approval.showTraits
+            if (traitsShown != null && approval.showTasks != null) {
+                throw KdrException.mkConv(
+                    "Approval task '${task.id}' in workflow '$workflowId' names both '${WFD.showTasks}' and " +
+                        "'${WFD.showTraits}'; name the traits it shows, or the tasks whose traits it shows, not both.",
+                )
+            }
+            traitsShown?.groupingBy { it }?.eachCount()?.filterValues { it > 1 }?.keys?.firstOrNull()?.let {
+                throw KdrException.mkConv("Approval task '${task.id}' in workflow '$workflowId' shows trait '$it' twice.")
+            }
+            // Its own layouts vary presentation only, as the workflow's do.
+            for ((typeName, body) in approval.typeAlterations) {
+                val others = body.keys - SCH.layout
+                if (others.isNotEmpty()) {
+                    throw KdrException.mkConv(
+                        "Approval task '${task.id}' in workflow '$workflowId' alters '$typeName' with " +
+                            "${others.joinToString(", ") { "'$it'" }}; an approval may alter only a type's '${SCH.layout}'.",
+                    )
+                }
+            }
         }
         val lockedTraits = HashSet<String>()
         for (lock in locks) {
@@ -1238,10 +1289,12 @@ class WfDef(
      * The tasks whose traits approval task [task] shows, read-only, above its prompt (issue #1695), so a reviewer
      * approves what is in front of them: those its approval names ([WfApproval.showTasks]), else the nearest task before
      * it that collects traits -- the work it approves, as a review's acceptance follows the review. Empty for a task that
-     * is no approval, or one that names none.
+     * is no approval, one that names none, or one that names its traits instead ([WfApproval.showTraits], issue #1875).
      */
     fun approvalShows(task: WfTask): List<String> {
         val approval = task.approval ?: return emptyList()
+        // Traits named in its place show no task's (issue #1875).
+        if (approval.showTraits != null) return emptyList()
         approval.showTasks?.let { return it }
         val before = tasks.takeWhile { it.id != task.id }
         return listOfNotNull(before.lastOrNull { it.traits.isNotEmpty() }?.id)
@@ -1362,10 +1415,31 @@ object WfDefSchema {
             property(
                 WFD.showTasks,
                 "The tasks whose traits the approval shows, read-only, above its prompt. Absent means the nearest earlier " +
-                    "task that collects traits; empty shows none.",
+                    "task that collects traits; empty shows none. Not beside showTraits.",
             ) {
                 type = SCT.array
                 items { type = SCT.string }
+            }
+            property(
+                WFD.showTraits,
+                "The traits the approval shows, read-only, above its prompt, by id, from the form's entries whichever " +
+                    "workflow collected them -- in place of the tasks' traits it would otherwise show. Not beside showTasks.",
+            ) {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+            property(
+                WFD.types,
+                "The approval's own alterations of types, by qualified type name, in the shape a workflow's take: a field " +
+                    "layout (g-layout) for what it shows, over the workflow's, on the approval alone.",
+            ) {
+                type = SCT.kObject
+            }
+            property(
+                WFD.typeBasis,
+                "For each layout entry the approval alters, the entry it replaced when it was made, by type name and then field.",
+            ) {
+                type = SCT.kObject
             }
         }
         type(WFD.lockType) {
@@ -1516,7 +1590,10 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                             }
                             it.approveWhen?.let { rule -> put(WFD.approveWhen, rule) }
                             it.showTasks?.let { shown -> put(WFD.showTasks, shown) }
+                            it.showTraits?.let { shown -> put(WFD.showTraits, shown) }
                             if (it.steps.isNotEmpty()) put(WFD.steps, it.steps.map { step -> step.toJsonMap() })
+                            if (it.typeAlterations.isNotEmpty()) put(WFD.types, it.typeAlterations)
+                            if (it.typeBasis.isNotEmpty()) put(WFD.typeBasis, it.typeBasis)
                         },
                     )
                 }
@@ -1596,6 +1673,9 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
                                 sm[WFD.cfact].toOptStr(),
                             )
                         },
+                        showTraits = (am[WFD.showTraits] as? List<*>)?.mapNotNull { it.toOptStr() },
+                        typeAlterations = am[WFD.types].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() },
+                        typeBasis = am[WFD.typeBasis].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() },
                     )
                 },
                 display = (t[WFD.display] as? Map<*, *>)?.toJsonMapOrEmpty(),
@@ -1798,22 +1878,32 @@ class WfTaskBuilder(private val id: String, private val label: String) {
      * [cfact] into the workflow's cfacts. [prompt] is the text above the button and [button] the button's; both are
      * templates, like a label. [approveWhen] says who may approve (issue #1595); left out, a reviewer who does not own
      * the form ([WfApproval.defaultApproveWhen]). [showTasks] names the tasks whose traits it shows above its prompt
-     * (issue #1695); left out, the nearest earlier task that collects traits.
+     * (issue #1695); left out, the nearest earlier task that collects traits. [showTraits] names the traits it shows
+     * instead (issue #1875), never beside [showTasks].
      */
-    fun approval(cfact: String, prompt: String, button: String, approveWhen: String? = null, showTasks: List<String>? = null) {
+    fun approval(
+        cfact: String,
+        prompt: String,
+        button: String,
+        approveWhen: String? = null,
+        showTasks: List<String>? = null,
+        showTraits: List<String>? = null,
+    ) {
         approval = linkedMapOf<String, Any?>(WFD.cfact to cfact, WFD.prompt to prompt, WFD.button to button).apply {
             approveWhen?.let { put(WFD.approveWhen, it) }
             showTasks?.let { put(WFD.showTasks, it) }
+            showTraits?.let { put(WFD.showTraits, it) }
         }
     }
 
     /**
      * Makes this an approval task given in **ordered steps** (issue #1702): each of [steps] by a person in turn, then
-     * [cfact] once every one is given. [showTasks] as for a single approval.
+     * [cfact] once every one is given. [showTasks] and [showTraits] as for a single approval.
      */
-    fun approvalSteps(cfact: String, steps: List<WfApprovalStep>, showTasks: List<String>? = null) {
+    fun approvalSteps(cfact: String, steps: List<WfApprovalStep>, showTasks: List<String>? = null, showTraits: List<String>? = null) {
         approval = linkedMapOf<String, Any?>(WFD.cfact to cfact).apply {
             showTasks?.let { put(WFD.showTasks, it) }
+            showTraits?.let { put(WFD.showTraits, it) }
             put(WFD.steps, steps.map { it.toJsonMap() })
         }
     }

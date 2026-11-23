@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
+import com.dynamicruntime.common.gedra.workflow.approvalSchemaStore
 import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.gedra.workflow.headingBasisKey
 import com.dynamicruntime.common.gedra.workflow.layoutEntryOf
@@ -22,7 +23,9 @@ import com.dynamicruntime.common.gedra.workflow.withLayoutEntry
 import com.dynamicruntime.common.gedra.workflow.withLayoutHeading
 import com.dynamicruntime.common.gedra.workflow.withShownFields
 import com.dynamicruntime.common.gedra.workflow.withWorkflowLabel
+import com.dynamicruntime.common.gedra.workflow.withinApproval
 import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
+import com.dynamicruntime.common.gedra.workflow.workflowSchemaStore
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -155,34 +158,61 @@ object DesignView {
             out[DSV.editRefusal] = refusal.message
             out[DSV.editRefusalCode] = refusal.code.name
         }
-        val edits = layoutEdits(declared, clientStore, store)
-        if (edits.isNotEmpty()) out[DSV.layoutEdits] = edits
-        val headings = headingEdits(declared, clientStore, store)
-        if (headings.isNotEmpty()) out[DSV.headingEdits] = headings
-        // The types whose fields the workflow's own form chooses (issue #1071).
-        val shown = declared.def.typeAlterations.filterKeys { it in store.defs }
-            .mapNotNull { (typeName, alteration) -> shownFieldsOf(alteration)?.let { typeName to it } }.toMap()
-        if (shown.isNotEmpty()) out[DSV.shownFields] = shown
+        out.putAll(alterationEdits(declared.def.typeAlterations, declared.def.typeBasis, clientStore, store))
+        // Each approval's own layouts of what it shows (issue #1875), against the workflow's view of the types.
+        val approvals = declared.def.tasks.mapNotNull { task ->
+            val approval = task.approval?.takeIf { it.typeAlterations.isNotEmpty() } ?: return@mapNotNull null
+            val own = approvalSchemaStore(clientStore, declared, task)
+            task.id to alterationEdits(approval.typeAlterations, approval.typeBasis, store, own)
+        }.filter { it.second.isNotEmpty() }.toMap()
+        if (approvals.isNotEmpty()) out[DSV.approvals] = approvals
         return out
     }
 
     /**
-     * The headings and introductions [declared] sets, by type name (issues #1070, #1539): each the workflow's
-     * [DSV.label] and [DSV.description] (whichever it sets), the client's heading and introduction they replace
-     * ([DSV.inherited], [DSV.inheritedDescription], each absent when there is none), and whether either has changed since
-     * the override was made. Only for types [store] still carries.
+     * What one set of type [alterations] -- a workflow's, or an approval's (issue #1875) -- changes, as the block says
+     * it: its [DSV.layoutEdits], [DSV.headingEdits], and [DSV.shownFields], each present only when not empty. [basis] is
+     * what each override replaced, [inheritedStore] the view of the types it is made over, and [store] the view with it
+     * applied.
      */
-    private fun headingEdits(declared: WfDeclared, clientStore: KdrSchemaStore, store: KdrSchemaStore): Map<String, Any?> {
+    private fun alterationEdits(
+        alterations: Map<String, Map<String, Any?>>,
+        basis: Map<String, Map<String, Any?>>,
+        inheritedStore: KdrSchemaStore,
+        store: KdrSchemaStore,
+    ): Map<String, Any?> = buildMap {
+        val edits = layoutEdits(alterations, basis, inheritedStore, store)
+        if (edits.isNotEmpty()) put(DSV.layoutEdits, edits)
+        val headings = headingEdits(alterations, basis, inheritedStore, store)
+        if (headings.isNotEmpty()) put(DSV.headingEdits, headings)
+        // The types whose fields the form chooses (issue #1071).
+        val shown = alterations.filterKeys { it in store.defs }
+            .mapNotNull { (typeName, alteration) -> shownFieldsOf(alteration)?.let { typeName to it } }.toMap()
+        if (shown.isNotEmpty()) put(DSV.shownFields, shown)
+    }
+
+    /**
+     * The headings and introductions [alterations] set, by type name (issues #1070, #1539): each the alteration's
+     * [DSV.label] and [DSV.description] (whichever it sets), the heading and introduction they replace in
+     * [inheritedStore] ([DSV.inherited], [DSV.inheritedDescription], each absent when there is none), and whether either
+     * has changed since the override was made. Only for types [store] still carries.
+     */
+    private fun headingEdits(
+        alterations: Map<String, Map<String, Any?>>,
+        basis: Map<String, Map<String, Any?>>,
+        inheritedStore: KdrSchemaStore,
+        store: KdrSchemaStore,
+    ): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>()
-        for ((typeName, alteration) in declared.def.typeAlterations) {
+        for ((typeName, alteration) in alterations) {
             if (typeName !in store.defs) continue
             val own = alteration[SCH.layout] as? Map<*, *>
             val label = own?.get(SL.label).toOptStr()
             val description = own?.get(SL.description).toOptStr()
             if (label == null && description == null) continue
-            val inherited = layoutHeadingOf(clientStore.defs, typeName)
+            val inherited = layoutHeadingOf(inheritedStore.defs, typeName)
             // A basis records the heading and introduction an override replaced, `{}` when there were none.
-            val made = declared.def.typeBasis[typeName]?.get(headingBasisKey) as? Map<*, *>
+            val made = basis[typeName]?.get(headingBasisKey) as? Map<*, *>
             out[typeName] = linkedMapOf<String, Any?>().also { h ->
                 label?.let { h[DSV.label] = it }
                 description?.let { h[DSV.description] = it }
@@ -196,21 +226,27 @@ object DesignView {
     }
 
     /**
-     * The layout entries [declared] alters, by type name and then field, each with the workflow's entry, the inherited
-     * one it replaces (the client's view of the type), and whether that inherited entry has changed since the
-     * override was made (issue #984). Only for types [store] still carries.
+     * The layout entries [alterations] alter, by type name and then field, each with the alteration's entry, the inherited
+     * one it replaces (in [inheritedStore]: the client's view of the type for a workflow, the workflow's for an approval),
+     * and whether that inherited entry has changed since the override was made (issue #984). Only for types [store]
+     * still carries.
      */
-    private fun layoutEdits(declared: WfDeclared, clientStore: KdrSchemaStore, store: KdrSchemaStore): Map<String, Any?> {
+    private fun layoutEdits(
+        alterations: Map<String, Map<String, Any?>>,
+        basis: Map<String, Map<String, Any?>>,
+        inheritedStore: KdrSchemaStore,
+        store: KdrSchemaStore,
+    ): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>()
-        for ((typeName, alteration) in declared.def.typeAlterations) {
+        for ((typeName, alteration) in alterations) {
             if (typeName !in store.defs) continue
-            val basis = declared.def.typeBasis[typeName].orEmpty()
+            val typeBasis = basis[typeName].orEmpty()
             val fields = linkedMapOf<String, Any?>()
             // Only an entry carrying copy: a field the workflow's list merely names keeps the shared copy (issue #1071).
             for (entry in copyOverrideEntries(alteration)) {
                 val field = entry[SL.field].toOptStr() ?: continue
-                val inherited = layoutEntryOf(clientStore, typeName, field)
-                val made = (basis[field] as? Map<*, *>)?.toJsonMap()
+                val inherited = layoutEntryOf(inheritedStore, typeName, field)
+                val made = (typeBasis[field] as? Map<*, *>)?.toJsonMap()
                 fields[field] = linkedMapOf(
                     DSV.entry to entry,
                     DSV.inherited to inherited,
@@ -337,8 +373,9 @@ object DesignView {
     /**
      * Sets [field]'s layout entry for [typeName] in workflow [workflowId] to [entry], or removes it when [entry] is
      * null -- the workflow's own wording over the inherited copy (issue #984) -- as every Design View save is made
-     * ([saveEdit]), and refused when the definition has changed since [basedOn]. Returns the new stamp, for the page's
-     * next edit, with the bundle it landed in.
+     * ([saveEdit]), and refused when the definition has changed since [basedOn]. With [taskId], the entry is approval
+     * task [taskId]'s own, over the workflow's (issue #1875). Returns the new stamp, for the page's next edit, with the
+     * bundle it landed in.
      */
     fun setLayoutEntry(
         cxt: KdrCxt,
@@ -347,10 +384,31 @@ object DesignView {
         field: String,
         entry: Map<String, Any?>?,
         basedOn: String,
+        taskId: String? = null,
     ): DesignSave {
-        val inherited = layoutEntryOf(cxt.getClientSchema(), typeName, field)
-        return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutEntry(it, typeName, field, entry, inherited) }
+        val inherited = layoutEntryOf(inheritedStore(cxt, workflowId, taskId), typeName, field)
+        return editWorkflowDef(cxt, workflowId, basedOn) {
+            scoped(it, taskId) { d -> withLayoutEntry(d, typeName, field, entry, inherited) }
+        }
     }
+
+    /**
+     * The view of the types an edit's override is made over: the client's for a workflow's own, or -- for approval task
+     * [taskId]'s (issue #1875) -- the workflow's, its own alterations applied.
+     */
+    private fun inheritedStore(cxt: KdrCxt, workflowId: String, taskId: String?): KdrSchemaStore {
+        val clientStore = cxt.getClientSchema()
+        if (taskId == null) return clientStore
+        val declared = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId) ?: return clientStore
+        return workflowSchemaStore(clientStore, declared)
+    }
+
+    /** [definition] rewritten by [edit]: the definition itself, or approval task [taskId]'s approval (issue #1875). */
+    private fun scoped(
+        definition: Map<String, Any?>,
+        taskId: String?,
+        edit: (Map<String, Any?>) -> Map<String, Any?>,
+    ): Map<String, Any?> = if (taskId == null) edit(definition) else withinApproval(definition, taskId, edit)
 
     /**
      * Sets a label workflow [workflowId] owns to [label] (issue #1070): its own when [taskId] is null, else that
@@ -366,7 +424,8 @@ object DesignView {
      * Sets workflow [workflowId]'s own heading for [typeName] to [label] and its introduction to [description], each
      * removed when null -- back to the shared one (issues #1070, #1539) -- as a layout alteration of the type
      * ([withLayoutHeading]), recording the client's heading and introduction they replace. Refused when the definition
-     * has changed since [basedOn]. Returns the new stamp.
+     * has changed since [basedOn]. With [taskId], the heading is approval task [taskId]'s own, over the workflow's (issue
+     * #1875). Returns the new stamp.
      */
     fun setHeading(
         cxt: KdrCxt,
@@ -375,17 +434,21 @@ object DesignView {
         label: String?,
         description: String?,
         basedOn: String,
+        taskId: String? = null,
     ): DesignSave {
-        val inherited = layoutHeadingOf(cxt.getClientSchema().defs, typeName)
-        return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutHeading(it, typeName, label, description, inherited) }
+        val inherited = layoutHeadingOf(inheritedStore(cxt, workflowId, taskId).defs, typeName)
+        return editWorkflowDef(cxt, workflowId, basedOn) {
+            scoped(it, taskId) { d -> withLayoutHeading(d, typeName, label, description, inherited) }
+        }
     }
 
     /**
      * Sets the fields workflow [workflowId]'s form shows for [typeName] to [fields], in order, or removes its choice when
      * [fields] is null (issue #1071) -- its layout alteration of the type, `authoritative` ([withShownFields]). Its edit
      * save then writes only those fields. A list that omits a field the type may require is refused by the trial, as
-     * the load check refuses one. Refused when the definition has changed since [basedOn]. Returns the new stamp; a
-     * [dryRun] (issue #1765) stores nothing, so its stamp is the one it was based on.
+     * the load check refuses one. Refused when the definition has changed since [basedOn]. With [taskId], the choice is
+     * approval task [taskId]'s own, of what it shows (issue #1875). Returns the new stamp; a [dryRun] (issue #1765)
+     * stores nothing, so its stamp is the one it was based on.
      */
     fun setShownFields(
         cxt: KdrCxt,
@@ -394,11 +457,12 @@ object DesignView {
         fields: List<String>?,
         basedOn: String,
         dryRun: Boolean = false,
+        taskId: String? = null,
     ): DesignSave {
         if (fields != null && fields.isEmpty()) {
             throw KdrException.mkInput("A form shows at least one field; to show them all, stop choosing them.")
         }
-        return editWorkflowDef(cxt, workflowId, basedOn, dryRun) { withShownFields(it, typeName, fields) }
+        return editWorkflowDef(cxt, workflowId, basedOn, dryRun) { scoped(it, taskId) { d -> withShownFields(d, typeName, fields) } }
     }
 
     /**
@@ -672,6 +736,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
                 type = SCT.kObject
             }
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            approvalTaskField()
             designClientField()
         },
     ) { c, request ->
@@ -681,7 +746,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         val saved = DesignView.setLayoutEntry(
             dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request.getReqNonBlankStr(DSV.field), (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
-            request.getReqNonBlankStr(DSV.basedOn),
+            request.getReqNonBlankStr(DSV.basedOn), request[DSV.taskId].toOptStr(),
         )
         saved.answer(DSV.basedOn, dc, dryRun = false)
     }
@@ -784,6 +849,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
                 longText = true
             }
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            approvalTaskField()
             designClientField()
         },
     ) { c, request ->
@@ -792,6 +858,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         val saved = DesignView.setHeading(
             dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request[DSV.label].toOptStr(), request[DSV.description].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
+            request[DSV.taskId].toOptStr(),
         )
         saved.answer(DSV.basedOn, dc, dryRun = false)
     }
@@ -810,6 +877,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             }
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
             dryRunField()
+            approvalTaskField()
             designClientField()
         },
     ) { c, request ->
@@ -819,6 +887,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         val saved = DesignView.setShownFields(
             dc, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             (request[DSV.fields] as? List<*>)?.mapNotNull { it.toOptStr() }, request.getReqNonBlankStr(DSV.basedOn), dryRun,
+            request[DSV.taskId].toOptStr(),
         )
         saved.answer(DSV.basedOn, dc, dryRun)
     }
@@ -892,6 +961,10 @@ private fun SchTypeBuilder.designDryRunProperties() {
 }
 
 /** The Design View endpoints' [DSV.client] input: the client whose form the page draws. */
+/** An approval task, for an edit of its own layout of what it shows instead of the workflow's (issue #1875). */
+private fun InputFieldsBuilder.approvalTaskField() =
+    field(DSV.taskId, "An approval task of the workflow: the edit is that approval's own, for what it shows, over the workflow's.")
+
 private fun InputFieldsBuilder.designClientField() =
     overseenClientField(DSV.client, "The client whose form the page draws; the caller's own when absent.")
 

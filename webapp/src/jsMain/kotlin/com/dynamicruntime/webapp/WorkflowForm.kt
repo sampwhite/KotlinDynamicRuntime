@@ -655,9 +655,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     }
 
     // One trait of a task, as its panel draws it (issue #1695 made it its own, so an approval draws the traits of the
-    // task it approves the same way, read-only: an approval task saves nothing, so nothing in it is editable).
-    fun ChildrenBuilder.traitSection(task: WfTaskView, trait: WfTraitView) {
-        designFramed(designSession, DesignTarget.Trait(trait), trait.traitId) {
+    // task it approves the same way, read-only: an approval task saves nothing, so nothing in it is editable). Drawn for
+    // an approval, [shownBy] is it: the traits it names come with their own values (issue #1875), since no task of this
+    // workflow holds them, and its own layouts, when it has them, stand in for the workflow's.
+    fun ChildrenBuilder.traitSection(task: WfTaskView, trait: WfTraitView, shownBy: WfApprovalView? = null) {
+        // In Design View, a trait an approval shows is that approval's to lay out (issue #1875).
+        val approvalTask = shownBy?.let { task.id }
+        designFramed(designSession, DesignTarget.Trait(trait, approvalTask), trait.traitId) {
         div {
             className = ClassName("wf-trait")
             // Its name as the section's heading, and its introduction under it as a muted caption (issue #1534):
@@ -693,10 +697,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
             // Design View marks this trait's fields (issue #972); outside it the provider carries null.
             DesignViewContext.Provider {
-                value = designSession?.forTrait(trait)
+                value = designSession?.forTrait(trait, approvalTask)
                 SchemaForm {
                     type = trait.type
-                    this.values = valuesOf(trait.traitId)
+                    this.values = shownBy?.takeIf { it.shownTraits != null }?.shownValues?.get(trait.traitId) ?: valuesOf(trait.traitId)
                     // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
                     // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
                     editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
@@ -708,7 +712,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     showDerivedValues = true
                     derivedRootIsTraitData = true
                     this.cfacts = wf.cfacts
-                    this.fieldLayouts = wf.fieldLayouts
+                    this.fieldLayouts = shownBy?.fieldLayouts ?: wf.fieldLayouts
                     this.failures = shownFailures(
                         failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
                         trait.traitId in wholeChecked,
@@ -741,7 +745,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
             // What an approval approves (issue #1695): the traits of the task it follows (or those it names), read-only
             // and above its prompt -- or above a display's text -- so the reviewer approves what is in front of them.
-            approvalShownTraits(wf, task).forEach { traitSection(task, it) }
+            approvalShownTraits(wf, task).forEach { traitSection(task, it, task.approval) }
             // A text display (issue #788) stands in for the task's whole rendering -- fields, saves, an approval's
             // button -- with its placeholders filled from the task's own data.
             displayTextOf(task)?.let { text ->

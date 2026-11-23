@@ -164,10 +164,13 @@ object AssistantPrompt {
             |  'userLabels', and the fact the approval asserts is declared in '${CCT.cfactDef}'. Save a new label with
             |  ${ATOOL.setClientDefinition} before you dry run the workflow: a dry run judges it against the client as
             |  saved, so a label only dry-run is not there yet.
-            |- An approval shows, read-only above its button, the traits of tasks of its own workflow: the nearest task
-            |  before it that collects traits, or the tasks its 'showTasks' names. It never shows another workflow's task.
-            |  To show the form's answers, give the review a task before the approval that lists their traits and offers
-            |  no save: it shows them as the form holds them, which the eligibility test makes sure are there.
+            |- An approval shows, read-only above its button, what it approves. To show the form's answers, name their
+            |  traits in the approval's 'showTraits': it shows them as the form holds them, whichever workflow collected
+            |  them, and the eligibility test makes sure they are there. Never add a task only to give an approval
+            |  something to show. Left out, it shows the nearest task before it in its own workflow that collects traits,
+            |  or the tasks its 'showTasks' names; an approval names one list or the other, never both.
+            |- An approval can lay out what it shows its own way, in a 'types' of its own written as a workflow's is:
+            |  which fields, in what order, and their labels, on the approval alone.
             |- read_doc '${ConfDemo.docIdPrefix}committee-review' is a whole review: its eligibility test, a task only the
             |  committee saves, and an approval in two steps.
             |

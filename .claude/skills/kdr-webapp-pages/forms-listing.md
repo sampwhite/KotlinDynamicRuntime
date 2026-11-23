@@ -121,7 +121,10 @@ alone also confines the rows to X: on a client's own copy, an `allClients` calle
   task draws the traits of the tasks its approval shows (`showTasks` on the view's approval, which the backend
   resolves: those the approval names, else the nearest earlier task that collects traits; `approvalShownTraits`),
   through the same `traitSection` as their own task, read-only since an approval saves nothing. None on a step its
-  display disables.
+  display disables. **Or the traits it names** (issue #1875, `showTraits`), which no task of its workflow need collect:
+  the view's approval sends them (`shownTraits`) with the form's entries for them (`entries`, parsed as `shownValues`),
+  and `traitSection` draws those values in place of a task's (`shownBy`). An approval laying out what it shows its own
+  way sends its own `fieldLayouts`, which stand in for the view's, for named traits and shown tasks' alike.
 - **An approval may be given in steps** (issue #1702). The view's approval speaks of the step waited on
   (`currentStep`: its prompt, button, and `waiting`) and lists every step (`steps`). The page draws a line per step
   given, by its label (`givenStepLines`), above the prompt, in place of the one approved line once all are given; the

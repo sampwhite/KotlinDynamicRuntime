@@ -146,7 +146,8 @@ fun resolveWorkflowView(
     // page's default line leaves out a name that is one.
     //
     // And the tasks whose traits it shows above its prompt (issue #1695), resolved: those it names, else the nearest
-    // earlier task that collects traits -- so the page draws what is approved without knowing the rule.
+    // earlier task that collects traits -- so the page draws what is approved without knowing the rule. Or the traits it
+    // names instead (issue #1875), with their entries and, when it lays them out its own way, its own layouts.
     //
     // An approval is given in ordered steps (issue #1702), one implicit step when it declares none: `steps` is the record
     // of each, and the top level speaks of the step to give next (`currentStep`) -- its prompt, button, and who it waits
@@ -178,6 +179,20 @@ fun resolveWorkflowView(
             WVF.approved to (current == null),
             WFD.showTasks to shows,
         )
+        // The traits it names in place of tasks (issue #1875), with the form's entries for them -- whichever workflow
+        // collected them -- since no task of this workflow holds those entries for the page to read.
+        approval.showTraits?.let { ids ->
+            out[WVF.shownTraits] = ids.map { traitView(WfTraitRef(it, required = false)) }
+            out[WVF.entries] = formEntries.filter { it[GE.traitId].toOptStr() in ids }
+        }
+        // Its own layouts of what it shows (issue #1875), over the workflow's, for the types those traits reach.
+        if (approval.typeAlterations.isNotEmpty()) {
+            val approvalStore = approvalSchemaStore(clientStore, declared, task)
+            val traitIds = approval.showTraits ?: shows.mapNotNull { declared.def.task(it) }.flatMap { t -> t.traits.map { it.traitId } }
+            val seeds = traitIds.mapNotNull { id -> traitsById[id]?.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) } }
+            val closure = collectDefClosure(seeds, approvalStore.servedDefs)
+            out[WVF.fieldLayouts] = resolveDeliveredLayouts(cxt, approvalStore.layoutsFor(closure))
+        }
         current?.let { step ->
             out[WVF.currentStep] = step.id
             step.waiting?.let { out[WFD.waiting] = label(it) }

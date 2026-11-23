@@ -246,6 +246,14 @@ object DSV {
     const val shownFields = "shownFields"
 
     /**
+     * In the block: by approval task id, what each approval lays out its own way for what it shows (issue #1875) --
+     * its [layoutEdits], [headingEdits], and [shownFields], in the shapes the workflow's take, each against the
+     * workflow's view of the type rather than the client's. An approval that lays out nothing of its own is absent.
+     * The edits that set them name the approval as [taskId].
+     */
+    const val approvals = "approvals"
+
+    /**
      * Sets the fields a workflow's form shows for a type -- its layout alteration made `authoritative`, listing [fields]
      * in order -- or, with [fields] absent, removes its choice, so the form shows what the shared layout does. Input:
      * [workflowId], [typeName], [fields] and [basedOn]. Its save then writes only the fields shown. Client-scoped admin.

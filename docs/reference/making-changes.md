@@ -72,10 +72,11 @@ asking for more than the New form, once the form exists.
 
 **A review builds on core details.** A review workflow is made eligible once the form has the fact
 `kdr:coreDetailsComplete`, so the answers it reviews are there. Its approval task collects no traits and
-offers no save, and shows above its button the traits of tasks of its own workflow, never another
-workflow's: the nearest task before it that collects traits, or the tasks its `showTasks` names. To
-show the form's answers, the review has a task before the approval that lists their traits and offers no
-save. [The committee review](../demo-client/committee-review.md) is a whole example.
+offers no save. To show the form's answers above its button, the approval names their traits in its
+`showTraits`, and shows them as the form holds them, whichever workflow collected them. It can lay
+them out its own way in a `types` of its own. Naming none, it shows the nearest task before it that
+collects traits, or the tasks its `showTasks` names, never both lists.
+[The committee review](../demo-client/committee-review.md) is a whole example.
 
 | Change | Where a person makes it | Endpoint | Assistant tool | Dry run |
 |---|---|---|---|---|

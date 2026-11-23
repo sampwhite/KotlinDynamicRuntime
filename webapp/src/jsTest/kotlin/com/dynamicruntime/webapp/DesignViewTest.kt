@@ -230,6 +230,44 @@ class DesignViewTest {
     }
 
     @Test
+    fun anApprovalsOwnLayoutsAreReadAndEditedAsItsOwn() {
+        // Issue #1875: the block's approvals each say what that approval lays out its own way; scoped to one, the block
+        // reads its edits in place of the workflow's, and keeps the workflow's stamp and editing rule.
+        val title = mapOf("title" to mapOf(DSV.entry to mapOf("field" to "title", "label" to "Workflow's")))
+        val design = parseWfDesign(
+            mapOf(
+                DSV.canEdit to true,
+                DSV.basedOn to "abc123",
+                DSV.layoutEdits to mapOf("client.demo.Request" to title),
+                DSV.approvals to mapOf(
+                    "accept" to mapOf(
+                        DSV.layoutEdits to mapOf(
+                            "client.demo.Request" to mapOf("venue" to mapOf(DSV.entry to mapOf("field" to "venue", "label" to "Where"))),
+                        ),
+                        DSV.shownFields to mapOf("client.demo.Request" to listOf("venue")),
+                    ),
+                ),
+            ),
+        )!!
+        val accept = design.forApproval("accept")
+        assertEquals("Where", accept.layoutEdit("client.demo.Request", "venue")?.entry?.get("label"))
+        assertNull(accept.layoutEdit("client.demo.Request", "title"))
+        assertEquals(listOf("venue"), accept.shownFields["client.demo.Request"])
+        assertEquals("abc123", accept.basedOn)
+        assertEquals(true, accept.canEdit)
+        // An approval with none of its own starts with none, not the workflow's.
+        assertNull(design.forApproval("other").layoutEdit("client.demo.Request", "title"))
+        // No approval is the workflow's own.
+        assertEquals("Workflow's", design.forApproval(null).layoutEdit("client.demo.Request", "title")?.entry?.get("label"))
+        // A session scoped to the approval names it, and words its overrides as the approval's.
+        val session = DesignSession(design, null, {}, showAllIds = false, showHidden = false).forApproval("accept")
+        assertEquals("accept", session.approvalTask)
+        assertEquals("this approval", session.overrideWords.owner)
+        assertEquals("this workflow", DesignSession(design, null, {}, showAllIds = false, showHidden = false).overrideWords.owner)
+        assertEquals("accept", shownFieldsBody("review", "client.demo.Request", null, "abc123", null, "accept")[DSV.taskId])
+    }
+
+    @Test
     fun aSavedEntryTakesTheFormsCopyAndKeepsWhatTheFormDoesNotOffer() {
         val start = mapOf("field" to "title", "label" to "Title", "hint" to "Short", "defaultMode" to "offer")
         val out = copyEntryFrom(start, "title", mapOf("label" to " Name it ", "description" to "What people call it", "hint" to ""))

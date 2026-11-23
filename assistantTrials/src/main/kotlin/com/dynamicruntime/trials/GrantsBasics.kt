@@ -122,6 +122,7 @@ object GrantsBasics {
                     else -> Outcome.notMet("No workflow beyond the New form and core details.")
                 }
             },
+            Expectation("The review's approval shows the applicant's answers") { r -> Checks.approvalShowsNewForm(r) },
             Expectation("Home's introduction names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, program) },
             Expectation("The invitation mail names the program") { r -> Checks.copyMentions(r, AFRAG.mail, MAILNS.invitation, program) },
             Expectation("A Home card to start an application") { r ->

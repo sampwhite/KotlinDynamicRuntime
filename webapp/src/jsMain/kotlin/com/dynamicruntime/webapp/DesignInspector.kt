@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.offeredChoices
@@ -49,8 +50,9 @@ object DesignApi {
 
     /**
      * Sets the workflow's own layout entry for [field] of [typeName] to [entry], or clears it when [entry] is null
-     * (issue #984), as an edit of the definition stamped [basedOn]. The server's refusal -- a stale stamp (409), an
-     * entry the layout checks refuse -- comes back as the result's refusal.
+     * (issue #984), as an edit of the definition stamped [basedOn] -- or, with [approvalTask], that approval's own (issue
+     * #1875). The server's refusal -- a stale stamp (409), an entry the layout checks refuse -- comes back as the
+     * result's refusal.
      */
     suspend fun setLayoutEntry(
         workflowId: String,
@@ -59,6 +61,7 @@ object DesignApi {
         entry: Map<String, Any?>?,
         basedOn: String,
         client: String?,
+        approvalTask: String? = null,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
         "POST", DSV.layoutEntryEdit,
         buildMap {
@@ -67,6 +70,7 @@ object DesignApi {
             put(DSV.field, field)
             entry?.let { put(DSV.entry, it) }
             put(DSV.basedOn, basedOn)
+            approvalTask?.let { put(DSV.taskId, it) }
             client?.let { put(DSV.client, it) }
         },
     )
@@ -91,7 +95,7 @@ object DesignApi {
     /**
      * Sets [typeName]'s heading to [label] and its introduction to [description] -- the workflow's own when [workflowId]
      * is given, else the shared ones in the definition the client declares -- each cleared when blank (issues #1070,
-     * #1539), as an edit of the definition stamped [basedOn].
+     * #1539), as an edit of the definition stamped [basedOn] -- or, with [approvalTask], that approval's own (issue #1875).
      */
     suspend fun setHeading(
         workflowId: String?,
@@ -100,18 +104,27 @@ object DesignApi {
         description: String?,
         basedOn: String,
         client: String?,
+        approvalTask: String? = null,
     ): ApiResult<Map<String, Any?>> =
         Http.sendApiResult(
             "POST", if (workflowId != null) DSV.headingEdit else DSV.sharedHeadingEdit,
-            headingEditBody(workflowId, typeName, label, description, basedOn, client),
+            headingEditBody(workflowId, typeName, label, description, basedOn, client, approvalTask),
         )
 
     /**
      * Sets the fields the workflow's form shows for [typeName] to [fields], in order, or stops choosing them when
-     * [fields] is null (issue #1071), as an edit of the definition stamped [basedOn].
+     * [fields] is null (issue #1071), as an edit of the definition stamped [basedOn] -- or, with [approvalTask], that
+     * approval's own choice of what it shows (issue #1875).
      */
-    suspend fun setShownFields(workflowId: String, typeName: String, fields: List<String>?, basedOn: String, client: String?): ApiResult<Map<String, Any?>> =
-        Http.sendApiResult("POST", DSV.shownFieldsEdit, shownFieldsBody(workflowId, typeName, fields, basedOn, client))
+    suspend fun setShownFields(
+        workflowId: String,
+        typeName: String,
+        fields: List<String>?,
+        basedOn: String,
+        client: String?,
+        approvalTask: String? = null,
+    ): ApiResult<Map<String, Any?>> =
+        Http.sendApiResult("POST", DSV.shownFieldsEdit, shownFieldsBody(workflowId, typeName, fields, basedOn, client, approvalTask))
 
     /**
      * Sets [field] of [typeName] -- in the definition the client declares -- to the layout [entry] and the choices
@@ -203,6 +216,10 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
     val design = session.design
     val selected = session.selected
     val address: DesignAddress? = selected?.let { addressOf(it, design) } ?: design.workflow
+    // A trait or field an approval shows is edited as that approval's own (issue #1875): its session, its layouts.
+    val approvalTask = (selected as? DesignTarget.Trait)?.approvalTask ?: (selected as? DesignTarget.Field)?.approvalTask
+    val scoped = session.forApproval(approvalTask)
+    val shownLayouts = layoutsShown(props.view, approvalTask)
     // The authored entry, by slot and key: one read per definition, kept while the panel is open, so moving between
     // the fields of one trait does not refetch it.
     var loaded by useState<Map<String, LoadedDefinition>>(emptyMap())
@@ -302,19 +319,20 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
             }
             is DesignTarget.Trait -> {
                 // The trait as the page now draws it, its heading included (see the field case below).
-                val trait = props.view.tasks.flatMap { it.traits }.firstOrNull { it.traitId == selected.trait.traitId } ?: selected.trait
-                traitSummary(DesignTarget.Trait(trait))
-                // Which fields the form shows (issue #1071): the workflow's own choice, from the block.
+                val trait = traitAsDrawn(props.view, selected.trait, selected.approvalTask)
+                traitSummary(DesignTarget.Trait(trait, selected.approvalTask))
+                // Which fields the form shows (issue #1071): the workflow's own choice, from the block -- or the
+                // approval's, of what it shows (issue #1875).
                 FieldsShownSection {
                     key = "${selected.id}|fields|${design.basedOn}".unsafeCast<Key>()
-                    this.session = session
+                    this.session = scoped
                     this.trait = trait
                 }
                 // A definition is read only for an address, so `address` is there whenever it is.
                 if (definition?.response != null) {
                     HeadingSection {
                         key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
-                        this.session = session
+                        this.session = scoped
                         this.trait = trait
                         this.read = definition.response
                         this.typeBody = subtreeAt(definition.response[DSV.entry].toJsonMapOrEmpty(), address.path)
@@ -326,7 +344,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 // The field's copy as the page now shows it -- read from the view, not from the selection, which was
                 // made before any edit re-read the view.
                 val owner = fieldOwner(selected.root.typeName, selected.root.type, selected.path)
-                fieldSummary(selected, props.view.fieldLayouts[owner.typeName]?.fieldFor(selected.name) ?: selected.layout)
+                fieldSummary(selected, shownLayouts[owner.typeName]?.fieldFor(selected.name) ?: selected.layout)
                 // Once the definition read has answered: the form starts from the type's authored entry, and starting
                 // before it arrived would save an entry missing what the form never saw.
                 if (design.canEdit && definition != null) {
@@ -334,7 +352,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         // Keyed on the field and the definition it edits, so a save -- which re-reads the view and
                         // moves the stamp -- starts the form afresh from what is now stored.
                         key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
-                        this.session = session
+                        this.session = scoped
                         this.target = selected
                         authored = authoredLayoutEntry(address, definition, selected)
                         pulled = pulledCopyOf(definition.response, owner.typeName, selected.name)
@@ -342,10 +360,10 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 } else if (design.editRefusal != null) {
                     // Not editable here: what the workflow's own copy is, if it has one -- and why there is no control,
                     // so the missing one reads as a rule rather than a fault.
-                    val edit = design.layoutEdit(owner.typeName, selected.name)
+                    val edit = scoped.design.layoutEdit(owner.typeName, selected.name)
                     div {
                         className = ClassName("dv-edit")
-                        overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs))
+                        overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs), scoped.overrideWords)
                         edit?.let {
                             val pulled = pulledCopyOf(definition?.response, owner.typeName, selected.name)
                             sharedCopyFacts(it.inherited, pulled, editableCopyKeys(selected.prop))
@@ -360,7 +378,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 // the definition's origin, since a copy override is the client's own data.
                 val pulled = pulledCopyOf(definition?.response, owner.typeName, selected.name)
                 if (pulled.isNotEmpty()) {
-                    val shown = props.view.fieldLayouts[owner.typeName]?.fieldFor(selected.name)
+                    val shown = shownLayouts[owner.typeName]?.fieldFor(selected.name)
                     SharedWordingSection {
                         key = "${selected.id}|wording".unsafeCast<Key>()
                         this.session = session
@@ -402,6 +420,26 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
             definitionSection(address, definition, selected, editable = design.canEdit)
         }
     }
+}
+
+/**
+ * The layouts the page draws what an approval task [approvalTask] shows with (issue #1875): its own, when it has them,
+ * else the view's -- which are all a page draws with when no approval is named.
+ */
+private fun layoutsShown(view: WorkflowView, approvalTask: String?): Map<String, SchLayout> =
+    approvalTask?.let { id -> view.tasks.firstOrNull { it.id == id }?.approval?.fieldLayouts } ?: view.fieldLayouts
+
+/**
+ * [trait] as the page now draws it -- a task's, or one approval task [approvalTask] shows (issue #1875) -- read from the
+ * view rather than the selection, which was made before any edit re-read the view. [trait] itself when it is not found.
+ */
+private fun traitAsDrawn(view: WorkflowView, trait: WfTraitView, approvalTask: String?): WfTraitView {
+    val drawn = if (approvalTask != null) {
+        view.tasks.firstOrNull { it.id == approvalTask }?.let { approvalShownTraits(view, it) }.orEmpty()
+    } else {
+        view.tasks.flatMap { it.traits }
+    }
+    return drawn.firstOrNull { it.traitId == trait.traitId } ?: trait
 }
 
 /** A definition read's outcome: the response, or why there is none. */
@@ -645,21 +683,21 @@ private fun authoredLayoutEntry(address: DesignAddress, loaded: LoadedDefinition
  * the shared one (issue #1337), and -- when the workflow overrides the field's copy ([edit]) -- that it does and
  * whether the shared copy has changed since. Said the same way whether or not the copy can be edited here.
  */
-private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?, explanation: String) {
+private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?, explanation: String, words: OverrideWords) {
     WhatIsThis {
-        heading = "Copy for this workflow"
+        heading = "Copy for ${words.owner}"
         headingLevel = 3
         text = explanation
     }
     if (edit == null) return
     p {
         className = ClassName("dv-note")
-        +"This workflow uses its own copy here; every other workflow shows the shared copy."
+        +"${words.owner.replaceFirstChar { it.uppercase() }} uses its own copy here; ${words.others} copy."
     }
     if (edit.inheritedChanged) {
         p {
             className = ClassName("dv-callout")
-            +"The shared copy has changed since this workflow overrode it."
+            +"${words.over.replaceFirstChar { it.uppercase() }} copy has changed since ${words.owner} overrode it."
         }
     }
 }
@@ -725,7 +763,9 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
         saving = true
         failure = null
         designScope.launch {
-            val result = DesignApi.setLayoutEntry(session.workflowId, owner.typeName, target.name, entry, session.design.basedOn, session.client)
+            val result = DesignApi.setLayoutEntry(
+                session.workflowId, owner.typeName, target.name, entry, session.design.basedOn, session.client, session.approvalTask,
+            )
             saving = false
             val refused = result.failureOrNull()
             if (refused != null) {
@@ -739,14 +779,14 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
 
     div {
         className = ClassName("dv-edit")
-        overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs))
+        overrideFacts(edit, pageCopy.explanation(PFRAG.ownCopyNs), session.overrideWords)
         if (!editing) {
             div {
                 className = ClassName("dv-actions")
                 Button {
                     size = "small"
                     onClick = { editing = true }
-                    +(if (edit == null) "Override for this workflow" else "Edit")
+                    +(if (edit == null) "Override for ${session.overrideWords.owner}" else "Edit")
                 }
                 if (edit != null) {
                     Button {
@@ -754,7 +794,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                         type = "link"
                         loading = saving
                         onClick = { save(null) }
-                        +"Reset to shared"
+                        +session.overrideWords.reset
                     }
                 }
             }
@@ -1469,6 +1509,8 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
     val trait = props.trait
     val typeName = trait.typeName
     val edit = design.headingEdits[typeName]
+    // Whose heading this is (issue #1875): the workflow's, over the shared one, or an approval's, over the workflow's.
+    val words = session.overrideWords
     val sharedWritten = headingIn(props.typeBody)
     val sharedIntroWritten = introIn(props.typeBody)
     val pulled = pulledHeadingOf(props.read, typeName)
@@ -1489,7 +1531,10 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
         saving = true
         failure = null
         designScope.launch {
-            val result = DesignApi.setHeading(workflowId, typeName, label, description, basedOn, session.client)
+            // The approval's own heading only when it is the own one being saved (issue #1875), never the shared one.
+            val result = DesignApi.setHeading(
+                workflowId, typeName, label, description, basedOn, session.client, session.approvalTask?.takeIf { workflowId != null },
+            )
             saving = false
             val refused = result.failureOrNull()
             if (refused != null) {
@@ -1561,7 +1606,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
     div {
         className = ClassName("dv-edit")
         WhatIsThis {
-            heading = "Heading for this workflow"
+            heading = "Heading for ${words.owner}"
             headingLevel = 3
             text = pageCopy.explanation(PFRAG.ownCopyNs)
         }
@@ -1570,12 +1615,15 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
         if (edit != null) {
             p {
                 className = ClassName("dv-note")
-                +"This workflow uses its own heading or introduction here; every other workflow shows the shared one."
+                +"${words.owner.replaceFirstChar { it.uppercase() }} uses its own heading or introduction here; ${words.others} one."
             }
             if (edit.inheritedChanged) {
                 p {
                     className = ClassName("dv-callout")
-                    +"The shared heading or introduction has changed since this workflow overrode it."
+                    +(
+                        "${words.over.replaceFirstChar { it.uppercase() }} heading or introduction has changed since " +
+                            "${words.owner} overrode it."
+                        )
                 }
             }
         }
@@ -1596,7 +1644,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                         introValue = edit?.description.orEmpty()
                         editingOwn = true
                     }
-                    +(if (edit == null) "Override for this workflow" else "Edit")
+                    +(if (edit == null) "Override for ${session.overrideWords.owner}" else "Edit")
                 }
                 if (edit != null) {
                     Button {
@@ -1604,7 +1652,7 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
                         type = "link"
                         loading = saving
                         onClick = { save(session.workflowId, null, null, design.basedOn) }
-                        +"Reset to shared"
+                        +session.overrideWords.reset
                     }
                 }
             }
@@ -1744,7 +1792,9 @@ private val FieldsShownSection = FC<FieldsShownSectionProps> { props ->
         saving = true
         failure = null
         designScope.launch {
-            val result = DesignApi.setShownFields(session.workflowId, trait.typeName, fields, design.basedOn, session.client)
+            val result = DesignApi.setShownFields(
+                session.workflowId, trait.typeName, fields, design.basedOn, session.client, session.approvalTask,
+            )
             saving = false
             result.failureOrNull()?.let { failure = userFacingError(it) } ?: session.afterEdit()
         }

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrSchemaStore
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
@@ -11,6 +12,7 @@ import com.dynamicruntime.common.schema.overlayTypeOutcome
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.startup.layoutProblems
 import com.dynamicruntime.common.util.crc32Hex
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
@@ -52,34 +54,90 @@ fun workflowSchemaStore(clientStore: KdrSchemaStore, declared: WfDeclared): KdrS
  * workflow's refusal, or null when nothing is (issue #984). [traits] are the scope's, by which the workflow's pages
  * reach their types.
  *
- * - **Only a type the workflow's pages draw** may be altered: one its tasks' traits reach. Altering any other would be
- *   an edit nothing shows.
+ * - **Only a type the workflow's pages draw** may be altered: one its tasks' traits, or the traits its approvals name,
+ *   reach. Altering any other would be an edit nothing shows.
  * - **The merge must apply**: a layout entry the merge refuses (a field the inherited layout does not list, where its
  *   order matters) is a fault, as it is for a client.
  * - **The merged layout must pass the layout checks** against the type: every field one the type declares, every
  *   template well-formed -- the checks a client's layout gets.
  */
-fun typeAlterationProblem(declared: WfDeclared, store: KdrSchemaStore, traits: List<GedraTrait>): String? {
-    val alterations = declared.def.typeAlterations
+fun typeAlterationProblem(declared: WfDeclared, store: KdrSchemaStore, traits: List<GedraTrait>): String? =
+    alterationProblem(
+        // Its pages draw its tasks' traits, and the traits its approvals name (issue #1875).
+        declared.def.typeAlterations,
+        declared.def.tasks.flatMap { t -> t.traits.map { it.traitId } + t.approval?.showTraits.orEmpty() }, store, traits,
+        "Type '%s' (workflow '${declared.def.workflowId}')",
+    ) { "its pages do not show; a workflow may alter only a type its tasks' traits, or the traits its approvals show, reach" }
+
+/**
+ * What is wrong with the type alterations of [declared]'s approvals (issue #1875), as [typeAlterationProblem] says it of
+ * the workflow's: each over the **workflow's** view of the types (its own alterations applied to [store]), and only for a
+ * type the approval shows -- the traits it names, or those of the tasks it shows.
+ */
+fun approvalAlterationProblem(declared: WfDeclared, store: KdrSchemaStore, traits: List<GedraTrait>): String? {
+    val def = declared.def
+    val approvals = def.tasks.filter { it.approval?.typeAlterations?.isNotEmpty() == true }
+    if (approvals.isEmpty()) return null
+    val workflowStore = workflowSchemaStore(store, declared)
+    for (task in approvals) {
+        val approval = task.approval ?: continue
+        val shownTraits = approval.showTraits
+            ?: def.approvalShows(task).mapNotNull { def.task(it) }.flatMap { t -> t.traits.map { it.traitId } }
+        alterationProblem(
+            approval.typeAlterations, shownTraits, workflowStore, traits,
+            "Type '%s' (approval '${task.id}' of workflow '${def.workflowId}')",
+        ) { "approval task '${task.id}' does not show; an approval may alter only a type the traits it shows reach" }
+            ?.let { return "has an approval task '${task.id}' that $it" }
+    }
+    return null
+}
+
+/**
+ * The first problem with [alterations] over [store], or null: each must alter a type the traits [traitIds] reach
+ * ([notShown] says why one does not), merge over the type, and leave a layout that passes the layout checks.
+ * [where] names the type in a layout problem, with `%s` for its name.
+ */
+private fun alterationProblem(
+    alterations: Map<String, Map<String, Any?>>,
+    traitIds: List<String>,
+    store: KdrSchemaStore,
+    traits: List<GedraTrait>,
+    where: String,
+    notShown: () -> String,
+): String? {
     if (alterations.isEmpty()) return null
     val byId = traits.associateBy { it.traitId }
-    val seeds = declared.def.tasks.flatMap { it.traits }
-        .mapNotNull { ref -> byId[ref.traitId]?.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) } }
+    val seeds = traitIds.mapNotNull { id -> byId[id]?.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) } }
     val shown = collectDefClosure(seeds, store.defs).keys
     for ((typeName, body) in alterations) {
-        if (typeName !in shown) {
-            return "alters the type '$typeName', which its pages do not show; a workflow may alter only a type its " +
-                "tasks' traits reach."
-        }
+        if (typeName !in shown) return "alters the type '$typeName', which ${notShown()}."
         val base = (store.defs[typeName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: return "alters the type '$typeName', which is not there."
         val outcome = overlayTypeOutcome(typeName, base, body)
         outcome.problems.firstOrNull()?.let {
             return "alters '$typeName' in a way that cannot apply, at ${it.location?.path ?: typeName}: ${it.message}"
         }
-        layoutProblems(typeName, "Type '$typeName' (workflow '${declared.def.workflowId}')", outcome.value, store.types[typeName])
+        layoutProblems(typeName, where.replace("%s", typeName), outcome.value, store.types[typeName])
             .firstOrNull()?.let { return "alters the layout of '$typeName': ${it.message}" }
     }
     return null
+}
+
+/**
+ * The schema store approval task [task] of [declared] draws what it shows from (issue #1875): the workflow's
+ * ([workflowSchemaStore] over [clientStore]), with the approval's own type alterations applied -- or the workflow's
+ * itself, by identity, when the approval alters nothing. Built per call: an approval's page is one of several a view
+ * draws, and its alterations are few.
+ */
+fun approvalSchemaStore(clientStore: KdrSchemaStore, declared: WfDeclared, task: WfTask): KdrSchemaStore {
+    val workflowStore = workflowSchemaStore(clientStore, declared)
+    val alterations = task.approval?.typeAlterations.orEmpty()
+    if (alterations.isEmpty()) return workflowStore
+    return KdrSchemaStore(
+        types = workflowStore.types,
+        endpoints = workflowStore.endpoints,
+        tables = workflowStore.tables,
+        defs = overlayDefs(workflowStore.defs, alterations),
+    )
 }
 
 /**
@@ -193,6 +251,21 @@ internal fun withLayoutAlteration(
     if (types.isEmpty()) out.remove(WFD.types) else out[WFD.types] = types
     if (basis.isEmpty()) out.remove(WFD.typeBasis) else out[WFD.typeBasis] = basis
     return out
+}
+
+/**
+ * [definition] -- a workflow definition's JSON form -- with approval task [taskId]'s approval rewritten by [rewrite]
+ * (issue #1875). An approval keeps its own type alterations under the keys a definition does (`types`, `typeBasis`),
+ * so every layout edit above applies to it unchanged, handed the approval's map in place of the definition's. Refused
+ * when the workflow has no such task, or the task is not an approval. Pure.
+ */
+fun withinApproval(definition: Map<String, Any?>, taskId: String, rewrite: (Map<String, Any?>) -> Map<String, Any?>): Map<String, Any?> {
+    val tasks = definition[WFD.tasks].toJsonListOfMaps()
+    val at = tasks.indexOfFirst { it[WFD.id] == taskId }
+    val approval = tasks.getOrNull(at)?.get(WFD.approval)?.toJsonMapOrEmpty()?.takeIf { it.isNotEmpty() }
+        ?: throw KdrException.mkInput("The workflow has no approval task '$taskId'.")
+    val rewritten = tasks.mapIndexed { i, t -> if (i == at) t + (WFD.approval to rewrite(approval)) else t }
+    return definition + (WFD.tasks to rewritten)
 }
 
 /** The layout entry for [field] in the `g-layout` of [typeName] as [store] has it, or null when there is none. */

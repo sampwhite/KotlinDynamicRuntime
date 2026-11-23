@@ -247,6 +247,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                     }
                 }
                 tbody {
+                    val traitNames = shown.traits.associate { it.traitId to it.name }
                     shown.workflows.forEach { w ->
                         tr {
                             key = w.def.workflowId.unsafeCast<Key>()
@@ -259,7 +260,8 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             }
                             td { +workflowEntryText(w.def.entry) }
                             td { +(w.def.fromTemplate?.let { shown.template(it)?.let { t -> workflowName(t.def) } ?: it } ?: "—") }
-                            td { +w.taskLabels.joinToString(", ") }
+                            // An approval says what it shows (issue #1875).
+                            td { +workflowTaskSummary(w, traitNames).joinToString(", ") }
                             // Where a normal workflow stands now: turned off (issue #1635), else in its time windows (issue
                             // #1121); the others have neither.
                             td {

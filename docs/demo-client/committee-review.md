@@ -202,6 +202,12 @@ task before it, read-only, so a committee member reads the score and the notes b
 default, which is why the `accept` task says nothing about it. An approval that should show other tasks names them in
 its approval's `showTasks`, such as `"showTasks": ["recordReview"]`, and an empty list shows none.
 
+An approval can name traits instead, in its `showTraits`. With `"showTraits": ["abstract"]`, it would show the talk's
+abstract as the speaker wrote it, though no task of the review collects it, since what it shows is read from the talk
+itself. An approval names one list or the other, never both. It can also lay out what it shows its own way, in a
+`types` of its own written as a workflow's is (see [Field layouts](reference.md#field-layouts)), so a committee member
+sees only the fields that matter for the decision, labeled for them, while every other page shows the talk as before.
+
 **A singleton.** The `singletons` list turns the workflow's own fact into one about the whole form: once
 `talkAccepted` holds, the form has `kdr:finished`, and the forms list shows the talk as **Finished**. That is a
 different thing from the workflow finishing, which it does when its tasks are complete, as any workflow does. The

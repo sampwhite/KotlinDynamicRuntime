@@ -897,7 +897,7 @@ private fun ChildrenBuilder.designMarked(
     }
     val target = DesignTarget.Field(
         trait, childPath(path, name), name, prop, name in type.required,
-        type.name?.let { opts.fieldLayouts[it] }?.fieldFor(name), hidden,
+        type.name?.let { opts.fieldLayouts[it] }?.fieldFor(name), hidden, session.approvalTask,
     )
     designTargetFrame(session, target, name, ghostReason = hidden?.reason, altered = session.isAltered(target), content = content)
 }

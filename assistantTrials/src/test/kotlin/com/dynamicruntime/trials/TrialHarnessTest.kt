@@ -140,6 +140,37 @@ class TrialHarnessTest : StringSpec({
         outcome(null) shouldBe OutcomeKind.notMet
     }
 
+    "the review's approval is held to naming the New form's own traits" {
+        fun outcome(approval: Map<String, Any?>, answersTask: Boolean = false): OutcomeKind {
+            fun task(id: String, traits: List<String>, extra: Map<String, Any?> = emptyMap()) =
+                mapOf(WFD.id to id, WFD.traits to traits.map { mapOf(WFD.traitId to it) }) + extra
+            val creation = mapOf(
+                CCT.workflowId to "newForm",
+                CCT.definition to mapOf(
+                    WFD.fromTemplate to WFT.createForm, WFD.tasks to listOf(task("identify", listOf("kdr:name", "ask", "plan"))),
+                ),
+            )
+            val reviewTasks = listOfNotNull(
+                if (answersTask) task("answers", listOf("ask", "plan")) else null,
+                task("approve", emptyList(), mapOf(WFD.approval to mapOf(WFD.cfact to "approved") + approval)),
+            )
+            val review = mapOf(
+                CCT.workflowId to "review",
+                CCT.definition to mapOf(WFD.workflowId to "review", WFD.entry to WfEntry.normal.name, WFD.tasks to reviewTasks),
+            )
+            val bundle = mapOf(CFEP.slots to mapOf(CCT.workflowDef to listOf(creation, review)))
+            val now = Clock.System.now()
+            return Checks.approvalShowsNewForm(
+                TrialResult(smoke, smoke.variants.single(), "c", null, emptyList(), mapOf("b" to bundle), emptyList(), now, now),
+            ).kind
+        }
+        outcome(mapOf(WFD.showTraits to listOf("ask", "plan"))) shouldBe OutcomeKind.met
+        outcome(mapOf(WFD.showTraits to listOf("ask"))) shouldBe OutcomeKind.varied
+        // Through a task of its own that only lists them: shown, but by a step that asks nothing of anyone.
+        outcome(emptyMap(), answersTask = true) shouldBe OutcomeKind.varied
+        outcome(emptyMap()) shouldBe OutcomeKind.notMet
+    }
+
     "a change made without saying dryRun, through a tool that offers one, was not dry-run" {
         @Suppress("CanBeVal") var id = 0
         fun call(turn: String, input: Map<String, Any?>) = listOf(
