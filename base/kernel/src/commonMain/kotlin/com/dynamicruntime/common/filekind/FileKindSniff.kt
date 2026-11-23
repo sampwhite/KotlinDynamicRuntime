@@ -18,7 +18,8 @@ package com.dynamicruntime.common.filekind
  *   file whatever it lists. Whether the video inside is one a browser plays is judged when the upload finishes, not
  *   here: a QuickTime movie of ProRes is refused then, as an MP4 of HEVC is.
  *
- * SVG has no mark -- it is a text document -- and is judged by parsing it, on the server only (`WebAssetCheck`).
+ * SVG has no mark -- it is a text document -- and is judged by parsing it, on the server only (`WebAssetCheck`). Nor
+ * has CSV ([FileKinds.parsedKinds]), which an upload finish parses whole; no rule here answers it.
  * Every kind with a mark has its rule in [rules], one place, which a test holds to the registry's kinds.
  *
  * Theme: #DFILE.
@@ -89,7 +90,7 @@ object FileKindSniff {
         FKIND.mp4 to { head -> isMp4(head) },
     )
 
-    /** Whether [kind] has a rule here: every data kind must, and only SVG, judged by parsing, has none. */
+    /** Whether [kind] has a rule here: every data kind must but a parsed one ([FileKinds.parsedKinds]), and SVG has none. */
     fun hasRule(kind: FileKind): Boolean = kind.id in rules
 
     /** Whether [head], the start of a file, holds [kind]'s mark. False for a kind with no mark ([FKIND.svg]). */

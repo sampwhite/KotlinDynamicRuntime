@@ -674,28 +674,6 @@ private fun ChildrenBuilder.reportDownload(download: ReportDownload?, start: () 
     }
 }
 
-/**
- * Hands [text] to the browser to save as [fileName]: a Blob behind a transient link, so nothing leaves the page and
- * no server holds the file. The leading byte-order mark is what makes Excel read the file as UTF-8.
- */
-private fun saveTextFile(fileName: String, mimeType: String, text: String) {
-    js(
-        """
-        (function () {
-            var blob = new Blob(['\uFEFF' + text], { type: mimeType });
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-        })()
-        """,
-    )
-}
-
 /** The run as a table: a column per [reportTableColumns], and in a detail run a leading link to each row's form. */
 private fun ChildrenBuilder.reportTable(run: ReportRunPage, client: String?) {
     val columns = reportTableColumns(run.summary)

@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.datafile.DFSTAT
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -112,6 +113,16 @@ fun fileUsedByText(forms: Int): String = when (forms) {
  * way among them, whose removal aborts it. A linked file says instead why it stays ([fileKeptText]).
  */
 fun fileRemovable(row: FileRow): Boolean = row.forms == 0
+
+/**
+ * Whether [view]'s file is saved as a copy made safe for a spreadsheet rather than opened as it is stored: a CSV
+ * table, whose cells are whatever somebody typed, and which a spreadsheet would read a formula from (issue #1881).
+ */
+fun fileSavedAsSpreadsheetCopy(view: DataFileView): Boolean = view.readable && view.kind?.id == FKIND.csv
+
+/** The name a CSV table's copy is saved under: its own, ending `.csv`. */
+fun spreadsheetCopyName(view: DataFileView): String =
+    view.title.let { if (it.lowercase().endsWith(".${FileKinds.csv.extension}")) it else "$it.${FileKinds.csv.extension}" }
 
 /** Why a file a form uses has no Remove: the forms keep it. */
 fun fileKeptText(row: FileRow): String? = when {

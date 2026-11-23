@@ -40,6 +40,7 @@ import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.table.Csv
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.Sha256
@@ -454,7 +455,8 @@ object DataFileService {
 
     /**
      * What is wrong with the file at [key] as one of [kind], or null: its first bytes are another kind, or none we take;
-     * or, for an MP4, its video is not H.264. Its record is read once, and every range after it straight from the store.
+     * or, for an MP4, its video is not H.264; or, for a kind told by parsing ([FileKinds.parsedKinds]), its bytes are
+     * another kind's or do not parse as it. Its record is read once, and every range after it straight from the store.
      */
     private fun contentProblem(cxt: KdrCxt, files: FileStoreService.FileStoreView, key: String, kind: FileKind): String? {
         val content = files.streamed(cxt, DFILE.bucket, key)
@@ -462,12 +464,28 @@ object DataFileService {
         fun read(offset: Long, length: Int): ByteArray =
             if (length == 0) ByteArray(0) else content.open(offset, length.toLong()).use { it.readAllBytes() }
         val found = FileKindSniff.sniff(read(0, minOf(content.size, FileKindSniff.headSize.toLong()).toInt()))
+        if (FileKinds.isParsed(kind)) return parsedProblem(kind, found, content.size, ::read)
         if (found?.id != kind.id) {
             val what = found?.let { "a ${it.label} file" } ?: "none of the kinds a file may be"
             return "This file was sent as a ${kind.label} file, but its content is $what."
         }
         if (kind.id == FKIND.mp4) return Mp4Video.h264Problem(Mp4Video.videoCodecs(content.size, ::read))
         return null
+    }
+
+    /**
+     * What is wrong with a file of [size] bytes, sent as [kind], a kind told by parsing: its first bytes are another
+     * kind's mark ([found]), or, read whole through [read], it is not the kind. A CSV table must be UTF-8 that
+     * [Csv.parseBytes] reads, its first problem the one a person is told. Reading it whole is safe because the begin
+     * held its size to the kind's largest, and every chunk to that size.
+     *
+     * Theme: #DTABL.
+     */
+    private fun parsedProblem(kind: FileKind, found: FileKind?, size: Long, read: (Long, Int) -> ByteArray): String? {
+        if (found != null) return "This file was sent as a ${kind.label} file, but its content is a ${found.label} file."
+        if (kind.id != FKIND.csv) throw KdrException("No check reads a file of the kind '${kind.id}'.")
+        val parsed = Csv.parseBytes(read(0, size.toInt()))
+        return parsed.problems.firstOrNull()?.let { "This file is not a CSV table we can read. ${it.message}" }
     }
 
     /** Ends the upload of [fileId] without a file: drops its chunks and removes its record. Whether there was one. */

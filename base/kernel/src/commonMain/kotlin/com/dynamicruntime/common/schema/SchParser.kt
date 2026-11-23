@@ -4,6 +4,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileKind
+import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
@@ -803,10 +804,11 @@ fun isNonTextFormat(format: String?): Boolean = isDateFormat(format) || isBinary
  * - either keyword on any other type, where it would constrain nothing;
  * - such a field without its kinds, or with an empty list -- a file field that takes no kind takes nothing;
  * - a kind that is not one of the kernel's data kinds (`FileKinds.kinds`), or one named twice;
+ * - [FKIND.csv], a table's kind, which a field may hold only once it declares the table's columns -- not yet (#1882);
  * - a largest size that is not a whole number above zero, or that is above every one of its kinds' own largest, where
  *   it would constrain nothing.
  *
- * Theme: #DFILE.
+ * Theme: #DFILE, #DTABL.
  */
 @KdrPrivate
 fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, format: String?): Pair<List<FileKind>, Long?> {
@@ -832,7 +834,7 @@ fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, form
         return emptyList<FileKind>() to null
     }
     val names = (rawKinds as? List<*>)?.map { it.toOptStr() }
-    val known = FileKinds.kinds.joinToString(", ") { it.id }
+    val known = FileKinds.kinds.filter { it.id != FKIND.csv }.joinToString(", ") { it.id }
     if (names.isNullOrEmpty() || names.any { it == null }) {
         throw schemaFault(
             SchemaError.badValue,
@@ -844,6 +846,13 @@ fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, form
         FileKinds.byId(id!!) ?: throw schemaFault(
             SchemaError.badValue,
             "$where names '$id' in '${SCH.fileKinds}', which is not a kind of file a field may hold. The kinds are: $known.",
+        )
+    }
+    if (FKIND.csv in names) {
+        throw schemaFault(
+            SchemaError.badValue,
+            "$where names '${FKIND.csv}' in '${SCH.fileKinds}': a CSV table is held by a field that declares its columns, " +
+                "which a field cannot do yet. The kinds are: $known.",
         )
     }
     names.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let {

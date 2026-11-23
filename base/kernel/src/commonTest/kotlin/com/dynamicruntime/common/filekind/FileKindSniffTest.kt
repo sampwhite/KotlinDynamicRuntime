@@ -69,8 +69,12 @@ class FileKindSniffTest {
     @Test
     fun everyKindWithAMarkHasItsRule() {
         // A data kind added without a rule would be offered to forms and never recognized in an upload.
-        for (kind in FileKinds.kinds + FileKinds.ico) assertTrue(FileKindSniff.hasRule(kind), kind.id)
+        for (kind in FileKinds.kinds + FileKinds.ico) {
+            assertTrue(FileKindSniff.hasRule(kind) != FileKinds.isParsed(kind), "${kind.id}: a mark, or parsed, and not both")
+        }
         assertTrue(!FileKindSniff.hasRule(FileKinds.svg))
+        // Text never sniffs as a parsed kind: a finish parses it, after refusing another kind's mark.
+        assertNull(FileKindSniff.sniff(ascii("name,amount\r\nlunch,12.50\r\n")))
     }
 
     @Test
@@ -107,6 +111,8 @@ class FileKindSniffTest {
         assertTrue(FKIND.svg !in ids && FKIND.ico !in ids, ids.toString())
         assertTrue(FileKinds.kinds.none { "html" in it.mimeType || "script" in it.mimeType || "svg" in it.mimeType })
         assertEquals(FileDisposition.attachment, FileKinds.pdf.disposition)
+        // A table is downloaded, never drawn by the browser as a page of text.
+        assertEquals(FileDisposition.attachment, FileKinds.csv.disposition)
         // Video stays under the 5 GB a single S3 copy moves.
         assertTrue(FileKinds.kinds.all { it.maxSize < 5L * 1024 * 1024 * 1024 })
     }

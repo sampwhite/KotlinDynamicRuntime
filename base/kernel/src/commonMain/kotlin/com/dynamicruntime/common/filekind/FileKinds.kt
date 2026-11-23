@@ -20,7 +20,8 @@ enum class FileDisposition {
  * other types an upload may honestly declare it under -- browsers do not agree on an ICO's -- and, for the kinds a
  * trait's file field may hold ([FileKinds.kinds]), the largest file of the kind and whether it is shown or downloaded.
  *
- * **A kind is told by its bytes** ([FileKindSniff]), never by the type an upload declares or by a file's name. Which
+ * **A kind is told by its bytes** ([FileKindSniff]), never by the type an upload declares or by a file's name -- by
+ * its mark, or, for a kind with none ([FileKinds.parsedKinds]), by reading the whole file as that kind. Which
  * kinds there are is code, not configuration: each is a promise that its bytes have been looked at and that serving
  * them from the app's own origin is safe, which is why HTML, script, and SVG are never among the data kinds.
  */
@@ -57,6 +58,9 @@ object FKIND {
     const val webm = "webm"
     const val pdf = "pdf"
 
+    /** A table as CSV text (issue #1881): told by parsing it, since text has no mark. */
+    const val csv = "csv"
+
     /** Kinds only a client's web assets and named images take, never a trait's file field. */
     const val svg = "svg"
     const val ico = "ico"
@@ -68,6 +72,9 @@ object FKFAM {
     const val image = "image"
     const val video = "video"
     const val document = "document"
+
+    /** Rows and columns: a CSV table (issue #1881). */
+    const val table = "table"
 }
 
 /**
@@ -101,6 +108,16 @@ object FileKinds {
     val pdf = FileKind(FKIND.pdf, "PDF", FKFAM.document, "application/pdf", "pdf", maxSize = 50 * mb, disposition = FileDisposition.attachment)
 
     /**
+     * A CSV table (issue #1881). Excel on Windows declares one `application/vnd.ms-excel`, and some tools `text/x-csv`.
+     * Downloaded, never shown: a browser would draw it as a page of text on the app's own origin. Its largest is what
+     * the codec's limits ([com.dynamicruntime.common.table.CSVT]) hold with room to spare, and what a finish reads whole.
+     */
+    val csv = FileKind(
+        FKIND.csv, "CSV table", FKFAM.table, "text/csv", "csv", setOf("application/vnd.ms-excel", "text/x-csv"),
+        maxSize = 4 * mb, disposition = FileDisposition.attachment,
+    )
+
+    /**
      * Not a data kind (see the class note), so no field reads its size: it is the named images' own limit
      * ([FREF.maxSize]), and a web-asset slot holds an SVG to its own, smaller one.
      */
@@ -113,7 +130,18 @@ object FileKinds {
     )
 
     /** The kinds a trait's file field may hold, in the order a message lists them. */
-    val kinds: List<FileKind> = listOf(png, jpeg, webp, gif, mp4, webm, pdf)
+    val kinds: List<FileKind> = listOf(png, jpeg, webp, gif, mp4, webm, pdf, csv)
+
+    /**
+     * The kinds with no mark in their bytes, told instead by reading the whole file as the kind (issue #1881): a CSV
+     * table is text, and any text begins as one might. [FileKindSniff] never answers one of these, so arbitrary text
+     * cannot pass as another kind; an upload finish parses the file instead, after refusing one whose first bytes are
+     * another kind's mark.
+     */
+    val parsedKinds: Set<String> = setOf(FKIND.csv)
+
+    /** Whether [kind] is told by parsing rather than by a mark ([parsedKinds]). */
+    fun isParsed(kind: FileKind): Boolean = kind.id in parsedKinds
 
     /** The data kind with id [id], or null when there is none of that id. */
     fun byId(id: String): FileKind? = kinds.firstOrNull { it.id == id }

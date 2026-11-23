@@ -19,6 +19,7 @@ import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.table.Csv
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -479,23 +480,23 @@ fun reportCsv(run: ReportRunPage): String {
     val columns = reportTableColumns(run.summary)
     val detail = run.summary.mode == ReportMode.detail
     val lines = ArrayList<String>()
-    lines.add(((if (detail) listOf(reportCsvFormLabel) else emptyList()) + columns.map { it.label }).joinToString(",") { csvField(it) })
+    lines.add(((if (detail) listOf(reportCsvFormLabel) else emptyList()) + columns.map { it.label }).joinToString(",") { Csv.field(it) })
     for (row in run.rows) {
         val cells = (if (detail) listOf(row.gedraId.orEmpty()) else emptyList()) +
             columns.map { reportCsvCell(reportCellValue(row, it), it.kind) }
-        lines.add(cells.joinToString(",") { csvField(it) })
+        lines.add(cells.joinToString(",") { Csv.field(it) })
     }
     return lines.joinToString("\r\n", postfix = "\r\n")
 }
 
 /**
- * One value of a column of [kind] as a CSV cell's text, before quoting. The formula guard ([csvSafeText]) is applied
+ * One value of a column of [kind] as a CSV cell's text, before quoting. The formula guard ([Csv.spreadsheetSafe]) is applied
  * to the **cell**, once -- only a cell's first character can start a formula, so a list's later elements are left as
  * they were entered -- and to anything but a lone number or boolean, which a spreadsheet must read as what it is.
  */
 fun reportCsvCell(value: Any?, kind: String = ReportKind.string.name): String {
     val text = csvRawText(value, kind)
-    return if (value is Number || value is Boolean) text else csvSafeText(text)
+    return if (value is Number || value is Boolean) text else Csv.spreadsheetSafe(text)
 }
 
 private fun csvRawText(value: Any?, kind: String): String = when (value) {
@@ -519,19 +520,6 @@ fun csvTimestamp(text: String): String =
     } else {
         text
     }
-
-/**
- * Text made safe to open in a spreadsheet: a cell beginning `=`, `+`, `-`, `@`, a tab or a carriage return is read
- * by Excel and its kin as a **formula**, and a report's text is whatever somebody typed into a form. Such a value
- * gets a leading apostrophe, which a spreadsheet shows as the text it is. Numbers are written as numbers and never
- * come through here, so a negative amount stays a number.
- */
-fun csvSafeText(text: String): String =
-    if (text.isNotEmpty() && text[0] in "=+-@\t\r") "'$text" else text
-
-/** One field as RFC 4180 writes it: quoted when it holds a comma, a quote or a line break, its quotes doubled. */
-fun csvField(text: String): String =
-    if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
 
 /** The name a run is saved under: the report and how it was run. */
 fun reportCsvFileName(reportId: String, mode: ReportMode): String =

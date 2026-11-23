@@ -4,6 +4,7 @@ import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.datafile.DFSTAT
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.filekind.FKIND
+import com.dynamicruntime.common.filekind.FileKinds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -80,5 +81,17 @@ class FilesListingTest {
         assertEquals("Stopped (no longer taken)", fileStatusText(uploading("2026-11-19T11:00:00Z"), now))
         assertEquals("Uploading", fileStatusText(uploading("2026-11-20T11:00:00Z"), now))
         assertEquals("Ready", fileStatusText(filesPageFrom(mapOf(EP.items to listOf(item("r", 0)))).rows.single(), now))
+    }
+
+    @Test
+    fun aCsvTableIsSavedAsACopyForASpreadsheet() {
+        val csv = DataFileView("gd.df.c.1", "claims", FileKinds.csv, 40, DFSTAT.ready)
+        assertTrue(fileSavedAsSpreadsheetCopy(csv))
+        assertEquals("claims.csv", spreadsheetCopyName(csv))
+        assertEquals("claims.CSV", spreadsheetCopyName(DataFileView("gd.df.c.2", "claims.CSV", FileKinds.csv, 40, DFSTAT.ready)))
+        assertEquals("CSV table file.csv", spreadsheetCopyName(DataFileView("gd.df.c.3", null, FileKinds.csv, 40, DFSTAT.ready)))
+        // An upload under way has nothing to save yet, and other kinds open as they are.
+        assertFalse(fileSavedAsSpreadsheetCopy(DataFileView("gd.df.c.4", "x.csv", FileKinds.csv, 40, DFSTAT.uploading)))
+        assertFalse(fileSavedAsSpreadsheetCopy(DataFileView("gd.df.c.5", "x.pdf", FileKinds.pdf, 40, DFSTAT.ready)))
     }
 }
