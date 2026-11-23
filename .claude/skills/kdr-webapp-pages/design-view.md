@@ -122,6 +122,16 @@ the field on the form (`withLayoutEntry`). The save follows the list: an edit sa
 (`shownPayload`) and the backend merges them over the stored entry, refusing any other, so workflows filling different
 parts of one questionnaire keep each other's answers.
 
+**An approval's own layout** (issue #1875): a trait an approval shows is that approval's to lay out, in the shape a
+workflow's alteration takes, stored on the approval (`types` and `typeBasis` beside its `showTraits`). The form frames
+such a trait with the approval's task id (`DesignTarget.Trait`/`Field` `approvalTask`, set by `traitSection` and carried
+by `DesignSession.forTrait`), and the inspector scopes its session to it (`DesignSession.forApproval`,
+`WfDesign.forApproval`): the copy, heading, and fields-shown sections read the block's `DSV.approvals` entry for the
+task in place of the workflow's edits, and their saves name it (`taskId` on `/clientAdmin/design/layoutEntry`,
+`/heading`, and `/shownFields`; the backend applies the same edit to the approval's map, `withinApproval`). What they
+override is the workflow's copy, not the shared one, so their words say so (`OverrideWords`: "Copy for this approval",
+**Reset to the workflow's**). The shared definition and shared wording are edited as for any field.
+
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
   administrator, adding a `design` block to the workflow view -- an address and origin for every type the page

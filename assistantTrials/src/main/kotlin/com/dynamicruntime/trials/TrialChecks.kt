@@ -12,6 +12,7 @@ import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
@@ -154,6 +155,42 @@ object Checks {
             missing.isEmpty() -> Outcome.met("It collects ${own.joinToString()}.")
             missing.size < own.size -> Outcome.varied("It does not collect ${missing.joinToString()}.")
             else -> Outcome.notMet("It collects none of ${own.joinToString()}.")
+        }
+    }
+
+    /**
+     * The review's approval shows the client's own traits the New form collects, by naming them (issue #1875) -- the
+     * answers it approves. Varied when it names only some, or shows them through a task of its own workflow, which takes
+     * a step that asks nothing of anyone. A rooted trait (`kdr:name`) is left out, as for the core details check.
+     */
+    fun approvalShowsNewForm(r: TrialResult): Outcome {
+        val view = r.view
+        val own = view.collected(view.creation).filterNot { ':' in it }
+        val workflow = view.normalWorkflows.firstOrNull { wf -> wf[WFD.tasks].toJsonListOfMaps().any { it[WFD.approval] != null } }
+            ?: return Outcome.notMet("No workflow with an approval task.")
+        if (own.isEmpty()) return Outcome.info("The New form collects no trait of the client's own.")
+        val tasks = workflow[WFD.tasks].toJsonListOfMaps()
+        val at = tasks.indexOfFirst { it[WFD.approval] != null }
+        val approval = tasks[at][WFD.approval].toJsonMapOrEmpty()
+        val named = approval[WFD.showTraits].toJsonListOfStrings()
+        if (WFD.showTraits in approval) {
+            val missing = own - named.toSet()
+            return when {
+                missing.isEmpty() -> Outcome.met("It names ${own.joinToString()}.")
+                missing.size < own.size -> Outcome.varied("It does not name ${missing.joinToString()}.")
+                else -> Outcome.notMet("It names ${named.joinToString().ifEmpty { "nothing" }}, none of ${own.joinToString()}.")
+            }
+        }
+        // Without names: the tasks it names, else the nearest earlier task that collects traits.
+        val shownTasks = approval[WFD.showTasks].toJsonListOfStrings().ifEmpty { null }
+            ?.let { ids -> tasks.filter { it[WFD.id] in ids } }
+            ?: listOfNotNull(tasks.take(at).lastOrNull { it[WFD.traits].toJsonListOfMaps().isNotEmpty() })
+        val viaTasks = shownTasks.flatMap { t -> t[WFD.traits].toJsonListOfMaps().mapNotNull { it[WFD.traitId].toOptStr() } }.toSet()
+        return when {
+            own.any { it in viaTasks } -> Outcome.varied(
+                "It shows them through task ${shownTasks.joinToString { "'${it[WFD.id]}'" }} of its workflow, not by naming them.",
+            )
+            else -> Outcome.notMet("It shows none of ${own.joinToString()}.")
         }
     }
 

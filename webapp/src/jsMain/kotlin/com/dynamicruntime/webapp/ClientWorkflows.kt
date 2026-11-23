@@ -156,7 +156,26 @@ class ClientWorkflowView(
     val enabled: Boolean get() = !enabledOffered || params?.enabled != false
 }
 
-/** A trait the client's workflows may collect. */
+/**
+ * [workflow]'s tasks as the Workflows panel lists them (issue #1875): each by its label, and an approval that names what
+ * it shows with that after it -- the traits it names, by [traitNames] (a trait id to the name a form gives it), or the
+ * tasks it names -- so a review's row says what its approver reads. An approval that names nothing shows the task
+ * before it, which the list already says. Pure, covered under `jsNodeTest`.
+ */
+fun workflowTaskSummary(workflow: ClientWorkflowView, traitNames: Map<String, String>): List<String> {
+    val labels = workflow.def.tasks.zip(workflow.taskLabels).associate { (t, label) -> t.id to label }
+    return workflow.def.tasks.map { task ->
+        val label = labels[task.id] ?: task.label
+        val approval = task.approval ?: return@map label
+        val shown = approval.showTraits?.map { traitNames[it] ?: it } ?: approval.showTasks?.map { labels[it] ?: it }
+        when {
+            shown == null -> label
+            shown.isEmpty() -> "$label (shows nothing)"
+            else -> "$label (shows ${shown.joinToString(", ")})"
+        }
+    }
+}
+
 /** A trait a workflow may collect: its id, its [name] as a form names it (issue #1438), and its description. */
 class WorkflowTraitView(val traitId: String, val name: String, val description: String?)
 

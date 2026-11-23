@@ -309,7 +309,13 @@ fun buildWorkflowRegistries(
         // Type alterations (issue #984): only a type the workflow's pages draw, merged and laid out soundly over the
         // scope's view of it -- the checks a client's layout alteration gets, one scope down.
         schemaStore?.let { storeOf ->
-            typeAlterationProblem(w, storeOf(scope), configs.traitsFor(scope ?: GID.globalClient))?.let {
+            val traits = configs.traitsFor(scope ?: GID.globalClient)
+            typeAlterationProblem(w, storeOf(scope), traits)?.let {
+                reportConfigProblem(cxt, problem(scope, w, it), issues)
+                return false
+            }
+            // An approval's own (issue #1875): the same checks, over the workflow's view of the types it shows.
+            approvalAlterationProblem(w, storeOf(scope), traits)?.let {
                 reportConfigProblem(cxt, problem(scope, w, it), issues)
                 return false
             }
@@ -332,6 +338,20 @@ fun buildWorkflowRegistries(
             // approval that emitted an unknown name could gate nothing -- and its copy rides the label check.
             // So must each step's (issue #1702), asserted once the step is given.
             task.approval?.let { approval ->
+                // The traits it names to show (issue #1875) are drawn from the form's entries, so each must be one this
+                // scope has: a trait it lacks would show nothing, and say nothing about why.
+                approval.showTraits.orEmpty().firstOrNull { it !in usable }?.let {
+                    reportConfigProblem(
+                        cxt,
+                        problem(
+                            scope, w,
+                            "has an approval task '${task.id}' showing the trait '$it', which " +
+                                (scope?.let { c -> "client '$c' does not support" } ?: "no global config declares") + ".",
+                        ),
+                        issues,
+                    )
+                    return false
+                }
                 val emitted = listOf(approval.cfact) + approval.steps.mapNotNull { it.cfact }
                 emitted.firstOrNull { it !in cfactNames(scope) }?.let { cfact ->
                     reportConfigProblem(

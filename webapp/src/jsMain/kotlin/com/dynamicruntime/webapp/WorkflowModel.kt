@@ -176,6 +176,15 @@ class WfApprovalView(
     val currentStep: String? = null,
     /** Who the [currentStep] waits on, backend-passed; null when it says nothing. */
     val waiting: String? = null,
+    /**
+     * The traits it names to show (issue #1875), in place of [showTasks]'s; null when it names none, and an empty list
+     * when it names an empty list, which shows nothing.
+     */
+    val shownTraits: List<WfTraitView>? = null,
+    /** The form's values of [shownTraits], by trait id, from the entries the view sent beside them. */
+    val shownValues: Map<String, Map<String, Any?>> = emptyMap(),
+    /** Its own layouts of what it shows (issue #1875), by type name, in place of the view's; null when it has none. */
+    val fieldLayouts: Map<String, SchLayout>? = null,
 )
 
 /**
@@ -337,14 +346,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         WfTaskView(
             id = t[WFD.id].toOptStr() ?: "",
             label = t[WFD.label].toOptStr() ?: "",
-            traits = t[WFD.traits].toJsonListOfMaps().map { tr ->
-                val ref = tr[WVF.schemaRef].toOptStr() ?: ""
-                val name = refName(ref)
-                    ?: error($$"Workflow view trait '$${tr[WFD.traitId]}' has a schemaRef '$$ref' that is not a local $defs pointer.")
-                val type = defTypes[name]
-                    ?: error($$"Workflow view references '$$name', which its own $defs does not carry.")
-                WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type, name, fieldLayouts[name])
-            },
+            traits = t[WFD.traits].toJsonListOfMaps().map { parseTraitRef(it, defTypes, fieldLayouts) },
             saves = t[WFD.saves].toJsonListOfMaps().map { s ->
                 WfSaveView(s[WFD.id].toOptStr() ?: "", s[WFD.label].toOptStr() ?: "", s[WFD.kind].toOptStr() ?: "")
             },
@@ -355,7 +357,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             waitingOn = t[WVF.waitingOn].toOptStr(),
             canApprove = t[WVF.canApprove] == true,
             display = parseTaskDisplay(t[WFD.display]),
-            approval = parseApproval(t[WVF.approval]),
+            approval = parseApproval(t[WVF.approval], defTypes, fieldLayouts),
             facts = t[WVF.facts].toJsonListOfStrings().toSet(),
         )
     }
@@ -380,6 +382,19 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
     )
 }
 
+/**
+ * One trait ref of the view -- a task's, or one an approval names (issue #1875) -- resolved against the view's
+ * [defTypes], its layout joined from [layouts] by type name. A ref that names no carried type is a fault.
+ */
+private fun parseTraitRef(tr: Map<String, Any?>, defTypes: Map<String, SchType>, layouts: Map<String, SchLayout>): WfTraitView {
+    val ref = tr[WVF.schemaRef].toOptStr() ?: ""
+    val name = refName(ref)
+        ?: error($$"Workflow view trait '$${tr[WFD.traitId]}' has a schemaRef '$$ref' that is not a local $defs pointer.")
+    val type = defTypes[name]
+        ?: error($$"Workflow view references '$$name', which its own $defs does not carry.")
+    return WfTraitView(tr[WFD.traitId].toOptStr() ?: "", tr[WFD.required] == true, type, name, layouts[name])
+}
+
 /** A task's delivered display branch (issue #788), or null when it carried none -- the task's own rendering. */
 fun parseTaskDisplay(raw: Any?): WfTaskDisplay? {
     val m = raw as? Map<*, *> ?: return null
@@ -391,10 +406,18 @@ fun parseTaskDisplay(raw: Any?): WfTaskDisplay? {
     )
 }
 
-/** An approval task's delivered approval (issue #787), or null on a task that is not one. */
-fun parseApproval(raw: Any?): WfApprovalView? {
+/**
+ * An approval task's delivered approval (issue #787), or null on a task that is not one. The traits it names (issue
+ * #1875) resolve against the view's [defTypes], with its own layouts when it sent them, else the view's [viewLayouts].
+ */
+fun parseApproval(
+    raw: Any?,
+    defTypes: Map<String, SchType> = emptyMap(),
+    viewLayouts: Map<String, SchLayout> = emptyMap(),
+): WfApprovalView? {
     val m = raw as? Map<*, *> ?: return null
     val a = m.toJsonMapOrEmpty()
+    val ownLayouts = if (WVF.fieldLayouts in a) parseDeliveredLayouts(a[WVF.fieldLayouts]) else null
     return WfApprovalView(
         prompt = a[WFD.prompt].toOptStr().orEmpty(),
         button = a[WFD.button].toOptStr().orEmpty(),
@@ -419,19 +442,32 @@ fun parseApproval(raw: Any?): WfApprovalView? {
         },
         currentStep = a[WVF.currentStep].toOptStr(),
         waiting = a[WFD.waiting].toOptStr()?.ifBlank { null },
+        shownTraits = if (WVF.shownTraits in a) {
+            a[WVF.shownTraits].toJsonListOfMaps().map { parseTraitRef(it, defTypes, ownLayouts ?: viewLayouts) }
+        } else {
+            null
+        },
+        shownValues = a[WVF.entries].toJsonListOfMaps()
+            .mapNotNull { e -> e[GE.traitId].toOptStr()?.let { it to e[GE.data].toJsonMapOrEmpty() } }.toMap(),
+        fieldLayouts = ownLayouts,
     )
 }
 
 /**
- * The traits an approval task shows, read-only, above its prompt (issue #1695): those of the tasks its approval names
- * (the backend's resolution: named, else the nearest earlier task that collects traits), each once, in the view's
- * order. None on a task that is no approval, or one its display disables -- a step greyed until something is done has
- * nothing yet to approve. Pure, and covered under `jsNodeTest`.
+ * The traits an approval task shows, read-only, above its prompt: those it names (issue #1875), else those of the tasks
+ * it shows (issue #1695; the backend's resolution: named, else the nearest earlier task that collects traits), each
+ * once, in the view's order -- laid out with the approval's own layouts when it has them. None on a task that is no
+ * approval, or one its display disables -- a step greyed until something is done has nothing yet to approve. Pure, and
+ * covered under `jsNodeTest`.
  */
 fun approvalShownTraits(view: WorkflowView, task: WfTaskView): List<WfTraitView> {
-    val shows = task.approval?.showTasks.orEmpty()
-    if (shows.isEmpty() || task.isDisabled) return emptyList()
-    return view.tasks.filter { it.id in shows && it.id != task.id }.flatMap { it.traits }.distinctBy { it.traitId }
+    val approval = task.approval ?: return emptyList()
+    if (task.isDisabled) return emptyList()
+    approval.shownTraits?.let { return it }
+    val shows = approval.showTasks
+    val traits = view.tasks.filter { it.id in shows && it.id != task.id }.flatMap { it.traits }.distinctBy { it.traitId }
+    val own = approval.fieldLayouts ?: return traits
+    return traits.map { WfTraitView(it.traitId, it.required, it.type, it.typeName, own[it.typeName]) }
 }
 
 /**

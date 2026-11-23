@@ -639,4 +639,45 @@ class WorkflowModelTest {
         // An approval delivered without the list (an older node) shows nothing more.
         assertEquals(emptyList(), parseApproval(mapOf(WFD.prompt to "p", WFD.button to "b"))!!.showTasks)
     }
+
+    @Test
+    fun anApprovalNamingTraitsShowsThemWithTheirValuesAndItsOwnLayouts() {
+        // Issue #1875: traits no task of the workflow collects, with the form's values beside them, and the approval's
+        // own layouts in place of the view's.
+        val types = parseSchemaTypes(mapOf("t.Request" to mapOf("type" to "object"), "t.Note" to mapOf("type" to "object")))
+        val viewLayouts = mapOf("t.Request" to parseSchLayout("t.Request", mapOf(SL.label to "Request")))
+        val raw = mapOf(
+            WFD.prompt to "Read it, then approve.", WFD.button to "Approve", WVF.approved to false, WFD.showTasks to emptyList<String>(),
+            WVF.shownTraits to listOf(mapOf(WFD.traitId to "request", WVF.schemaRef to "#/\$defs/t.Request")),
+            WVF.entries to listOf(mapOf(GE.traitId to "request", GE.data to mapOf("purpose" to "Clear the riverbank."))),
+        )
+        val plain = parseApproval(raw, types, viewLayouts)!!
+        assertEquals(mapOf("purpose" to "Clear the riverbank."), plain.shownValues["request"])
+        val note = WfTraitView("note", false, types.getValue("t.Note"), "t.Note", null)
+        val record = WfTaskView("record", "Record it", traits = listOf(note), saves = emptyList())
+        fun viewWith(approval: WfApprovalView) = WorkflowView(
+            workflowId = "review", entry = WfEntry.normal.name, showTaskList = true, cfacts = emptyMap(),
+            tasks = listOf(record, WfTaskView("accept", "Approve", traits = emptyList(), saves = emptyList(), approval = approval)),
+        )
+        fun shown(approval: WfApprovalView) = viewWith(approval).let { v -> approvalShownTraits(v, v.tasks.last()) }
+        // The named trait, not the earlier task's, laid out as the view lays it out.
+        assertEquals(listOf("request"), shown(plain).map { it.traitId })
+        assertEquals("Request", shown(plain).single().fieldLayout?.label)
+        // Its own layouts, when it sent them, stand in for the view's.
+        val own = parseApproval(
+            raw + (WVF.fieldLayouts to mapOf("t.Request" to mapOf(SL.label to "The application"))), types, viewLayouts,
+        )!!
+        assertEquals("The application", shown(own).single().fieldLayout?.label)
+        // An empty list shows nothing, rather than the default.
+        assertEquals(emptyList(), shown(parseApproval(raw + (WVF.shownTraits to emptyList<Any>()), types, viewLayouts)!!))
+        // And one naming tasks, with layouts of its own, draws those tasks' traits with them.
+        val tasksOwn = parseApproval(
+            mapOf(
+                WFD.prompt to "p", WFD.button to "b", WFD.showTasks to listOf("record"),
+                WVF.fieldLayouts to mapOf("t.Note" to mapOf(SL.label to "Its notes")),
+            ),
+            types,
+        )!!
+        assertEquals("Its notes", shown(tasksOwn).single().fieldLayout?.label)
+    }
 }

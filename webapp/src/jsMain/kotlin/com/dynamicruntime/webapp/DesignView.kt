@@ -165,9 +165,24 @@ class WfDesign(
     val headingEdits: Map<String, HeadingEdit> = emptyMap(),
     /** By type name, the fields the workflow's own form shows, in order, where it chooses them (issue #1071). */
     val shownFields: Map<String, List<String>> = emptyMap(),
+    /** By approval task id, what each approval lays out its own way for what it shows (issue #1875); see `DSV.approvals`. */
+    val approvals: Map<String, WfDesign> = emptyMap(),
 ) {
     /** The workflow's own entry for [field] of [typeName], with what it replaced, or null when it has none. */
     fun layoutEdit(typeName: String, field: String): LayoutEdit? = layoutEdits[typeName]?.get(field)
+
+    /**
+     * This block as approval task [taskId] edits it (issue #1875): its own layout entries, headings, and fields shown in
+     * place of the workflow's -- none until it makes one -- and everything else the workflow's. Itself for a null [taskId].
+     */
+    fun forApproval(taskId: String?): WfDesign {
+        if (taskId == null) return this
+        val own = approvals[taskId]
+        return WfDesign(
+            workflow, types, canEdit, editRefusal, basedOn,
+            own?.layoutEdits.orEmpty(), own?.headingEdits.orEmpty(), own?.shownFields.orEmpty(), approvals,
+        )
+    }
 }
 
 /**
@@ -207,12 +222,27 @@ fun parseDesignAddress(raw: Any?): DesignAddress? {
 fun parseWfDesign(raw: Any?): WfDesign? {
     val m = raw as? Map<*, *> ?: return null
     val block = m.toJsonMapOrEmpty()
+    val layouts = parseDesignLayouts(block)
     return WfDesign(
         parseDesignAddress(block[DSV.workflow]),
         block[DSV.types].toJsonMapOrEmpty().mapNotNull { (k, v) -> parseDesignAddress(v)?.let { k to it } }.toMap(),
         canEdit = block[DSV.canEdit] == true,
         editRefusal = block[DSV.editRefusal].toOptStr(),
         basedOn = block[DSV.basedOn].toOptStr().orEmpty(),
+        layoutEdits = layouts.layoutEdits,
+        headingEdits = layouts.headingEdits,
+        shownFields = layouts.shownFields,
+        approvals = block[DSV.approvals].toJsonMapOrEmpty().mapValues { (_, a) -> parseDesignLayouts(a.toJsonMapOrEmpty()) },
+    )
+}
+
+/**
+ * The layout entries, headings, and fields shown that [block] -- the workflow's own, or one approval's (issue #1875) --
+ * says are changed, as a block with nothing else.
+ */
+private fun parseDesignLayouts(block: Map<String, Any?>): WfDesign =
+    WfDesign(
+        null, emptyMap(),
         layoutEdits = block[DSV.layoutEdits].toJsonMapOrEmpty().mapValues { (_, fields) ->
             fields.toJsonMapOrEmpty().mapValues { (_, raw) ->
                 val f = raw.toJsonMapOrEmpty()
@@ -234,7 +264,6 @@ fun parseWfDesign(raw: Any?): WfDesign? {
         }.toMap(),
         shownFields = block[DSV.shownFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
     )
-}
 
 // --- what the inspector is pointed at ---------------------------------------------------------------------------
 
@@ -271,7 +300,8 @@ sealed class DesignTarget {
     /** One of a task's saves -- its button (issue #1070): its label is the workflow's own. */
     class Save(val task: WfTaskView, val save: WfSaveView) : DesignTarget()
 
-    class Trait(val trait: WfTraitView) : DesignTarget()
+    /** One trait of a task -- or, with [approvalTask], one an approval shows (issue #1875). */
+    class Trait(val trait: WfTraitView, val approvalTask: String? = null) : DesignTarget()
 
     /**
      * A field: its [path] within the trait's data (the form's own path, `a.b`), its property, whether its object
@@ -286,6 +316,8 @@ sealed class DesignTarget {
         val required: Boolean,
         val layout: SchLayoutField?,
         val hidden: FieldHidden?,
+        /** The approval task showing [root], when an approval shows it (issue #1875). */
+        val approvalTask: String? = null,
     ) : DesignTarget()
 
     /** A key the selection can be compared by -- one per distinct thing on the page. */
@@ -294,8 +326,8 @@ sealed class DesignTarget {
             Workflow -> "wf"
             is Task -> "task:${task.id}"
             is Save -> "save:${task.id}:${save.id}"
-            is Trait -> "trait:${trait.traitId}"
-            is Field -> "field:${root.traitId}:$path"
+            is Trait -> "trait:${approvalTask?.let { "$it/" }.orEmpty()}${trait.traitId}"
+            is Field -> "field:${approvalTask?.let { "$it/" }.orEmpty()}${root.traitId}:$path"
         }
 }
 
@@ -429,9 +461,31 @@ class DesignSession(
     val trait: WfTraitView? = null,
     /** Whether the page edits a form rather than creating one -- which generic title it falls back to (issue #1070). */
     val isEdit: Boolean = false,
+    /**
+     * The approval task whose shown traits the enclosing form draws (issue #1875), else null: what the forms' fields name
+     * as the approval they are shown by, and whose own layouts an edit changes. Its [design] is then the approval's.
+     */
+    val approvalTask: String? = null,
 ) {
-    fun forTrait(t: WfTraitView): DesignSession =
-        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, client, afterEdit, t, isEdit)
+    /** For the trait [t] a form draws -- shown by approval task [approvalTask], when one shows it (issue #1875). */
+    fun forTrait(t: WfTraitView, approvalTask: String? = this.approvalTask): DesignSession =
+        DesignSession(
+            design.forApproval(approvalTask), selected, select, showAllIds, showHidden, workflowId, client, afterEdit, t, isEdit,
+            approvalTask,
+        )
+
+    /** For editing approval task [taskId]'s own layouts of what it shows (issue #1875); itself for a null [taskId]. */
+    fun forApproval(taskId: String?): DesignSession =
+        if (taskId == null) {
+            this
+        } else {
+            DesignSession(
+                design.forApproval(taskId), selected, select, showAllIds, showHidden, workflowId, client, afterEdit, trait, isEdit, taskId,
+            )
+        }
+
+    /** Whose override the inspector edits, in its words (issue #1875): this approval's, over its workflow's, or this workflow's. */
+    val overrideWords: OverrideWords get() = if (approvalTask != null) OverrideWords.approval else OverrideWords.workflow
 
     fun isSelected(target: DesignTarget): Boolean = selected?.id == target.id
 
@@ -439,6 +493,20 @@ class DesignSession(
     fun isAltered(target: DesignTarget.Field): Boolean {
         val owner = fieldOwner(target.root.typeName, target.root.type, target.path)
         return design.layoutEdit(owner.typeName, target.name) != null
+    }
+}
+
+/**
+ * Whose override the inspector edits, in its words (issue #1875): a workflow's own, over the shared copy every workflow
+ * draws, or an approval's own, over its workflow's. [owner] names it ("this workflow"), [over] what it replaces
+ * ("the shared"), [others] who goes on showing that, and [reset] its reset button.
+ */
+class OverrideWords(val owner: String, val over: String, val others: String, val reset: String) {
+    companion object {
+        val workflow = OverrideWords("this workflow", "the shared", "every other workflow shows the shared", "Reset to shared")
+        val approval = OverrideWords(
+            "this approval", "the workflow's", "the workflow's other steps show the workflow's", "Reset to the workflow's",
+        )
     }
 }
 
@@ -938,12 +1006,15 @@ fun headingEditBody(
     description: String?,
     basedOn: String,
     client: String?,
+    /** The approval task whose own heading it is (issue #1875), else null for the workflow's. */
+    approvalTask: String? = null,
 ): Map<String, Any?> = buildMap {
     workflowId?.let { put(DSV.workflowId, it) }
     put(DSV.typeName, typeName)
     label?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.label, it) }
     description?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.description, it) }
     put(if (workflowId != null) DSV.basedOn else DSV.sharedBasedOn, basedOn)
+    approvalTask?.let { put(DSV.taskId, it) }
     client?.let { put(DSV.client, it) }
 }
 
@@ -983,11 +1054,20 @@ fun shownFieldMatches(row: ShownFieldRow, filter: String): Boolean {
 }
 
 /** The body of a shown-fields edit (issue #1071): the list in order, or absent to stop choosing. Pure. */
-fun shownFieldsBody(workflowId: String, typeName: String, fields: List<String>?, basedOn: String, client: String?): Map<String, Any?> = buildMap {
+fun shownFieldsBody(
+    workflowId: String,
+    typeName: String,
+    fields: List<String>?,
+    basedOn: String,
+    client: String?,
+    /** The approval task whose own choice it is (issue #1875), else null for the workflow's. */
+    approvalTask: String? = null,
+): Map<String, Any?> = buildMap {
     put(DSV.workflowId, workflowId)
     put(DSV.typeName, typeName)
     fields?.let { put(DSV.fields, it) }
     put(DSV.basedOn, basedOn)
+    approvalTask?.let { put(DSV.taskId, it) }
     client?.let { put(DSV.client, it) }
 }
 

@@ -448,7 +448,10 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `button` | string |  | The approve button's own text -- a template, evaluated in two passes. Required without steps; with steps, each step has its own. |
 | `approveWhen` | string |  | Who may approve: a cfact expression over the caller's task and viewer facts and kdr:isOwner. Absent means a reviewer who does not own the form (kdr:reviewer,~kdr:isOwner). With steps, each step has its own. |
 | `steps` | array of [WfApprovalStep](#wfapprovalstep) |  | The approval's ordered steps, each given by a person in turn. Absent, the approval is given at once. |
-| `showTasks` | array of string |  | The tasks whose traits the approval shows, read-only, above its prompt. Absent means the nearest earlier task that collects traits; empty shows none. |
+| `showTasks` | array of string |  | The tasks whose traits the approval shows, read-only, above its prompt. Absent means the nearest earlier task that collects traits; empty shows none. Not beside showTraits. |
+| `showTraits` | array of string |  | The traits the approval shows, read-only, above its prompt, by id, from the form's entries whichever workflow collected them -- in place of the tasks' traits it would otherwise show. Not beside showTasks. |
+| `types` | object |  | The approval's own alterations of types, by qualified type name, in the shape a workflow's take: a field layout (g-layout) for what it shows, over the workflow's, on the approval alone. |
+| `typeBasis` | object |  | For each layout entry the approval alters, the entry it replaced when it was made, by type name and then field. |
 
 ### WfApprovalStep
 

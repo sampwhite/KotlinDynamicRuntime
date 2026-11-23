@@ -153,10 +153,11 @@ val changeGroups: List<ChangeGroup> = listOf(
 
             **A review builds on core details.** A review workflow is made eligible once the form has the fact
             `${CDF.coreDetailsComplete}`, so the answers it reviews are there. Its approval task collects no traits and
-            offers no save, and shows above its button the traits of tasks of its own workflow, never another
-            workflow's: the nearest task before it that collects traits, or the tasks its `${WFD.showTasks}` names. To
-            show the form's answers, the review has a task before the approval that lists their traits and offers no
-            save. [The committee review](../demo-client/committee-review.md) is a whole example.
+            offers no save. To show the form's answers above its button, the approval names their traits in its
+            `${WFD.showTraits}`, and shows them as the form holds them, whichever workflow collected them. It can lay
+            them out its own way in a `${WFD.types}` of its own. Naming none, it shows the nearest task before it that
+            collects traits, or the tasks its `${WFD.showTasks}` names, never both lists.
+            [The committee review](../demo-client/committee-review.md) is a whole example.
         """.trimIndent(),
     ),
     ChangeGroup(

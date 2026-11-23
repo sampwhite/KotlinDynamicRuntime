@@ -12,6 +12,8 @@ import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -91,6 +93,25 @@ class ClientWorkflowsTest {
         assertEquals("Review", view.name)
         // A task the answer does not name keeps its label as written.
         assertEquals(listOf("Record", "Approve it"), view.taskLabels)
+    }
+
+    @Test
+    fun anApprovalsRowSaysWhatItShows() {
+        // Issue #1875: the Steps column names what an approval shows, when it names it; the default it leaves unsaid.
+        fun row(approval: Map<String, Any?>): List<String> {
+            val tasks = made[WFD.tasks].toJsonListOfMaps().map { t ->
+                if (t[WFD.id] == "approve") t + (WFD.approval to t[WFD.approval].toJsonMapOrEmpty() + approval) else t
+            }
+            val catalog = mapOf(CLD.client to "acme", CWF.workflows to listOf(mapOf(CWF.definition to made + (WFD.tasks to tasks))))
+            val w = parseWorkflowCatalog(catalog)
+                .workflows.single()
+            return workflowTaskSummary(w, mapOf("kdr:name" to "Name"))
+        }
+        assertEquals(listOf("Record it", "Approve it"), row(emptyMap()))
+        val named = row(mapOf(WFD.showTraits to listOf("kdr:name", "siteVisit")))
+        assertEquals(listOf("Record it", "Approve it (shows Name, siteVisit)"), named)
+        assertEquals(listOf("Record it", "Approve it (shows Record it)"), row(mapOf(WFD.showTasks to listOf("record"))))
+        assertEquals(listOf("Record it", "Approve it (shows nothing)"), row(mapOf(WFD.showTraits to emptyList<String>())))
     }
 
     @Test

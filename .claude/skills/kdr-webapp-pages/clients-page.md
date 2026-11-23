@@ -681,10 +681,12 @@ under the name starts past every revision it had. A bundle the editor added and 
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`
 (`ClientsApi.workflowCatalog`): the client's workflows -- for a client with a sandbox, as the sandbox runs them, its
 latest configuration with drafts in, so the list shows what a draft made or removed, as Files does -- then the
-deployment's **templates** -- the global workflows, which no client runs as they are. A template is greyed with the
-backend's reason when a workflow cannot be made from it now (a client has one creation and one core details workflow,
-and a plan limits workflows and their tasks); a workflow not made from a template says why its slots cannot be changed
-here. **Use…** and **Edit…** open `WorkflowSlotEditor` on the **slots** -- the kernel's `WfTemplateSlots`: the
+deployment's **templates** -- the global workflows, which no client runs as they are. A workflow's **Steps** are its
+tasks' labels, an approval that names what it shows with that after it (`workflowTaskSummary`, issue #1875:
+"Approve it (shows Grant application)"). A template is greyed with the backend's reason when a workflow cannot be made
+from it now (a client has one creation and one core details workflow, and a plan limits workflows and their tasks); a
+workflow not made from a template says why its slots cannot be changed here. **Use…** and **Edit…** open
+`WorkflowSlotEditor` on the **slots** -- the kernel's `WfTemplateSlots`: the
 workflow's name, and per data-entry task its label and the traits it collects, each required or not, named as a form
 names it (the catalog's trait `name`, `catalogTraitName`, issue
 #1438) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow

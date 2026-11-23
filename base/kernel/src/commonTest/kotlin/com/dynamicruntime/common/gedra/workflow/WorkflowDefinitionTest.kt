@@ -7,9 +7,11 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.commentRefusedMessage
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -439,18 +441,20 @@ class WfApprovalDefTest {
 /**
  * What an approval task shows, read-only, above its prompt (issue #1695): by default the nearest earlier task that collects
  * traits, else the tasks its approval names, or none; parsed and round-tripped, and refused when it names a task the
- * workflow does not have.
+ * workflow does not have. Or the traits it names in their place (issue #1875), with layouts of its own.
  */
 class WfApprovalShowsTest {
     private val cxt: KdrCxtBase = LiteCxt()
 
-    /** A review: a task collecting the review, a note collecting nothing, then the approval, [showTasks] as given. */
-    private fun def(showTasks: List<String>? = null) = parseWfDef(
+    /** A review: a task collecting the review, another the summary, then the approval, [showTasks] and [showTraits] as given. */
+    private fun def(showTasks: List<String>? = null, showTraits: List<String>? = null) = parseWfDef(
         cxt,
         WfDefBuilder("review", WfEntry.normal).apply {
             task("record", "Record the review") { trait("review"); save("s", "Save", WfSaveKind.edit) }
             task("summary", "Summarize it") { trait("summary"); save("t", "Save", WfSaveKind.edit) }
-            task("accept", "Accept the talk") { approval("accepted", "Read it, then accept.", "Accept", showTasks = showTasks) }
+            task("accept", "Accept the talk") {
+                approval("accepted", "Read it, then accept.", "Accept", showTasks = showTasks, showTraits = showTraits)
+            }
         }.build(),
     )
 
@@ -483,6 +487,40 @@ class WfApprovalShowsTest {
     fun anApprovalNamesOnlyOtherTasksOfItsWorkflow() {
         assertFailsWith<KdrException> { def(showTasks = listOf("gone")) }
         assertFailsWith<KdrException> { def(showTasks = listOf("accept")) }
+    }
+
+    @Test
+    fun anApprovalMayNameTheTraitsItShowsInPlaceOfTasks() {
+        val named = def(showTraits = listOf("grantRequest", "review"))
+        assertEquals(listOf("grantRequest", "review"), named.task("accept")?.approval?.showTraits)
+        // Named traits stand in for the tasks it would otherwise show, the default among them.
+        assertEquals(emptyList(), shows(named))
+        assertEquals(listOf("grantRequest", "review"), parseWfDef(cxt, named.toJsonMap()).task("accept")?.approval?.showTraits)
+        // Left out, nothing is written, so a definition that never names any stores as it did.
+        assertNull(def().task("accept")?.approval?.showTraits)
+    }
+
+    @Test
+    fun anApprovalNamesTraitsOrTasksNotBothAndEachTraitOnce() {
+        assertFailsWith<KdrException> { def(showTasks = listOf("record"), showTraits = listOf("review")) }
+        assertFailsWith<KdrException> { def(showTraits = listOf("review", "review")) }
+    }
+
+    @Test
+    fun anApprovalLaysOutWhatItShowsAndNothingElse() {
+        val layout = mapOf(SCH.layout to mapOf(SL.label to "The request"))
+        fun withTypes(types: Map<String, Any?>): WfDef {
+            val m = def(showTraits = listOf("grantRequest")).toJsonMap()
+            val tasks = m[WFD.tasks].toJsonListOfMaps().map { t ->
+                if (t[WFD.id] != "accept") t else t + (WFD.approval to t[WFD.approval].toJsonMapOrEmpty() + (WFD.types to types))
+            }
+            return parseWfDef(cxt, m + (WFD.tasks to tasks))
+        }
+        val laid = withTypes(mapOf("GrantRequestData" to layout))
+        assertEquals(mapOf("GrantRequestData" to layout), laid.task("accept")?.approval?.typeAlterations)
+        assertEquals(laid.toJsonMap(), parseWfDef(cxt, laid.toJsonMap()).toJsonMap())
+        // As a workflow's, it varies presentation only.
+        assertFailsWith<KdrException> { withTypes(mapOf("GrantRequestData" to mapOf(SCH.required to listOf("amount")))) }
     }
 }
 
