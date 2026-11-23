@@ -16,6 +16,8 @@ import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -164,6 +166,30 @@ private fun clientWorkflowTemplateTests() = stringSpec {
             EXC.badInput, UADEP.clientWorkflowSave,
             mapOf(CWF.slots to coreDetailsSlots("eventDetails", "Event details", "About the event").toInfo()),
         ).toString() shouldContain "nothing to save"
+    }
+
+    // Issue #1870: a change names its workflow, which knows its template, so the template need not be named again.
+    "a change takes its workflow's own template, refuses another, and the view says which it is" {
+        val client = "wfown1870"
+        defineClient(client)
+        val chief = admin(client)
+        save(chief, coreDetailsSlots())
+        val unnamed = coreDetailsSlots("eventDetails", taskLabel = "About the event").toInfo() - WFD.fromTemplate
+        chief.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to unnamed))[CWF.slots].toJsonMapOrEmpty()[WFD.fromTemplate] shouldBe
+            WFT.coreDetails
+        WorkflowService.get(cxt).forClient(client).workflow("eventDetails").shouldNotBeNull().def.tasks.single().label shouldBe
+            "About the event"
+        // Naming another is refused, saying which template it is.
+        val task = WfTaskSlot("details", "X", listOf(WfTraitRef(GT.name)))
+        val wrong = WfTemplateSlots("eventDetails", WFT.collect, "Event details", listOf(task))
+        chief.expectError(EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to wrong.toInfo()))
+            .toString() shouldContain "is made from template '${WFT.coreDetails}', not '${WFT.collect}'"
+        // A new workflow still names its template.
+        chief.expectError(
+            EXC.badInput, UADEP.clientWorkflowSave, mapOf(CWF.slots to coreDetailsSlots(label = "Another").toInfo() - WFD.fromTemplate),
+        ).toString() shouldContain "Name the template a new workflow is made from"
+        // The view says which template a workflow was made from.
+        chief.getData(GEP.workflowView, mapOf(GDF.workflowId to "eventDetails"))[WFD.fromTemplate] shouldBe WFT.coreDetails
     }
 
     // Design View edits the workflow as it runs, and what it saves is still the overlay: the diff from the template.

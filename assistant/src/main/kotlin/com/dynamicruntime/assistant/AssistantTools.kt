@@ -338,7 +338,8 @@ object AssistantTools {
                 AssistantTool(
                     ATOOL.viewWorkflow,
                     "Shows a workflow as the sandbox runs it -- its tasks, the traits each shows, and who may act -- so a draft can " +
-                            "be checked to have loaded. With no workflowId, the client's creation workflow.",
+                            "be checked to have loaded, and '${WFD.fromTemplate}', the template it was made from, when it was. " +
+                            "With no workflowId, the client's creation workflow.",
                     this@AssistantTools.objectSchema(GDF.workflowId to this@AssistantTools.stringSchema("The workflow's id.")),
                     HttpMethod.GET, GEP.workflowView, setOf(GDF.workflowId),
                 ) { run, input ->
@@ -936,7 +937,10 @@ object AssistantTools {
         }
         val slots = objectSchema(
             WFD.workflowId to stringSchema("The workflow's id, to change one made from a template; absent to make a new one."),
-            WFD.fromTemplate to stringSchema("The template it is made from, as ${ATOOL.listWorkflows} lists the templates."),
+            WFD.fromTemplate to stringSchema(
+                "For a new workflow, the template it is made from, as ${ATOOL.listWorkflows} lists the templates. Leave it out " +
+                    "to change a workflow: it is made from its own, which ${ATOOL.viewWorkflow} shows.",
+            ),
             WFD.label to stringSchema("The workflow's name."),
             WFD.tasks to arraySchema(
                 "Its data-entry tasks, as the template has them, each with what it collects.",
@@ -954,7 +958,7 @@ object AssistantTools {
                     required = listOf(WFD.id, WFD.label, WFD.traits),
                 ),
             ),
-            required = listOf(WFD.fromTemplate, WFD.label, WFD.tasks),
+            required = listOf(WFD.label, WFD.tasks),
         )
         val visibility = objectSchema(
             WFP.mode to stringSchema(

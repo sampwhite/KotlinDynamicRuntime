@@ -162,8 +162,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             overseenClientField(CLD.client)
             field(
                 CWF.slots,
-                "The workflow's slots: `${WFD.workflowId}` (absent for a new workflow), `${WFD.fromTemplate}`, " +
-                    "`${WFD.label}`, and `${WFD.tasks}`, each with its `${WFD.id}`, `${WFD.label}` and `${WFD.traits}`.",
+                "The workflow's slots: `${WFD.workflowId}` (absent for a new workflow), `${WFD.fromTemplate}` (for a new " +
+                    "workflow; a change takes its workflow's own, and refuses another), `${WFD.label}`, and `${WFD.tasks}`, " +
+                    "each with its `${WFD.id}`, `${WFD.label}` and `${WFD.traits}`.",
                 required = true,
             ) { type = SCT.kObject }
             field(

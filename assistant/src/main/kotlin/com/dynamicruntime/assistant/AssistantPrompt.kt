@@ -150,10 +150,11 @@ object AssistantPrompt {
             |  which you chose, and why.
             |- view_workflow with no workflowId shows the creation workflow as it runs, if there is one.
             |- A workflow made from a template ('fromTemplate') -- the starter New form and core details among them -- is
-            |  changed with save_template_workflow: its name, and per task its label and the traits it collects. It keeps
-            |  everything else the workflow says, its saves' labels and its layouts among them. Do not write such a
-            |  workflow with patch_config: a field you give there is written whole, the workflow's whole 'definition' among
-            |  them, so anything you leave out of it is lost.
+            |  changed with save_template_workflow, naming it by its 'workflowId' and leaving 'fromTemplate' out: it keeps
+            |  its own template, which view_workflow shows. You change its name, and per task its label and the traits it
+            |  collects; it keeps everything else the workflow says, its saves' labels and its layouts among them. Do not
+            |  write such a workflow with patch_config: a field you give there is written whole, the workflow's whole
+            |  'definition' among them, so anything you leave out of it is lost.
             |
             |Reviews and approvals:
             |- A review works on a form's answers, so it waits for them: give it an eligibility test on
