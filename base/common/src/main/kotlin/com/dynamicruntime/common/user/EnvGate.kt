@@ -213,6 +213,7 @@ class GoogleTokenEndpoint(private val clientId: String, private val clientSecret
  *
  * Theme: #ENVAT.
  */
+@Suppress("ConstPropertyName")
 object EnvGate {
     private val random = SecureRandom()
 
