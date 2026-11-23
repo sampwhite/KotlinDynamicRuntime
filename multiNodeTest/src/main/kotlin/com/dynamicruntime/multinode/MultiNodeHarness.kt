@@ -1,7 +1,13 @@
 package com.dynamicruntime.multinode
 
 import com.dynamicruntime.common.context.AppPaths
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.node.ND
+import com.dynamicruntime.common.util.jsonMapOrNull
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import java.io.File
+import java.io.IOException
 import java.net.Socket
 import java.net.URI
 import java.net.http.HttpClient
@@ -18,8 +24,21 @@ import kotlin.system.exitProcess
 class HarnessNode(val url: String, private val process: Process? = null, val log: File? = null) {
     val label: String get() = url.removePrefix("http://")
 
-    /** The port the node listens on, which is also how its own `ip:port` label is recognized in the trace. */
+    /** The port the node listens on. */
     val port: Int get() = url.substringAfterLast(':').toInt()
+
+    /**
+     * The node's name, as its `/health` reports it (issue #1871): how its claims and trace entries are recognized, since
+     * a node names the holder of each by its name. Read by [learnName] once every node is up, before any scenario, since
+     * a scenario asks for a node's name after stopping or killing it.
+     */
+    lateinit var name: String
+        private set
+
+    /** Reads [name] from the node's `/health`; the node must be answering. */
+    fun learnName() {
+        name = MultiNodeHarness.nameOf(url)
+    }
 
     /** Whether the harness owns this node's process, and so may stop or kill it. */
     val stoppable: Boolean get() = process != null
@@ -129,6 +148,21 @@ object MultiNodeHarness {
         http.send(req, HttpResponse.BodyHandlers.discarding()).statusCode() == 200
     }.getOrDefault(false)
 
+    /** The name the node at [url] reports in its `/health` (`nodeName`); throws, saying why, when it gives none. */
+    fun nameOf(url: String): String {
+        val req = HttpRequest.newBuilder(URI("$url/kda/health")).timeout(Duration.ofSeconds(5)).GET().build()
+        val resp = try {
+            http.send(req, HttpResponse.BodyHandlers.ofString())
+        } catch (e: IOException) {
+            throw IllegalStateException("The node at $url did not answer its /health: $e", e)
+        }
+        if (resp.statusCode() != 200) {
+            throw IllegalStateException("The node at $url answered its /health with status ${resp.statusCode()}.")
+        }
+        return resp.body().jsonMapOrNull()?.get(EP.results).toJsonMapOrEmpty()[ND.nodeName].toOptStr()
+            ?: throw IllegalStateException("The node at $url reports no nodeName in its /health; is it older than issue #1871?")
+    }
+
     private fun portInUse(port: Int): Boolean = runCatching { Socket("localhost", port).use { true } }.getOrDefault(false)
 
     /** Runs the named suite against [nodes]; answers the scenario results. */
@@ -152,7 +186,9 @@ fun main(args: Array<String>) {
             val logDir = File(System.getProperty("kdr.multiNode.logDir") ?: "build/multiNode")
             MultiNodeHarness.startNodes(jar, logDir).also { started.addAll(it) }
         }
-        println("Multi-node harness: suite '$suite' against ${nodes.joinToString(", ") { it.label }}")
+        // Every name now, while every node answers: a scenario that stops or kills one still asks for its name after.
+        nodes.forEach { it.learnName() }
+        println("Multi-node harness: suite '$suite' against ${nodes.joinToString(", ") { "${it.name} at ${it.label}" }}")
         MultiNodeHarness.runSuite(suite, nodes)
     } finally {
         started.filter { it.alive }.forEach { it.stop() }

@@ -37,12 +37,28 @@ object NodeUtil {
 
     val nodeIpAddress = EnvVarDef(
         "KDR_NODE_IP_ADDRESS", group = ENVGRP.node, defaultDoc = "`127.0.0.1`",
-        description = "Overrides the node's IP identity, used in the node label.",
+        description = "The node's IP address, in its `ip:port` address: where it is reached. What identifies it is `KDR_NODE_NAME`.",
     )
 
     val hostName = EnvVarDef(
         "KDR_HOSTNAME", group = ENVGRP.node, defaultDoc = "the OS `HOSTNAME`, else `localhost`",
-        description = "Overrides the node's host name, used in the node label; falls back to the OS `HOSTNAME`.",
+        description = "Overrides the node's host name, which the startup log reports; falls back to the OS `HOSTNAME`.",
+    )
+
+    /** The prefix of a node's name when `KDR_NODE_NAME` is not set: `node-7070`. */
+    const val defaultNamePrefix = "node-"
+
+    /** What a node's name may be: letters, digits, `.`, `_`, and `-`, starting with a letter or digit, up to 64. */
+    val namePattern = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+    val nodeName = EnvVarDef(
+        "KDR_NODE_NAME", group = ENVGRP.node, defaultDoc = "`$defaultNamePrefix<port>`, such as `${defaultNamePrefix}$defaultPort`",
+        description = "The node's name (issue #1871): what identifies it, where its address (`ip:port`) is where to " +
+            "connect to it. It names the holder of a job claim, the node a table-cache report is about, and the node " +
+            "in `/health` (`nodeName`) and the startup log. Letters, digits, `.`, `_`, and `-`, starting with a letter " +
+            "or digit, up to 64 characters. The default is distinct for nodes on different ports of one machine, so a " +
+            "deployment running several nodes on one port -- containers, or hosts that each serve 7070 -- must set it, " +
+            "one name per node. Like `KDR_PORT`, a boot role does not inherit it from the unprefixed name.",
     )
 
     /** The address the HTTP server listens on ([bindAddress]), or null for every interface. */
@@ -82,33 +98,54 @@ object NodeUtil {
             if (it.isNullOrEmpty() || it == "ubuntu") "localhost" else it
         }
         val serverPort = resolvePort(cxt)
-        return NodeId(ip, host, serverPort)
+        return NodeId(ip, host, serverPort, resolveName(cxt, serverPort))
     }
 
     /** Resolves the HTTP port: the [port] env var (which must be an integer if set), else [defaultPort]. */
     private fun resolvePort(cxt: KdrCxt): Int {
         val config = cxt.instanceConfig
-        val role = config.bootRole
-        // The port is the one variable a boot role must NOT inherit from the unprefixed name (issue #377).
-        // Everywhere else `KDR_EDGE_X` falling back to `KDR_X` is exactly right -- a general value applies to
-        // every role. A port cannot: two nodes on one machine sharing one is a collision by construction, and
-        // it is a *quiet* one, since a bind failure followed by a health check answers from whichever server
-        // already owns the port. So under a role only the role's own variable is consulted, and the role's
-        // default stands behind it.
-        //
-        // The cost is that an edge-only deployment setting a bare KDR_PORT gets the role default instead. That
-        // surprise is loud and immediately visible, and `KDR_EDGE_PORT` fixes it; the one it replaces is
-        // silent and lands on somebody else's server.
-        val value = if (role.isNullOrEmpty()) {
-            cxt.getEnvVar(port)
-        } else {
-            KdrInstanceConfig.envVarNamesFor(port.name, role).first()
-                .let { (config.get(it) as? String) ?: System.getenv(it) }
-        }
+        val value = ownValue(cxt, port)
         if (value.isNullOrEmpty()) {
             return (config.get(ACFG.defaultPort) as? Int) ?: defaultPort
         }
         return value.toIntOrNull()
             ?: throw KdrException("Environment variable $port must be an integer port number, but was '$value'.")
+    }
+
+    /**
+     * Resolves the node's name: the [nodeName] env var, which must be a name ([namePattern]) if set, else
+     * `node-<port>`. A set-but-invalid name fails the start, as a mistyped port does, rather than falling back to
+     * a default another node may hold.
+     */
+    private fun resolveName(cxt: KdrCxt, serverPort: Int): String {
+        val value = ownValue(cxt, nodeName)?.trim()
+        if (value.isNullOrEmpty()) return "$defaultNamePrefix$serverPort"
+        if (!namePattern.matches(value)) {
+            throw KdrException(
+                "Environment variable $nodeName must be letters, digits, '.', '_', and '-', starting with a letter or " +
+                    "digit, up to 64 characters, but was '$value'.",
+            )
+        }
+        return value
+    }
+
+    /**
+     * [def]'s value as this node's own: under a boot role, only the role's variable (`KDR_EDGE_PORT`), never the
+     * unprefixed one. The port and the name are the variables a role must NOT inherit (issues #377, #1871). Everywhere
+     * else `KDR_EDGE_X` falling back to `KDR_X` is exactly right -- a general value applies to every role. These
+     * cannot: two nodes on one machine sharing a port is a collision by construction, and a *quiet* one, since a bind
+     * failure followed by a health check answers from whichever server already owns the port; two sharing a name are
+     * two nodes no claim or report can tell apart. So under a role only the role's own variable is consulted, and the
+     * role's default stands behind it.
+     *
+     * The cost is that an edge-only deployment setting a bare KDR_PORT gets the role default instead. That surprise is
+     * loud and immediately visible, and `KDR_EDGE_PORT` fixes it; the one it replaces is silent and lands on somebody
+     * else's server.
+     */
+    private fun ownValue(cxt: KdrCxt, def: EnvVarDef): String? {
+        val config = cxt.instanceConfig
+        val role = config.bootRole
+        if (role.isNullOrEmpty()) return cxt.getEnvVar(def)
+        return KdrInstanceConfig.envVarNamesFor(def.name, role).first().let { (config.get(it) as? String) ?: System.getenv(it) }
     }
 }

@@ -411,7 +411,7 @@ class CacheRow(
  * change-announce time and a row `updatedAt`, not strictly comparable.
  */
 class CacheStateView(
-    val nodeId: String,
+    val nodeName: String,
     val isDisabled: Boolean,
     val rows: List<CacheRow>,
     val unheldShared: List<Pair<String, String>>,
@@ -443,7 +443,7 @@ fun cacheStateView(report: Map<String, Any?>): CacheStateView {
         .sortedBy { it.first }
     val attention = rows.count { it.needsAttention } + unheld.size
     return CacheStateView(
-        nodeId = report[TCS.nodeId] as? String ?: "",
+        nodeName = report[TCS.nodeName] as? String ?: "",
         isDisabled = report[TCS.isDisabled] == true,
         rows = rows,
         unheldShared = unheld,
@@ -532,7 +532,7 @@ val OperatorCacheStatePage = FC<Props> {
                 p {
                     className = ClassName("op-node")
                     +"Node "
-                    span { className = ClassName("op-identifier"); +view.nodeId }
+                    span { className = ClassName("op-identifier"); +view.nodeName }
                 }
                 asOf?.let { p { className = ClassName("op-asof"); +"as of $it" } }
                 when {

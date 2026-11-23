@@ -122,7 +122,7 @@ object MultiNodeJobs {
         val execId = cxt.mkUniqueId()
         val row = linkedMapOf<String, Any?>(
             MNJ.execId to execId, MNJ.jobType to run.launch.jobType, MNJ.launchName to run.launch.name,
-            PF.client to run.client, MNJ.taskKey to key, MNJ.node to NodeService.get(cxt).nodeLabel,
+            PF.client to run.client, MNJ.taskKey to key, MNJ.node to NodeService.get(cxt).nodeName,
             MNJ.startedMs to System.currentTimeMillis(),
         )
         SqlTopicUtil.prepForStdExecute(cxt, table, row)

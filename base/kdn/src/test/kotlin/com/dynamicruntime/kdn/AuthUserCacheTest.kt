@@ -145,7 +145,7 @@ class AuthUserCacheTest : StringSpec({
         val report = opal.getData("/operator/cache/state")
         report[TCS.isDisabled] shouldBe false
         // Cache state is per node, so the report says which node answered (issue #540).
-        (report[TCS.nodeId] as? String).shouldNotBeNull()
+        (report[TCS.nodeName] as? String).shouldNotBeNull()
 
         @Suppress("UNCHECKED_CAST")
         val caches = report.getValue(TCS.caches) as List<Map<String, Any?>>

@@ -132,8 +132,8 @@ object TCS {
     const val caches = "caches"
     const val sharedState = "sharedState"
 
-    /** The node this report is about -- cache state is per node, so the page says which one answered. */
-    const val nodeId = "nodeId"
+    /** The name of the node this report is about -- cache state is per node, so the page says which one answered. */
+    const val nodeName = "nodeName"
 
     // The reload endpoint: its input table name and its output list of reloaded tables.
     const val table = "table"

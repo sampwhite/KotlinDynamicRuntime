@@ -285,8 +285,8 @@ object JobStatusRows {
     fun requestAbort(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false, client: String? = null): Boolean {
         // Read first: the transaction would insert the row if it were missing, and a job that never ran should
         // not gain an empty one because somebody asked it to stop.
-        if (readLaunch(cxt, jobType, kind, dryRun, client)?.runStatus != JobRunStatus.active) return false
-        return inRowTran(cxt, "jobRequestAbort", JOB.jobStatus, launchKey(jobType, kind, client, dryRun)) { tran ->
+        return readLaunch(cxt, jobType, kind, dryRun, client)?.runStatus == JobRunStatus.active &&
+                inRowTran(cxt, "jobRequestAbort", JOB.jobStatus, launchKey(jobType, kind, client, dryRun)) { tran ->
             if (JobStatusRow(tran.row).runStatus != JobRunStatus.active) {
                 tran.noWrite()
                 false
@@ -482,11 +482,12 @@ object JobStatusRows {
 }
 
 /**
- * Who a claim or a trace entry is by: the node's `ip:port` label when the node knows it, else the instance name.
- * Not the instance name alone -- every node of one environment shares it (`prod`, `local`), which would make
- * several nodes' claims on one row indistinguishable (found by the multi-node harness, issue #872).
+ * Who a claim or a trace entry is by: the node's name (`KDR_NODE_NAME`, issue #1871) when the node knows it, else the
+ * instance name. Not the instance name alone -- every node of one environment shares it (`prod`, `local`), which would
+ * make several nodes' claims on one row indistinguishable (found by the multi-node harness, issue #872) -- nor the
+ * node's `ip:port`, which nodes sharing an address and port share too.
  */
 internal fun jobHolder(cxt: KdrCxt): String {
     val node = cxt.instanceConfig.get(NodeService.serviceName) as? NodeService
-    return node?.takeIf { it.hasNodeId }?.nodeLabel ?: cxt.instanceConfig.instanceName
+    return node?.takeIf { it.hasNodeId }?.nodeName ?: cxt.instanceConfig.instanceName
 }

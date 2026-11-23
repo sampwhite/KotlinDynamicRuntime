@@ -93,7 +93,7 @@ class ObjectPanelsTest {
     @Test
     fun eachSectionIsAPanelInTheObjectsOwnOrder() {
         val obj = mapOf(
-            "node" to mapOf("nodeId" to "n1"),
+            "node" to mapOf("nodeName" to "n1"),
             "build" to mapOf("commit" to "abc"),
             "gcCollectors" to listOf(mapOf("name" to "G1")),
         )
@@ -109,7 +109,7 @@ class ObjectPanelsTest {
 
     @Test
     fun topLevelScalarsGoInALeadingSummary() {
-        val obj = mapOf("node" to mapOf("nodeId" to "n1"), "pid" to 42)
+        val obj = mapOf("node" to mapOf("nodeName" to "n1"), "pid" to 42)
         assertEquals(
             listOf(ObjectPanel(null, "op-summary", "Summary"), ObjectPanel("node", "op-key-node", "Node")),
             objectPanels(obj),
@@ -145,7 +145,7 @@ class CacheStateViewTest {
     @Test
     fun joinsCachesWithSharedRowAndCountsAttention() {
         val report = mapOf(
-            TCS.nodeId to "10.0.0.1:7070",
+            TCS.nodeName to "node-7070",
             TCS.isDisabled to false,
             TCS.caches to listOf(cache("authUsers"), cache("gedra", pending = true)),
             TCS.sharedState to mapOf(
@@ -154,7 +154,7 @@ class CacheStateViewTest {
             ),
         )
         val v = cacheStateView(report)
-        assertEquals("10.0.0.1:7070", v.nodeId)
+        assertEquals("node-7070", v.nodeName)
         assertEquals(false, v.isDisabled)
         assertEquals(2, v.rows.size)
 
@@ -178,7 +178,7 @@ class CacheStateViewTest {
     @Test
     fun reportsCurrentWhenNothingPendingAndEverySharedTableIsHeld() {
         val report = mapOf(
-            TCS.nodeId to "n1",
+            TCS.nodeName to "n1",
             TCS.isDisabled to false,
             TCS.caches to listOf(cache("authUsers")),
             TCS.sharedState to mapOf("authUsers" to "2026-01-02T00:00:00Z"),
@@ -191,7 +191,7 @@ class CacheStateViewTest {
     @Test
     fun toleratesAMissingOrDisabledReport() {
         val v = cacheStateView(mapOf(TCS.isDisabled to true))
-        assertEquals("", v.nodeId)
+        assertEquals("", v.nodeName)
         assertEquals(true, v.isDisabled)
         assertTrue(v.rows.isEmpty())
         assertEquals(0, v.attentionCount)

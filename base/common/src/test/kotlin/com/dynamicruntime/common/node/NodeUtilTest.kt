@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.node
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -30,7 +32,7 @@ class NodeUtilTest : StringSpec({
         NodeUtil.extractNodeId(cxt(NodeUtil.port.name to "7071")).port shouldBe 7071
     }
 
-    "KDR_NODE_IP_ADDRESS and KDR_HOSTNAME override the node label parts" {
+    "KDR_NODE_IP_ADDRESS and KDR_HOSTNAME override the node's address and host name" {
         val id = NodeUtil.extractNodeId(cxt(NodeUtil.nodeIpAddress.name to "10.0.0.5", NodeUtil.hostName.name to "kdr-box"))
         id.nodeIpAddress shouldBe "10.0.0.5"
         id.hostname shouldBe "kdr-box"
@@ -39,5 +41,32 @@ class NodeUtilTest : StringSpec({
 
     "a set-but-non-integer KDR_PORT fails loudly instead of falling back" {
         shouldThrow<KdrException> { NodeUtil.extractNodeId(cxt(NodeUtil.port.name to "not-a-port")) }
+    }
+
+    // Issue #1871: a node's name, what identifies it, beside the address it is reached at.
+    "the node's name is KDR_NODE_NAME, else node-<port>" {
+        NodeUtil.extractNodeId(cxt()).name shouldBe "node-${NodeUtil.defaultPort}"
+        NodeUtil.extractNodeId(cxt(NodeUtil.port.name to "7073")).name shouldBe "node-7073"
+        val named = NodeUtil.extractNodeId(cxt(NodeUtil.nodeName.name to "web-2", NodeUtil.port.name to "7073"))
+        named.name shouldBe "web-2"
+        // The address is unchanged by the name: it is where the node is reached.
+        named.label shouldBe "127.0.0.1:7073"
+        // A blank one is unset.
+        NodeUtil.extractNodeId(cxt(NodeUtil.nodeName.name to "  ")).name shouldBe "node-${NodeUtil.defaultPort}"
+    }
+
+    "a set-but-invalid KDR_NODE_NAME fails loudly instead of falling back" {
+        for (bad in listOf("two words", "-leading", "a/b", "x".repeat(65))) {
+            shouldThrow<KdrException> { NodeUtil.extractNodeId(cxt(NodeUtil.nodeName.name to bad)) }
+        }
+    }
+
+    "under a boot role, the name is the role's own: KDR_EDGE_NODE_NAME, never the unprefixed KDR_NODE_NAME" {
+        val config = KdrInstanceConfig("nodeRole", ENV.local, ENV.liveSource, "edge")
+        config.put(NodeUtil.nodeName.name, "shared")
+        config.put("KDR_EDGE_PORT", "7075")
+        NodeUtil.extractNodeId(KdrCxt.mkSimpleCxt("nodeRole", config)).name shouldBe "node-7075"
+        config.put("KDR_EDGE_NODE_NAME", "edge-1")
+        NodeUtil.extractNodeId(KdrCxt.mkSimpleCxt("nodeRole", config)).name shouldBe "edge-1"
     }
 })

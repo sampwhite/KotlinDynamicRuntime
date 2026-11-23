@@ -1,6 +1,11 @@
 package com.dynamicruntime.trials
 
 import com.dynamicruntime.common.context.AppPaths
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.node.ND
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import java.io.File
 import java.net.Socket
 import java.net.URI
@@ -28,6 +33,12 @@ class TrialNode(
     val started: Long?,
 ) {
     val url: String get() = "http://localhost:$port"
+
+    /**
+     * The name the node is started with (`KDR_NODE_NAME`, issue #1871), which its health check must answer with: proof that
+     * the node answering on [port] is this run's, not another process holding it.
+     */
+    val name: String get() = nameOf(runId)
 
     /**
      * The process, while it runs. A pid alone is not enough: after a reboot, or once the node has gone, the system hands
@@ -239,6 +250,7 @@ class TrialNode(
             val env = pb.environment()
             env["KDR_DEFAULTS_FILE"] = "none"
             env["KDR_PORT"] = port.toString()
+            env["KDR_NODE_NAME"] = nameOf(runId)
             env["KDR_IN_MEMORY_ONLY"] = "false"
             env["KDR_DB_TYPE"] = "h2File"
             env["KDR_DB_NAME"] = dbName
@@ -257,21 +269,32 @@ class TrialNode(
 
         private val http: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
 
-        fun healthy(url: String): Boolean = runCatching {
-            val req = HttpRequest.newBuilder(URI("$url/kda/health")).timeout(Duration.ofSeconds(2)).GET().build()
-            http.send(req, HttpResponse.BodyHandlers.discarding()).statusCode() == 200
-        }.getOrDefault(false)
+        /** The name a node of run [runId] is started with: `trial-<runId>`. */
+        fun nameOf(runId: String): String = "trial-$runId"
 
-        /** Waits for [node] to answer its health check; throws, naming its log, when it exits or does not come up. */
+        /** The name the node at [url] answers its health check with, or null when it does not answer. */
+        fun healthName(url: String): String? = runCatching {
+            val req = HttpRequest.newBuilder(URI("$url/kda/health")).timeout(Duration.ofSeconds(2)).GET().build()
+            val resp = http.send(req, HttpResponse.BodyHandlers.ofString())
+            if (resp.statusCode() != 200) null
+            else resp.body().jsonMap()?.get(EP.results).toJsonMapOrEmpty()[ND.nodeName].toOptStr()
+        }.getOrNull()
+
+        /**
+         * Waits for [node] to answer its health check by its own name; throws, naming its log, when it exits or does not
+         * come up. A node answering on its port by another name is not it.
+         */
         fun awaitHealthy(node: TrialNode, timeout: Duration = Duration.ofSeconds(180)) {
             val deadline = System.nanoTime() + timeout.toNanos()
             while (true) {
                 // Alive first: a node that failed to bind its port must not pass on another process's answer there.
                 if (!node.alive) throw IllegalStateException("The node exited while starting; see ${node.log}.")
-                if (healthy(node.url)) break
+                val answered = healthName(node.url)
+                if (answered == node.name) break
                 if (System.nanoTime() > deadline) {
                     node.stop()
-                    throw IllegalStateException("The node did not come up within $timeout, and was stopped; see ${node.log}.")
+                    val why = answered?.let { " (port ${node.port} answers as '$it', not '${node.name}')" }.orEmpty()
+                    throw IllegalStateException("The node did not come up within $timeout$why, and was stopped; see ${node.log}.")
                 }
                 Thread.sleep(1000)
             }

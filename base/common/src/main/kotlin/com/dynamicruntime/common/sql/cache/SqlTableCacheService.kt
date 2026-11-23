@@ -581,7 +581,7 @@ class SqlTableCacheService : ServiceInitializer {
             type(reportTypeName) {
                 type = SCT.kObject
                 description = "The table caches on this node, and the change dates every node shares."
-                property(TCS.nodeId, "The node this report is about.", required = true)
+                property(TCS.nodeName, "The name of the node this report is about.", required = true)
                 property(TCS.isDisabled, "Whether caching is switched off for this node.", required = true) {
                     type = SCT.boolean
                 }
@@ -638,7 +638,7 @@ class SqlTableCacheService : ServiceInitializer {
         fun cacheReport(cxt: KdrCxt): Map<String, Any?> {
             val service = get(cxt)
             return linkedMapOf(
-                TCS.nodeId to NodeService.get(cxt).nodeLabel,
+                TCS.nodeName to NodeService.get(cxt).nodeName,
                 TCS.isDisabled to service.isDisabled,
                 TCS.minRecheckMs to service.minRecheckMs,
                 TCS.caches to service.getSortedCaches().map { it.toJsonMap() },
