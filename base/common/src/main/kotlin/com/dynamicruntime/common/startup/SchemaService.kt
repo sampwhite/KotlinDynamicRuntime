@@ -243,9 +243,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         // public test deployment in `dev`, whose env auth the same check hardens (issue #1150).
         val isTestInstance = cxt.instanceConfig.isTestInstance
         PublicTestDeployment.checkBoot(cxt.instanceConfig)
-        EnvGate.checkBoot(cxt.instanceConfig)
         val availableEndpoints =
             if (isTestInstance) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
+        EnvGate.checkBoot(cxt.instanceConfig, availableEndpoints)
 
         // Manufactured last and compiled with everything else: the union's branches are not known until
         // every component has contributed, and by the time anything reads the store, it is an ordinary type.

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.BootCheckResult
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.flavor.DeployFlavors
+import com.dynamicruntime.common.user.EnvGate
 import com.dynamicruntime.common.http.request.BODY
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.SECT
@@ -255,6 +256,9 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
 
     // The deployment flavors (issue #1218), beside the env reference: a flavor's config keys show only here.
     DeployFlavors.defineOperatorEndpoint(this)
+
+    // What a gated node answers without env access (issue #1866), made from what it loaded.
+    EnvGate.defineOperatorEndpoint(this)
 }
 
 /** One gibibyte in bytes (1024^3): memory is reported base-2, the convention for RAM and JVM heap sizes. */

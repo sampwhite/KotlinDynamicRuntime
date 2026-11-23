@@ -834,7 +834,9 @@ everything. A local server simulates it on a host label containing `admin` under
 stays ungated, so the two views sit side by side, each with its own cookies. Assumed env auth does not count on a gated
 request. In a test, boot with
 `EGATE.simulate` and `EGATE.simulatedAddress` and send that `Host`; for the real flow, `EGATE.codeExchange` and
-`GOOG.googleKeySource` stand in for Google, as `EnvGateTest` does.
+`GOOG.googleKeySource` stand in for Google, as `EnvGateTest` does. A component whose endpoints a gated deployment
+opens through its allow list (`EGATE.allowList`) holds the node to what it answers without env access with
+`EnvGate.requireAnonymousSurface(cxt, listOf("GET /kda/health", ...))`, which throws naming any path that differs.
 
 This works in unit tests because `env == unit` allows test endpoints. Test-only endpoints (marked
 `forTestingOnly` on the builder) are dropped from the store unless a deployment allows them

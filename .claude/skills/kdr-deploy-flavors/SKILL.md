@@ -45,6 +45,7 @@ class ReferenceComponent : ComponentDefinition {
         flavor("reference") {
             set("confDemoDocLinks", true)        // an instance-config key
             default(sampleLoadEnvVar, "true")    // an EXISTING environment variable
+            add("envGateAllowList", "GET /auth/ui/config") // an entry in a list-valued key
             omnibusOverlay("kdrReference")       // md-fragments/kdrReference_omnibus.md
         },
     )
@@ -55,6 +56,11 @@ class ReferenceComponent : ComponentDefinition {
   environment variable for a flavor to set, since keeping their number down is what flavors are for.
 - **`default(def, value)`** defaults an environment variable that **already exists**, for a setting configured
   through one today. Name it by its `EnvVarDef`, as every read does.
+- **`add(key, values...)`** adds entries to a **list-valued** instance-config key (issue #1866), such as the env gate's
+  allow list. Unlike `set`, any number of components may add to one key, for a flavor they own or not: the active
+  flavors' entries go into one list, in flavor order and then component order, each entry once. So each component
+  adds what it brings -- the endpoints it serves to a public site, say -- without one of them having to own the
+  whole list. A key is either added to or set, never both.
 - Set an existing setting through its environment variable, never through a config key that falls back to it:
   the key would beat a variable the deployment set on purpose.
 - **`omnibusOverlay(id)`** overlays the fragment files an omnibus file names (issue #1219), and
@@ -98,6 +104,8 @@ Precedence:
   config entry beats the process environment.
 - **Between flavors**, the later in `KDR_DEPLOY_FLAVORS` wins. Within one flavor two contributions may not set
   the same value at all.
+- **A list-valued key** that flavors `add` to gets every active flavor's entries, combined; the deployment's own
+  configuration, when it sets the key, replaces the whole list, and every added entry is reported as overridden.
 
 ## Refusals
 
@@ -107,6 +115,7 @@ The boot is refused for:
 - a flavor declared twice;
 - a contribution to an undeclared flavor;
 - two contributions to one flavor setting the same key or variable;
+- a key that is both set and added to, by one contribution or two, in any flavor;
 - a default for an `EnvVarDef` marked `bootstrap` -- one read before flavors resolve (`KDR_ENV`,
   `KDR_WORKSPACE_DIR`, `KDR_DEFAULTS_FILE`, `KDR_CUSTOM_CONFIG`, the log levels, `KDR_DEPLOY_FLAVORS` itself).
   Mark any new variable read at pre-boot the same way.
@@ -118,7 +127,8 @@ running still fails.
 
 - The startup log names the active flavors.
 - `GET /operator/flavors` lists the declared flavors, the active ones, and each value an active flavor set, with
-  whether it took effect and, if not, what decided instead.
+  whether it took effect and, if not, what decided instead. An entry `add` contributed is a row of its own, marked
+  `added`, naming the component that added it.
 - `/operator/env/reference` shows a variable a flavor defaulted as coming from a deployment flavor.
 - In code, `DeployFlavors.get(cxt)` is the same report. It is for diagnostics: code reads values, not flavors.
 

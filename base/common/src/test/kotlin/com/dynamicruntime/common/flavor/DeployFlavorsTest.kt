@@ -128,6 +128,56 @@ class DeployFlavorsTest : StringSpec({
         refusal(emptyMap(), listOf(owner, envClash)) shouldContain "sets '${flavorTestVar.name}' twice"
     }
 
+    // --- add: list-valued keys several components contribute to (issue #1866) ---
+
+    val listOwner = FlavorComponent(
+        "listOwner",
+        defs = listOf(FlavorDef("listA", "A flavor adding to a list."), FlavorDef("listB", "Another.")),
+        contributions = listOf(flavor("listA") { add("paths", "one", "two") }, flavor("listB") { add("paths", "four") }),
+    )
+    val listOther = FlavorComponent("listOther", contributions = listOf(flavor("listA") { add("paths", "two", "three") }))
+
+    "components add to one list-valued key, in flavor and component order, each entry once" {
+        val (config, result) = resolve(mapOf(flavors to "listA,listB"), listOf(listOwner, listOther))
+        config.get("paths") shouldBe listOf("one", "two", "three", "four")
+        val added = result.values.filter { it.name == "paths" }
+        added.all { it.added && it.applied } shouldBe true
+        added.map { it.component to it.value } shouldContainExactly listOf(
+            "listOwner" to "one", "listOwner" to "two", "listOther" to "two", "listOther" to "three", "listOwner" to "four",
+        )
+        // Only the active flavors' entries.
+        resolve(mapOf(flavors to "listB"), listOf(listOwner, listOther)).first.get("paths") shouldBe listOf("four")
+    }
+
+    "an explicit setting replaces the added list outright, and the report says what did" {
+        val (config, result) = resolve(mapOf(flavors to "listA", "paths" to listOf("mine")), listOf(listOwner, listOther))
+        config.get("paths") shouldBe listOf("mine")
+        result.values.filter { it.name == "paths" }.all { !it.applied && it.overriddenBy == "instance config" } shouldBe true
+    }
+
+    "a key is either set or added to, never both" {
+        val setter = FlavorComponent("setter", contributions = listOf(flavor("listB") { set("paths", listOf("x")) }))
+        refusal(emptyMap(), listOf(listOwner, setter)) shouldContain "'paths' is set by setter (listB) and added to by listOwner"
+        // In one contribution too, refused at boot as the other is, naming who did it.
+        val both = FlavorComponent("both", contributions = listOf(flavor("listA") { add("k", 1); set("k", 2) }))
+        refusal(emptyMap(), listOf(listOwner, both)) shouldContain "'k' is set by both (listA) and added to by both (listA)"
+    }
+
+    "the report keeps flavor and then component order, a contribution's set values before its added entries" {
+        val mixed = FlavorComponent(
+            "mixed",
+            defs = listOf(FlavorDef("orderA", "First."), FlavorDef("orderB", "Second.")),
+            contributions = listOf(
+                flavor("orderA") { add("list", "a1"); set("scalarA", 1) },
+                flavor("orderB") { set("scalarB", 2); add("list", "b1") },
+            ),
+        )
+        val rows = resolve(mapOf(flavors to "orderA,orderB"), listOf(mixed)).second.values
+        rows.map { it.flavor to it.name } shouldContainExactly listOf(
+            "orderA" to "scalarA", "orderA" to "list", "orderB" to "scalarB", "orderB" to "list",
+        )
+    }
+
     "a flavor may not default a variable read before flavors resolve" {
         val early = FlavorComponent("early", contributions = listOf(flavor("alpha") { default(FLV.deployFlavorsEnvVar, "beta") }))
         refusal(emptyMap(), listOf(owner, early)) shouldContain "read before flavors are resolved"

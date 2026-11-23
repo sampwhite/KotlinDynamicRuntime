@@ -149,7 +149,11 @@ too, but not the test only endpoints.
 **A deployment behind the env gate** (`KDR_ENV_GATE`) needs env access for everything, whatever a
 section's rule says. A visit to a page without it, the web app's or the portal's, goes straight to Google's sign-in and
 back to the page asked for,
-and any other request is refused (401) until then; only `health` still answers. The Google sign-in is the env access,
+and any other request is refused (401) until then. Only `health` still answers, and the endpoints the deployment's
+**allow list** (`envGateAllowList`) names, each by its method and path, such as `POST /auth/newContact/sendVerify`:
+what a public website beside the node calls. A client's own copy of an endpoint is named by its path, so it is open for
+that client alone, and the roles and read scope still apply to what the list lets through. The operator view
+`/operator/envGate/anonymous` lists everything a gated node answers without env access. The Google sign-in is the env access,
 and only for an account on the admin domain (`KDR_ADMIN_EMAIL_DOMAIN`), where Google is authoritative for
 it. Its env access lasts a set time (12 hours by default), after which the next visit goes back through Google. Any
 other sign-in, a code sent to the same address included, gives no env access there.
