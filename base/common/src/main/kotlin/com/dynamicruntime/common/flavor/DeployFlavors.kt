@@ -73,6 +73,7 @@ object FLV {
     const val declared = "declared"
     const val active = "active"
     const val values = "values"
+    const val added = "added"
     const val name = "name"
     const val description = "description"
     const val isActive = "isActive"
@@ -115,11 +116,17 @@ class FlavorContribution(
      * an omnibus file is read when its layers are made.
      */
     val fragmentLayers: List<() -> List<FragmentSource>> = emptyList(),
+    /**
+     * Entries for list-valued instance-config keys (issue #1866), each key's in the order added. Every active
+     * contribution's entries for a key go into one list, so several components may add to it.
+     */
+    val addedValues: Map<String, List<Any>> = emptyMap(),
 )
 
 /** The DSL behind [flavor]. */
 class FlavorContributionBuilder(private val flavor: String) {
     private val configValues = LinkedHashMap<String, Any>()
+    private val addedValues = LinkedHashMap<String, MutableList<Any>>()
     private val envVarDefaults = LinkedHashMap<EnvVarDef, String>()
     private val fragmentLayers = mutableListOf<() -> List<FragmentSource>>()
 
@@ -129,7 +136,20 @@ class FlavorContributionBuilder(private val flavor: String) {
      */
     fun set(key: String, value: Any) {
         require(key !in configValues) { "Flavor '$flavor' sets '$key' twice in one contribution." }
+        require(key !in addedValues) { "Flavor '$flavor' both adds to and sets '$key'." }
         configValues[key] = value
+    }
+
+    /**
+     * Adds [values] to the list-valued instance-config [key] while the flavor is active (issue #1866). Unlike [set],
+     * any number of components may add to one key: the active flavors' entries for it, in flavor order and then
+     * component order, go into one list, each entry once. The key reads that list, unless the deployment's own
+     * configuration (or a test's boot configuration) set the key, which then wins outright. A key is either added to
+     * or set, never both, by any contribution.
+     */
+    fun add(key: String, vararg values: Any) {
+        require(key !in configValues) { "Flavor '$flavor' both sets and adds to '$key'." }
+        addedValues.getOrPut(key) { mutableListOf() }.addAll(values)
     }
 
     /**
@@ -160,8 +180,10 @@ class FlavorContributionBuilder(private val flavor: String) {
         fragmentLayers.add(layers)
     }
 
-    fun build(): FlavorContribution =
-        FlavorContribution(flavor, configValues.toMap(), envVarDefaults.toMap(), fragmentLayers.toList())
+    fun build(): FlavorContribution = FlavorContribution(
+        flavor, configValues.toMap(), envVarDefaults.toMap(), fragmentLayers.toList(),
+        addedValues.mapValues { it.value.toList() },
+    )
 }
 
 /** A component's contribution to the flavor [name] (issue #1218). */
@@ -179,11 +201,13 @@ class FlavorValue(
     val value: Any,
     /**
      * Whether the value is the one in effect: false when something explicit set it, or when a later flavor set it
-     * too.
+     * too. An entry [added] to a list is in effect unless something explicit set the key.
      */
     val applied: Boolean,
     /** What decided the value instead, when not [applied]: the later flavor, or the explicit setting. */
     val overriddenBy: String?,
+    /** Whether the value is one entry added to a list-valued key (`add`, issue #1866), rather than set. */
+    val added: Boolean = false,
 )
 
 /** What resolving the deployment flavors decided (issue #1218), kept on the instance config for the operator view. */
@@ -265,7 +289,7 @@ class DeployFlavors(
             linkedMapOf(
                 FLV.flavor to it.flavor, FLV.component to it.component, FLV.name to it.name,
                 FLV.isEnvVar to it.isEnvVar, FLV.value to it.value.toString(), FLV.applied to it.applied,
-                FLV.overriddenBy to it.overriddenBy,
+                FLV.overriddenBy to it.overriddenBy, FLV.added to it.added,
             )
         },
     )
@@ -303,6 +327,9 @@ class DeployFlavors(
                     type = SCT.boolean
                 }
                 property(FLV.overriddenBy, "What decided the value instead, when it is not applied.")
+                property(FLV.added, "Whether the value is one entry added to a list, rather than set.", required = true) {
+                    type = SCT.boolean
+                }
             }
             type(FLV.reportType) {
                 type = SCT.kObject
@@ -383,6 +410,16 @@ class DeployFlavors(
             (cxt.instanceConfig.get(FLV.copyFaultsKey) as? List<*>)?.map { it.toString() }.orEmpty()
 
         private fun checkContributions(declared: Set<String>, contributions: List<Pair<String, FlavorContribution>>) {
+            // A key is a list that flavors add to, or a value they set, across every flavor: one set over another's
+            // additions would leave it unclear which the key reads.
+            val setBy = contributions.flatMap { (component, c) -> c.configValues.keys.map { it to "$component (${c.flavor})" } }.toMap()
+            for ((component, c) in contributions) {
+                for (key in c.addedValues.keys) {
+                    setBy[key]?.let { setter ->
+                        refuse("'$key' is set by $setter and added to by $component (${c.flavor}): a key is one or the other.")
+                    }
+                }
+            }
             for ((component, c) in contributions) {
                 if (c.flavor !in declared) {
                     refuse("Component '$component' contributes to the deployment flavor '${c.flavor}', which no component declares.")
@@ -456,7 +493,23 @@ class DeployFlavors(
             config.setFlavorEnvDefaults(winners.values.filter { it.isEnvVar }.associate { it.name to it.value.toString() })
             val envVarDefs = contributions.flatMap { it.second.envVarDefaults.keys }.associateBy { it.name }
 
-            return candidates.map { c ->
+            // Entries added to list-valued keys (issue #1866): every active flavor's, in flavor and then component order,
+            // into one list, each entry once -- where nothing explicit set the key.
+            val additions = active.flatMap { name ->
+                contributions.filter { it.second.flavor == name }.flatMap { (component, c) ->
+                    c.addedValues.flatMap { (k, vs) -> vs.map { Candidate(name, component, k, false, it) } }
+                }
+            }
+            val addedExplicit = additions.map { it.name }.filter { config.get(it) != null }.toSet()
+            for ((key, entries) in additions.groupBy { it.name }) {
+                if (key !in addedExplicit) config.put(key, entries.map { it.value }.distinct())
+            }
+            val addedValues = additions.map { c ->
+                val overriddenBy = if (c.name in addedExplicit) "instance config" else null
+                FlavorValue(c.flavor, c.component, c.name, false, c.value, applied = overriddenBy == null, overriddenBy, added = true)
+            }
+
+            return addedValues + candidates.map { c ->
                 val winner = winners.getValue(c.isEnvVar to c.name)
                 val explicit = when {
                     c.isEnvVar -> config.resolveEnvVar(envVarDefs.getValue(c.name)).source.takeIf { it != EVSRC.flavor }

@@ -4,6 +4,10 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.flavor.FLV
+import com.dynamicruntime.common.flavor.FlavorDef
+import com.dynamicruntime.common.flavor.flavor
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -351,6 +355,31 @@ class EnvGateTest : StringSpec({
         EnvGate.requireAnonymousSurface(cxt, expected)
         shouldThrow<IllegalStateException> { EnvGate.requireAnonymousSurface(cxt, expected - "GET /kda/auth/ui/config") }
             .message.orEmpty() shouldContain "unexpectedly: GET /kda/auth/ui/config"
+    }
+
+    "components add their own entries to a flavor's allow list, and the surface names who added each" {
+        class SiteComponent(
+            override val providerName: String,
+            private val defines: Boolean,
+            private val entry: String,
+        ) : ComponentDefinition {
+            override fun flavorDefs(cxt: KdrCxt) =
+                if (defines) listOf(FlavorDef("gateSite", "A site beside a gated node.")) else emptyList()
+            override fun flavors(cxt: KdrCxt) = listOf(flavor("gateSite") { add(EGATE.allowList, entry) })
+        }
+        val cxt = Startup.mkTestBootCxt(
+            "gateAdded", "envGateAdded", gateSettings(mapOf(FLV.deployFlavorsEnvVar.name to "gateSite")),
+            additionalComponents = listOf(
+                SiteComponent("siteLeads", defines = true, entry = "POST /auth/newContact/sendVerify"),
+                SiteComponent("siteVideos", defines = false, entry = "GET /auth/ui/config"),
+            ),
+        )
+        EnvGate.allowList(cxt.instanceConfig) shouldBe setOf("POST /auth/newContact/sendVerify", "GET /auth/ui/config")
+        val byPath = EnvGate.anonymousSurface(cxt).associateBy { it.path }
+        byPath.getValue("/kda/auth/newContact/sendVerify").component shouldBe "siteLeads"
+        byPath.getValue("/kda/auth/ui/config").component shouldBe "siteVideos"
+        byPath.getValue("/kda/health").component.shouldBeNull()
+        TestHttpClient(cxt.instanceConfig).sendGetRequest(AEP.authUiConfig).rptStatusCode shouldBe EXC.ok
     }
 
     "the operator view shows the anonymous surface, and no gate means no surface" {

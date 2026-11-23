@@ -15,6 +15,7 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.flavor.DeployFlavors
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.ContextRoot
@@ -132,8 +133,9 @@ object EGATE {
      * separated by commas, each an endpoint as `<METHOD> <path>` under the API root, such as
      * `POST /auth/newContact/sendVerify`. A client's own copy of an endpoint is named by its path
      * (`POST /gedra/<client>/formDoc`), so it is open for that client alone. The roles and the read scope still
-     * apply to what it lets through: it only decides whether a caller without env access may try. Set by a flavor;
-     * the boot refuses one with the gate off, and an entry that names no endpoint.
+     * apply to what it lets through: it only decides whether a caller without env access may try. A flavor builds it
+     * with `add`, so each component adds the endpoints it serves to the site; the deployment's own setting replaces
+     * the lot. The boot refuses one with the gate off, and an entry that names no endpoint.
      */
     const val allowList = "envGateAllowList"
 
@@ -148,6 +150,7 @@ object EGATE {
     const val method = "method"
     const val path = "path"
     const val source = "source"
+    const val component = "component"
 
     // Where an entry of the anonymous surface comes from.
     const val sourceGate = "gate"
@@ -716,16 +719,19 @@ object EnvGate {
             is Collection<*> -> value.map { it?.toString().orEmpty() }
             else -> value.toString().split(',')
         }
-        return raw.map { it.trim() }.filter { it.isNotEmpty() }.map { entry ->
-            val parts = entry.split(Regex("\\s+"))
-            val method = parts.first().uppercase()
-            if (parts.size != 2 || HttpMethod.entries.none { it.name == method } || !parts[1].startsWith("/")) {
-                throw KdrException(
-                    "'${EGATE.allowList}' entry '$entry' is not '<METHOD> <path>', such as 'POST /auth/newContact/sendVerify'.",
-                )
-            }
-            "$method ${parts[1]}"
-        }.toSet()
+        return raw.map { it.trim() }.filter { it.isNotEmpty() }.map(::normalizeEntry).toSet()
+    }
+
+    /** An allow-list [entry] as `<METHOD> <path>`, the method upper-cased and one space between; throws when it is not. */
+    private fun normalizeEntry(entry: String): String {
+        val parts = entry.trim().split(Regex("\\s+"))
+        val method = parts.first().uppercase()
+        if (parts.size != 2 || HttpMethod.entries.none { it.name == method } || !parts[1].startsWith("/")) {
+            throw KdrException(
+                "'${EGATE.allowList}' entry '$entry' is not '<METHOD> <path>', such as 'POST /auth/newContact/sendVerify'.",
+            )
+        }
+        return "$method ${parts[1]}"
     }
 
     /**
@@ -746,10 +752,10 @@ object EnvGate {
 
     /**
      * One path a gated node answers without env access (issue #1866): an endpoint's [method] and full [path], under
-     * the API root, and where it comes from ([EGATE.sourceGate], [EGATE.sourceHealth], [EGATE.sourceAllowList]).
-     * Reads as `GET /kda/health`.
+     * the API root, and where it comes from ([EGATE.sourceGate], [EGATE.sourceHealth], [EGATE.sourceAllowList]) --
+     * for an allow-list entry a flavor added, also the [component] that added it. Reads as `GET /kda/health`.
      */
-    data class AnonymousPath(val method: String, val path: String, val source: String) {
+    data class AnonymousPath(val method: String, val path: String, val source: String, val component: String? = null) {
         override fun toString(): String = "$method $path"
     }
 
@@ -769,7 +775,13 @@ object EnvGate {
         val health = cxt.getGlobalSchema().endpoints.values
             .filter { it.client == null && sectionOf(it.path) == EGATE.openSection }
             .map { AnonymousPath(it.method.name, api + it.path, EGATE.sourceHealth) }
-        val allowed = allowList(config).map { AnonymousPath(it.substringBefore(' '), api + it.substringAfter(' '), EGATE.sourceAllowList) }
+        // Who added each entry, where a flavor did (`add`): the components that open what, for the operator to see.
+        val addedBy = DeployFlavors.get(cxt).values
+            .filter { it.name == EGATE.allowList && it.added && it.applied }
+            .associate { normalizeEntry(it.value.toString()) to it.component }
+        val allowed = allowList(config).map {
+            AnonymousPath(it.substringBefore(' '), api + it.substringAfter(' '), EGATE.sourceAllowList, addedBy[it])
+        }
         return (gatePaths + health + allowed).distinctBy { it.toString() }.sortedWith(compareBy({ it.path }, { it.method }))
     }
 
@@ -799,6 +811,7 @@ object EnvGate {
             property(EGATE.method, "The HTTP method.", required = true)
             property(EGATE.path, "The path, under the API root.", required = true) { presentation = PRES.identifier }
             property(EGATE.source, "Why it answers: the gate's own path, the health section, or the allow list.", required = true)
+            property(EGATE.component, "The component whose flavor contribution added the entry to the allow list, if one did.")
         }
         type(EGATE.surfaceType) {
             type = SCT.kObject
@@ -818,7 +831,7 @@ object EnvGate {
             mapOf(
                 EGATE.gate to mode(c.instanceConfig).name,
                 EGATE.entries to anonymousSurface(c).map {
-                    mapOf(EGATE.method to it.method, EGATE.path to it.path, EGATE.source to it.source)
+                    mapOf(EGATE.method to it.method, EGATE.path to it.path, EGATE.source to it.source, EGATE.component to it.component)
                 },
             )
         }

@@ -23,6 +23,7 @@ private class ReferenceComponent : ComponentDefinition {
         flavor("reference") {
             set("confDemoDocLinks", true)
             default(sampleLoadEnvVar, "true")
+            add("envGateAllowList", "GET /auth/ui/config")
             // The skill names `kdrReference`; this reads the omnibus file #1217's tests ship instead.
             omnibusOverlay("omnibusTest1217")
         },
@@ -42,6 +43,7 @@ class FlavorSkillExamplesTest : StringSpec({
         val result = DeployFlavors.resolve(KdrCxt.mkSimpleCxt("flavorSkill", config), listOf(ReferenceComponent()))
         config.get("confDemoDocLinks") shouldBe true
         config.getEnvVar(sampleLoadEnvVar) shouldBe "true"
+        config.get("envGateAllowList") shouldBe listOf("GET /auth/ui/config")
         result.fragmentLayers(setOf("ReferenceComponent")).map { it.fileId to it.flavorRank } shouldBe
             listOf("home" to 0, "profile" to 0, "nobody" to 0)
     }
