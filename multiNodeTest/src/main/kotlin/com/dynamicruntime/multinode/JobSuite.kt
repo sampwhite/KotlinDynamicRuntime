@@ -81,7 +81,7 @@ class JobSuite(private val nodes: List<HarnessNode>) {
             out.add("The trace has $lockOuts lock-outs for ${outcomes.count { it == JobLaunchOutcome.lockedOut.name }} locked-out launches.")
         }
         val holders = trace.mapNotNull { it[JOB.holder].toOptStr() }.toSet()
-        if (nodes.any { node -> holders.none { it.endsWith(":${node.port}") } }) {
+        if (nodes.any { node -> node.name !in holders }) {
             out.add("Not every node's entries reached the trace; holders were $holders.")
         }
         out.addAll(checkOrdered(name, trace))
@@ -209,9 +209,8 @@ class JobSuite(private val nodes: List<HarnessNode>) {
             mapOf(JOBF.jobType to jobType, JOBF.name to name, JOBF.kind to kind.name, EP.limit to 10_000),
         )[EP.items].toJsonListOfMaps()
 
-    /** Whether [entry] was written by [node], which labels itself `ip:port`. */
-    private fun heldBy(entry: Map<String, Any?>, node: HarnessNode): Boolean =
-        entry[JOB.holder].toOptStr()?.endsWith(":${node.port}") == true
+    /** Whether [entry] was written by [node], which names itself the holder (issue #1871). */
+    private fun heldBy(entry: Map<String, Any?>, node: HarnessNode): Boolean = entry[JOB.holder].toOptStr() == node.name
 
     /** That [trace] holds a claim by [adopter] that adopted the earlier work rather than resetting it. */
     private fun checkAdopted(trace: List<Map<String, Any?>>, adopter: HarnessNode): List<String> {

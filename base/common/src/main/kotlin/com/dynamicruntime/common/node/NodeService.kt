@@ -86,7 +86,8 @@ class NodeService : ServiceInitializer {
         authKeys[configKey] = encryptionKey
     }
 
-    val nodeLabel: String get() = nodeId.label
+    /** What this node is called (issue #1871): what identifies it, where [nodeId]'s label is where it is reached. */
+    val nodeName: String get() = nodeId.name
 
     /** Whether [nodeId] has been settled yet: it is set as the service is created, so early in a boot it is not. */
     val hasNodeId: Boolean get() = this::nodeId.isInitialized
@@ -99,7 +100,8 @@ class NodeService : ServiceInitializer {
             ND.nodeStartTime to vmStartTime.formatDate(),
             ND.uptime to "%.4f days".format(uptimeDays),
             ND.currentTime to now.formatDate(),
-            ND.nodeId to nodeId.label,
+            ND.nodeName to nodeId.name,
+            ND.nodeAddress to nodeId.label,
             ND.isClusterMember to isInCluster,
             ND.version to "0.2",
         )
@@ -190,7 +192,8 @@ class NodeService : ServiceInitializer {
                 property(ND.nodeStartTime, "When this node's VM started.", required = true)
                 property(ND.uptime, "How long this node has been up.", required = true)
                 property(ND.currentTime, "Current server time.", required = true)
-                property(ND.nodeId, "The node's ip:port identity.", required = true)
+                property(ND.nodeName, "The node's name, `KDR_NODE_NAME`: what identifies it.", required = true)
+                property(ND.nodeAddress, "The node's ip:port address, where it is reached.", required = true)
                 property(ND.isClusterMember, "Whether the node is acting as part of the cluster.", required = true) {
                     type = SCT.boolean
                 }
@@ -198,7 +201,7 @@ class NodeService : ServiceInitializer {
             }
             generalEndpoint(
                 "/health",
-                "Basic health and identity of this node (uptime, node id, version, cluster membership).",
+                "Basic health and identity of this node (uptime, its name and address, version, cluster membership).",
                 HttpMethod.GET,
                 outputRef = "Health",
                 tags = setOf(ETAG.internal),

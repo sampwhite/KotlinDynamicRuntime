@@ -55,7 +55,7 @@ object HttpServer {
         try {
             server.start()
             val listening = bindAddress?.let { "listening on $it" } ?: "listening on every interface"
-            LogRequest.info(cxt, "Started server at ${nodeId.nodeIpAddress}:${nodeId.port} on ${nodeId.hostname}, $listening.")
+            LogRequest.info(cxt, "Started server ${nodeId.name} at ${nodeId.label} on ${nodeId.hostname}, $listening.")
             server.join()
         } catch (e: Exception) {
             runCatching { server.stop() }

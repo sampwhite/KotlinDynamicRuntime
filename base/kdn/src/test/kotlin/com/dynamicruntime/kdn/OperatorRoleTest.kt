@@ -116,7 +116,8 @@ class OperatorRoleTest : StringSpec({
         val info = operator.getData(systemInfo)
 
         val node = info[OSI.node].toJsonMapOrEmpty()
-        node[OSI.nodeId].toOptStr().isNullOrBlank() shouldBe false
+        node[OSI.nodeName].toOptStr().isNullOrBlank() shouldBe false
+        node[OSI.nodeAddress].toOptStr().isNullOrBlank() shouldBe false
         node[OSI.uptimeMs].toOptLong()!! shouldBeGreaterThan -1L
         // For people, in whole units with no fraction of a second (issue #1317): "2h 18m 2s", or "0s".
         node[OSI.uptimeText].toOptStr()!! shouldMatch Regex("""\d+[dhms]( \d+[dhms])*""")

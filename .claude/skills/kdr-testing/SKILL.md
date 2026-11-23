@@ -200,8 +200,9 @@ for i in $(seq 1 180); do curl -sf http://localhost:$PORT/kda/health >/dev/null 
 ```
 
 If you need certainty that the instance answering is the one you started — after a collision, or when reusing
-a port — `/health` reports `nodeStartTime` and a `nodeId` of `ip:port`. A server that started before your
-launch is not yours.
+a port — `/health` reports `nodeStartTime`, the node's `nodeName`, and its `nodeAddress` (`ip:port`). Start yours
+with a `KDR_NODE_NAME` of its own (issue #1871) and check the name comes back; a server that started before your launch,
+or answers by another name, is not yours.
 
 The `bin/` wrappers do the workspace resolution for you, so `KDR_PORT=$PORT KDR_IN_MEMORY_ONLY=true
 kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
@@ -461,7 +462,9 @@ the **multi-node harness** (issue #872), not the unit suite:
   and left out of the deployable distribution. Its fast job timings are contributions, so a `jobProfile(...)` in
   your `customConfig` overrides them for a rerun.
 - **A scenario judges from the nodes' own surfaces** -- the `/operator/job` status and trace, and the fixture's
-  `/operator/multiNode/work`, which reports any two executions of one task that ran at the same time.
+  `/operator/multiNode/work`, which reports any two executions of one task that ran at the same time. A node is
+  recognized in them by its name (issue #1871), which the harness reads from its `/health`: `node-<port>` unless you
+  set `KDR_NODE_NAME` on a node you attach.
 - **Run it before a job-related PR.** It is outside `test allTests` (it needs Postgres and starts processes), so
   the gate does not run it for you. Its first run found two real bugs no unit test had: the topic-transaction loop
   retrying a lost lock-row insert instead of taking the lock, and a pooled run's tasks sharing one SQL session.
@@ -483,8 +486,9 @@ that configure a fresh client through prompts alone and report what came of it.
 
 - **A run costs money, so ask before starting one** -- name the trials and variants -- unless the person asked for the
   run. `-Pprovider=fake` answers with the built-in demo assistant: free, and enough to check a change to the harness.
-- **It starts its own node** on the first free port of **7076 to 7079**, a test instance with its data in an H2 file of
-  its own (`h2Database/trial<runId>`), the assistant on and offered to self-serve clients, and the API key from the
+- **It starts its own node** on the first free port of **7076 to 7079**, named `trial-<runId>` (its health check must
+  answer by that name, so a process already on the port is never taken for it), a test instance with its data in an
+  H2 file of its own (`h2Database/trial<runId>`), the assistant on and offered to self-serve clients, and the API key from the
   workspace's `private/secrets.properties` (checked before anything starts). `-Pmodel`, `-Peffort`, and `-Pbudget`
   (a client's monthly allowance in weighted tokens) set the assistant; `-Pattach=<url>` uses a node you started.
 - **The node is left running**, so the result can be looked at: become the trial's administrator (the report names

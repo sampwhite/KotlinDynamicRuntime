@@ -482,11 +482,12 @@ object JobStatusRows {
 }
 
 /**
- * Who a claim or a trace entry is by: the node's `ip:port` label when the node knows it, else the instance name.
- * Not the instance name alone -- every node of one environment shares it (`prod`, `local`), which would make
- * several nodes' claims on one row indistinguishable (found by the multi-node harness, issue #872).
+ * Who a claim or a trace entry is by: the node's name (`KDR_NODE_NAME`, issue #1871) when the node knows it, else the
+ * instance name. Not the instance name alone -- every node of one environment shares it (`prod`, `local`), which would
+ * make several nodes' claims on one row indistinguishable (found by the multi-node harness, issue #872) -- nor the
+ * node's `ip:port`, which nodes sharing an address and port share too.
  */
 internal fun jobHolder(cxt: KdrCxt): String {
     val node = cxt.instanceConfig.get(NodeService.serviceName) as? NodeService
-    return node?.takeIf { it.hasNodeId }?.nodeLabel ?: cxt.instanceConfig.instanceName
+    return node?.takeIf { it.hasNodeId }?.nodeName ?: cxt.instanceConfig.instanceName
 }

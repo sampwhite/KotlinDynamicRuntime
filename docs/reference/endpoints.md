@@ -294,7 +294,7 @@ Anyone may call these, signed in or not.
 
 | Method | Path | Notes | What it does |
 |---|---|---|---|
-| GET | `/health` |  | Basic health and identity of this node (uptime, node id, version, cluster membership). |
+| GET | `/health` |  | Basic health and identity of this node (uptime, its name and address, version, cluster membership). |
 
 ## `home`
 

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.ND
+import com.dynamicruntime.common.node.NodeUtil
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.core.spec.style.StringSpec
@@ -39,7 +40,11 @@ class HealthEndpointTest : StringSpec({
         val results = resp.getValue(EP.results)!!.toJsonMap()
         results[ND.version] shouldBe "0.2"
         results[ND.isClusterMember] shouldBe true
-        results.containsKey(ND.nodeId) shouldBe true
+        // Its name and its address (issue #1871), as the node resolves them: the name is KDR_NODE_NAME where the
+        // environment sets it, so the test asks the resolver rather than assuming the default (NodeUtilTest covers that).
+        val node = NodeUtil.extractNodeId(TestInstances.default("healthGetNode"))
+        results[ND.nodeName] shouldBe node.name
+        results[ND.nodeAddress] shouldBe node.label
         results.containsKey(ND.uptime) shouldBe true
     }
 

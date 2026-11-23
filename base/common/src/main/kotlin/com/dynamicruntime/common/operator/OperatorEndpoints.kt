@@ -42,7 +42,8 @@ object OSI {
     const val memoryPools = "memoryPools"
 
     // node
-    const val nodeId = "nodeId"
+    const val nodeName = "nodeName"
+    const val nodeAddress = "nodeAddress"
     const val nodeStartTime = "nodeStartTime"
     const val currentTime = "currentTime"
     const val uptimeMs = "uptimeMs"
@@ -349,7 +350,8 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
 
     val report = linkedMapOf<String, Any?>(
         OSI.node to linkedMapOf(
-            OSI.nodeId to node.nodeId.label,
+            OSI.nodeName to node.nodeId.name,
+            OSI.nodeAddress to node.nodeId.label,
             OSI.nodeStartTime to NodeService.vmStartTime.formatDate(),
             OSI.currentTime to now.formatDate(),
             OSI.uptimeMs to uptime.inWholeMilliseconds,

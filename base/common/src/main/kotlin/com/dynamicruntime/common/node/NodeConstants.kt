@@ -7,7 +7,8 @@ object ND {
     const val nodeStartTime = "nodeStartTime"
     const val uptime = "uptime"
     const val currentTime = "currentTime"
-    const val nodeId = "nodeId"
+    const val nodeName = "nodeName"
+    const val nodeAddress = "nodeAddress"
     const val isClusterMember = "isClusterMember"
     const val version = "version"
 }

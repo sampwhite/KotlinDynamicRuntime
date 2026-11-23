@@ -279,13 +279,19 @@ The address the HTTP server listens on (issue #1245). Unset, it listens on every
 
 **Default when unset:** the OS `HOSTNAME`, else `localhost`
 
-Overrides the node's host name, used in the node label; falls back to the OS `HOSTNAME`.
+Overrides the node's host name, which the startup log reports; falls back to the OS `HOSTNAME`.
 
 ### `KDR_NODE_IP_ADDRESS`
 
 **Default when unset:** `127.0.0.1`
 
-Overrides the node's IP identity, used in the node label.
+The node's IP address, in its `ip:port` address: where it is reached. What identifies it is `KDR_NODE_NAME`.
+
+### `KDR_NODE_NAME`
+
+**Default when unset:** `node-<port>`, such as `node-7070`
+
+The node's name (issue #1871): what identifies it, where its address (`ip:port`) is where to connect to it. It names the holder of a job claim, the node a table-cache report is about, and the node in `/health` (`nodeName`) and the startup log. Letters, digits, `.`, `_`, and `-`, starting with a letter or digit, up to 64 characters. The default is distinct for nodes on different ports of one machine, so a deployment running several nodes on one port -- containers, or hosts that each serve 7070 -- must set it, one name per node. Like `KDR_PORT`, a boot role does not inherit it from the unprefixed name.
 
 ### `KDR_PORT`
 
