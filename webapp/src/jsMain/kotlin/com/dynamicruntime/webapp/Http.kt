@@ -217,6 +217,9 @@ object Http {
      */
     suspend fun getApi(path: String): Map<String, Any?> = getApiResult(path).orThrow()
 
+    /** GET an API endpoint's body as text, not JSON: a file's content. Throws as [getApi] does. */
+    suspend fun getApiText(path: String): String = requestText("GET", apiRoot + path, null).orThrow()
+
     /** [getApi] as an [ApiResult] (issue #967). */
     suspend fun getApiResult(path: String): ApiResult<Map<String, Any?>> = requestJson("GET", apiRoot + path, null)
 

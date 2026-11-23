@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.table
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.gedra.report.plainNumberOrNull
 
 /** The CSV codec's limits and marks (issue #1881). Each name matches its value. */
@@ -89,7 +90,8 @@ class CsvParsed(val header: List<String>, val rows: List<List<String>>, val prob
  *   row, of one empty cell.
  * - A leading byte-order mark is dropped: Excel writes one.
  * - Control characters other than a tab and the line ends are refused, as is a quote inside an unquoted cell.
- * - The header's names are its columns: each has one, and no two the same. Every row has as many cells.
+ * - The header's names are its columns, read without the spaces around them: each has one, and no two the same.
+ *   Every row has as many cells.
  * - [CsvLimits] bounds what is read, so a large file is refused as it is read, not after.
  *
  * A quote, a control character, a cell too long, or too many rows or columns ends the parse at once. A ragged row or
@@ -119,9 +121,27 @@ object Csv {
         val text = try {
             bytes.decodeToString(throwOnInvalidSequence = true)
         } catch (_: CharacterCodingException) {
-            return CsvParsed(emptyList(), emptyList(), listOf(CsvProblem(CsvError.notUtf8, 1, "The file is not UTF-8 text.")))
+            return CsvParsed(emptyList(), emptyList(), listOf(CsvProblem(CsvError.notUtf8, 1, notUtf8Message)))
         }
         return parse(text, limits = limits)
+    }
+
+    /**
+     * What a file that is not UTF-8 is told: most often one saved from Excel as plain "CSV", which on Windows is written
+     * in the computer's own code page, so the fix is named.
+     */
+    const val notUtf8Message = "The file is not UTF-8 text. In Excel, save it as \"CSV UTF-8 (Comma delimited)\"; " +
+        "elsewhere, choose UTF-8 as its encoding."
+
+    /**
+     * [text], CSV read without a header, written again with every cell [spreadsheetSafe]: a copy to open in a
+     * spreadsheet, never one to store. Written without a byte-order mark, which whoever saves it adds. Null when the
+     * text is not CSV the codec reads.
+     */
+    fun spreadsheetCopy(text: String): String? {
+        val parsed = parse(text, header = false)
+        if (!parsed.ok) return null
+        return write(parsed.rows.map { row -> row.map { spreadsheetSafe(it) } }, bom = false)
     }
 
     /**
@@ -160,7 +180,8 @@ object Csv {
 }
 
 /** One parse of [text] ([Csv.parse]): a loop over its characters, so its depth does not grow with the text. */
-private class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, val header: Boolean) {
+@KdrPrivate
+class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, val header: Boolean) {
     val problems = ArrayList<CsvProblem>()
     val rows = ArrayList<List<String>>()
     var headerRow: List<String> = emptyList()
@@ -245,16 +266,17 @@ private class CsvReader(val text: String, val delimiter: Char, val limits: CsvLi
             }
             cells.add(cell.toString())
             cell.clear()
+            // What ends the cell: a delimiter, another cell follows; a line end or the text's end, the row ends.
+            val delimited = i < end && text[i] == delimiter
+            // A delimiter last in the text still has a cell after it, an empty one.
+            if (delimited && i + 1 == end) cells.add("")
             if (cells.size > limits.maxColumns) {
                 stop(CsvError.tooManyColumns, recordLine, "a row has more than ${limits.maxColumns} cells.")
                 break
             }
-            // What ends the cell: a delimiter, another cell follows; a line end or the text's end, the row ends.
-            if (i < end && text[i] == delimiter) {
+            if (delimited) {
                 i++
-                // A delimiter last in the text still has a cell after it, an empty one.
-                if (i == end) cells.add("")
-                else continue
+                if (i < end) continue
             } else if (i < end) {
                 i += if (text[i] == '\r' && i + 1 < end && text[i + 1] == '\n') 2 else 1
                 line++
@@ -284,11 +306,12 @@ private class CsvReader(val text: String, val delimiter: Char, val limits: CsvLi
     /** Takes [cells], the row that began on [at]: the header when it is the first and the parse has one, else a row. */
     fun record(cells: List<String>, at: Int) {
         if (header && headerRow.isEmpty()) {
-            headerRow = cells
-            cells.forEachIndexed { index, name ->
-                if (name.isBlank()) problem(CsvError.emptyHeader, at, "column ${index + 1} of the header has no name.")
+            // A name is read without the spaces around it: `day, amount` names `amount`.
+            headerRow = cells.map { it.trim() }
+            headerRow.forEachIndexed { index, name ->
+                if (name.isEmpty()) problem(CsvError.emptyHeader, at, "column ${index + 1} of the header has no name.")
             }
-            cells.withIndex().groupBy { it.value }.filter { it.key.isNotBlank() && it.value.size > 1 }.forEach { (name, _) ->
+            headerRow.withIndex().groupBy { it.value }.filter { it.key.isNotEmpty() && it.value.size > 1 }.forEach { (name, _) ->
                 problem(CsvError.duplicateHeader, at, "the header names '$name' more than once.")
             }
             return

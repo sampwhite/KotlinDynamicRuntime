@@ -475,14 +475,14 @@ object DataFileService {
 
     /**
      * What is wrong with a file of [size] bytes, sent as [kind], a kind told by parsing: its first bytes are another
-     * kind's mark ([found]), it is larger than the kind allows, or, read whole through [read], it is not the kind. A CSV
-     * table must be UTF-8 that [Csv.parseBytes] reads, its first problem the one a person is told.
+     * kind's mark ([found]), or, read whole through [read], it is not the kind. A CSV table must be UTF-8 that
+     * [Csv.parseBytes] reads, its first problem the one a person is told. Reading it whole is safe because the begin
+     * held its size to the kind's largest, and every chunk to that size.
      *
      * Theme: #DTABL.
      */
     private fun parsedProblem(kind: FileKind, found: FileKind?, size: Long, read: (Long, Int) -> ByteArray): String? {
         if (found != null) return "This file was sent as a ${kind.label} file, but its content is a ${found.label} file."
-        if (size > kind.maxSize) return "A ${kind.label} file is at most ${kind.maxSize} bytes; this one is $size."
         if (kind.id != FKIND.csv) throw KdrException("No check reads a file of the kind '${kind.id}'.")
         val parsed = Csv.parseBytes(read(0, size.toInt()))
         return parsed.problems.firstOrNull()?.let { "This file is not a CSV table we can read. ${it.message}" }

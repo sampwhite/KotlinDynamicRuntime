@@ -118,7 +118,9 @@ The chunks are put together, and the file is checked before it is ready:
   when the kernel's codec (`Csv`, in `common.table`) does not read it as a table: a header naming each column once,
   every row as wide, quotes where RFC 4180 puts them, no control characters but a tab and the line ends, and at most
   5,000 rows, 100 columns, and 10,000 characters a cell. The refusal names the line. Excel's `application/vnd.ms-excel`
-  and `text/x-csv` are taken as CSV too, and a CSV file is served as a download, never shown in the page. No field
+  and `text/x-csv` are taken as CSV too, and a CSV file is served as a download, never shown in the page; the Files
+  page saves a copy made safe for a spreadsheet instead of the stored text (`Csv.spreadsheetCopy`). A file that is not
+  UTF-8 -- most often Excel's plain "CSV", written in a Windows code page -- is told to be saved as "CSV UTF-8". No field
   may hold one until a field can declare a table's columns (#1882), so for now one is uploaded but linked by no form.
   The stored text is never rewritten -- not even to keep a cell from being read as a formula, which is done only to a
   copy made for a spreadsheet (`Csv.spreadsheetSafe`). Theme: #DTABL.

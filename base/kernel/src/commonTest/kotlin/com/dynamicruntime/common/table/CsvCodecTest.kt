@@ -100,6 +100,16 @@ class CsvCodecTest {
         assertEquals(CsvError.emptyHeader, refused("﻿").error)
         assertEquals(CsvError.emptyHeader, refused("a,,c\n1,2,3\n").error)
         assertEquals(CsvError.duplicateHeader, refused("a,b,a\n1,2,3\n").error)
+        // A name is read without the spaces around it, so a blank one has none, and two that differ only so are one.
+        assertEquals(CsvError.emptyHeader, refused("a, ,c\n1,2,3\n").error)
+        assertEquals(CsvError.duplicateHeader, refused("a, a\n1,2\n").error)
+    }
+
+    @Test
+    fun readsHeaderNamesWithoutTheirSpaces() {
+        assertEquals(listOf("day", "amount"), ok("day, amount \n1,2\n").header)
+        // Only the header's: a cell keeps what was typed.
+        assertEquals(listOf(listOf(" 1", "2 ")), ok("a,b\n 1,2 \n").rows)
     }
 
     @Test
@@ -110,6 +120,9 @@ class CsvCodecTest {
         assertEquals(CsvError.cellTooLong, refused("a\n123456\n", limits).error)
         assertEquals(CsvError.cellTooLong, refused("a\n\"123456\"\n", limits).error)
         assertTrue(Csv.parse("a\n1\n2\n", limits = limits).ok)
+        // The empty cell after a delimiter that ends the text counts too.
+        assertEquals(CsvError.tooManyColumns, Csv.parse("1,2,3,", limits = limits, header = false).problems.first().error)
+        assertEquals(listOf(listOf("1", "2", "")), Csv.parse("1,2,", limits = limits, header = false).rows)
     }
 
     @Test
@@ -121,7 +134,10 @@ class CsvCodecTest {
     @Test
     fun refusesBytesThatAreNotUtf8() {
         val bad = byteArrayOf('a'.code.toByte(), '\n'.code.toByte(), 0xC3.toByte(), 0x28)
-        assertEquals(CsvError.notUtf8, Csv.parseBytes(bad).problems.first().error)
+        val notUtf8 = Csv.parseBytes(bad).problems.first()
+        assertEquals(CsvError.notUtf8, notUtf8.error)
+        // Most often Excel's plain CSV, written in a Windows code page: the message names the save that works.
+        assertTrue("CSV UTF-8" in notUtf8.message, notUtf8.message)
         assertEquals(listOf(listOf("é")), Csv.parseBytes("a\né\n".encodeToByteArray()).rows)
     }
 
@@ -161,6 +177,13 @@ class CsvCodecTest {
         assertEquals("\"a\"\"b\"", Csv.field("a\"b"))
         assertEquals("\"a\nb\"", Csv.field("a\nb"))
         assertEquals("a,b", Csv.field("a,b", CSVT.tab))
+    }
+
+    @Test
+    fun makesACopyForASpreadsheet() {
+        val stored = Csv.write(listOf(listOf("name", "amount"), listOf("=cmd|' /C calc'!A0", "-5"), listOf("a, b", "@x")))
+        assertEquals("name,amount\r\n'=cmd|' /C calc'!A0,-5\r\n\"a, b\",'@x\r\n", Csv.spreadsheetCopy(stored))
+        assertEquals(null, Csv.spreadsheetCopy("a\n\"open\n"))
     }
 
     @Test
