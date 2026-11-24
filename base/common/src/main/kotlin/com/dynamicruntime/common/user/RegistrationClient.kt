@@ -5,6 +5,10 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.gedra.PlanLimits
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.logging.LogStartup
@@ -17,8 +21,9 @@ object REGC {
      * Google sign-in, the env gate's sign-in, and an administrator's new user placed in no named client. Unset, a new
      * user lands where `AddressRules.defaultClient` says (`hub` for an administrator, `public` for everyone else).
      * Set, it replaces that rule for everyone, administrators included, so a deployment for one organization keeps
-     * all its people in one client. A flavor sets it; the boot refuses a client that is not present, and `public` or
-     * `hub`, which are what it replaces.
+     * all its people in one client. A flavor sets it; the boot refuses a client that is not present, one not defined in
+     * code, a sandbox, and `public` or `hub`, which are what it replaces. Its plan should not limit its users, since
+     * every registration counts against it; the boot warns when it does.
      */
     const val client = "registrationClient"
 
@@ -86,10 +91,16 @@ object RegistrationClient {
     }
 
     /**
-     * Refuses a registration client that is not present on this node ([clients]), or is `public` or `hub`, and a
-     * registration role that is not a role's name or that is privileged. Called once the clients are known.
+     * Refuses a registration client that is not present on this node ([clients]), is not defined in code, or is a
+     * sandbox, `public`, or `hub`, and a registration role that is not a role's name or that is privileged. Called once
+     * the clients are known.
+     *
+     * Defined in code, so that this check at boot is enough: which environments such a client is enabled in, and
+     * whether it is retired, change only with the code, never by a reload. A sandbox is refused even beside a parent in
+     * code, since stored configuration may be what turned it on.
      */
-    fun checkBoot(config: KdrInstanceConfig, clients: ClientService) {
+    fun checkBoot(cxt: KdrCxt, clients: ClientService) {
+        val config = cxt.instanceConfig
         fun refuse(why: String): Nothing = throw KdrException("Registration client: $why")
         val rawClient = config.get(REGC.client)
         val rawRole = config.get(REGC.role)
@@ -108,12 +119,28 @@ object RegistrationClient {
             )
         }
         if (!clients.isPresent(client)) {
-            val why = if (clients.known(client) != null) "it is declared but not enabled here" else "no config declares it"
+            // A definition the checks dropped (a production node degrades) is declared all the same, so its fault is said.
+            val dropped = clients.issues.firstOrNull { it.elementKind == GCEL.client && it.elementId == client }
+            val known = clients.known(client)
+            val why = when {
+                known?.retired == true -> "it has been retired"
+                known != null -> "it is declared but not enabled here"
+                dropped != null -> "its definition was dropped (${dropped.message})"
+                else -> "no config declares it"
+            }
             refuse(
                 "'${REGC.client}' is '$client', but $why. The clients present here are " +
                     "${clients.presentClients.joinToString(", ") { it.clientId }}.",
             )
         }
+        if (isSandboxClient(client)) refuse("'${REGC.client}' is '$client', which is a sandbox.")
+        if (clients.originOf(client) != GedraConfigOrigin.source) {
+            refuse(
+                "'${REGC.client}' is '$client', which is defined in stored configuration. Only a client defined in code " +
+                    "may be named, so that no change made in the app can take it away.",
+            )
+        }
+        planWarning(cxt, client)?.let { LogStartup.warn(cxt, it) }
         val role = roleOf(config)
         if (!roleName.matches(role)) refuse("'${REGC.role}' is '$role', which is not a role's name.")
         if (role in privileged) {
@@ -122,5 +149,10 @@ object RegistrationClient {
                     "from the auto-admin rule, never from this key.",
             )
         }
+    }
+
+    /** What to warn of when [client]'s plan limits its users, as every registration then counts toward; null when it does not. */
+    fun planWarning(cxt: KdrCxt, client: String): String? = PlanLimits.quotasOf(cxt, client).users?.let { limit ->
+        "The registration client '$client' is on a plan of $limit users, after which every registration is refused."
     }
 }

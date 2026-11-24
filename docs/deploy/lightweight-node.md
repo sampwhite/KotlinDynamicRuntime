@@ -564,9 +564,11 @@ view `/kda/operator/envGate/anonymous` lists everything the node answers without
 website in one client of its own. The `registrationClient` config key (which a flavor sets) names it: every new user
 lands there, administrators included, instead of in `hub` or `public`. A visitor holds `user` there, and the role the
 `registrationRole` key names, such as `lead`, if it names one. Your own people, on the admin domain, hold `admin` and
-`allClients` as before. The node refuses to start with a client that is not present, with `public` or `hub`, or with a
-registration role of `operator`, `admin`, `editor`, or `allClients`. Since nobody there can join a demo, a demo set to
-be provisioned as the node starts is left out (its users and stored configuration).
+`allClients` as before. The client must be defined in code, so that no change made in the app can take it away. The node
+refuses to start with one that is not, or is not present, with `public` or `hub`, or with a registration role of
+`operator`, `admin`, `editor`, or `allClients`. Every registration counts against the client's plan, so put it on one
+that does not limit its users; the node warns as it starts when the plan does. Since nobody there can join a demo, a demo
+set to be provisioned as the node starts is left out (its users and stored configuration).
 
 It needs:
 

@@ -285,7 +285,7 @@ class ClientService : ServiceInitializer {
                 "present in '$env': ${present.joinToString(", ").ifEmpty { "(none)" }}.",
         )
         // The client every new user lands in, when the deployment names one (issue #1867), must be one present here.
-        RegistrationClient.checkBoot(cxt.instanceConfig, this)
+        RegistrationClient.checkBoot(cxt, this)
         isInit = true
     }
 

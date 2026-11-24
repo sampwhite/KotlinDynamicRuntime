@@ -28,12 +28,12 @@ class DesignDemoBootService : ServiceInitializer {
         ready = true
         val config = cxt.instanceConfig
         if (config.get(DesignDemo.provisionAtBootKey) != true) return
-        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
-        if (RegistrationClient.skipsDemoAtBoot(cxt, "Design View demo")) return
         if (!config.isTestInstance) {
             LogStartup.warn(cxt, "Not provisioning the Design View demo at boot: this is not a test instance.")
             return
         }
+        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
+        if (RegistrationClient.skipsDemoAtBoot(cxt, "Design View demo")) return
         val report = provisionDesignDemo(cxt)
         LogStartup.info(cxt, "Provisioned the Design View demo at boot: ${report.summary}")
     }

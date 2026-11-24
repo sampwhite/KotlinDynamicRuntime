@@ -5,18 +5,25 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.CustomerDef
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.simulation.DesignDemo
+import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.REGC
+import com.dynamicruntime.common.user.RegistrationClient
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.kdn.confdemo.ConfDemo
@@ -89,6 +96,47 @@ class RegistrationClientTest : StringSpec({
         listOf(ConfDemo.client, GrantsDemo.client, DesignDemo.client).forEach { clients.known(it).shouldBeNull() }
     }
 
+    "a client defined in stored configuration is refused, though it is present" {
+        // Its own instance: the key is set on it once the client is there, as a restart beside the stored client would find.
+        val stored = Startup.mkTestBootCxt("regStored", "registrationClientStored")
+        val client = "stored1867"
+        TestUser.createFullAdmin(stored, "admin@stored1867.test").postData(
+            ADEP.clientCreate,
+            mapOf(
+                CLD.clientId to client, CLD.name to "Stored", CLD.usageType to ClientUsageType.dev.name,
+                CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+            ),
+        )
+        ClientService.get(stored).isPresent(client) shouldBe true
+        stored.instanceConfig.put(REGC.client, client)
+        shouldThrow<KdrException> { RegistrationClient.checkBoot(stored, ClientService.get(stored)) }.message.orEmpty() shouldContain
+            "defined in stored configuration"
+    }
+
+    "a client whose definition was dropped is refused with the fault that dropped it" {
+        shouldThrow<KdrException> {
+            Startup.mkTestBootCxt(
+                "regDropped", "registrationClientDropped",
+                mapOf(REGC.client to RegistrationClientComponent.clientId, GCFG.checkEnvVar.name to BootCheckMode.warn.name),
+                additionalComponents = listOf(RegistrationClientComponent(environments = setOf("nowhere"))),
+            )
+        }.message.orEmpty().let {
+            it shouldContain "its definition was dropped"
+            it shouldContain "is not an environment"
+        }
+    }
+
+    "a plan that limits the client's users is warned of, and the node still starts" {
+        val clientId = RegistrationClientComponent.clientId
+        val customer = CustomerDef(clientId, "Leads", rootClientId = clientId, plan = PLAN.free)
+        val capped = Startup.mkTestBootCxt(
+            "regCapped", "registrationClientCapped", mapOf(REGC.client to clientId),
+            additionalComponents = listOf(RegistrationClientComponent(customer = customer)),
+        )
+        RegistrationClient.planWarning(capped, clientId).shouldNotBeNull() shouldContain "plan of ${PLAN.freeQuotas.users} users"
+        RegistrationClient.planWarning(cxt, clientId).shouldBeNull()
+    }
+
     "the boot refuses a registration client that is not present, public or hub, and a role it may not grant" {
         fun refusal(name: String, settings: Map<String, Any?>): String = shouldThrow<KdrException> {
             Startup.mkTestBootCxt(name, "${name}Inst", settings, additionalComponents = listOf(RegistrationClientComponent()))
@@ -106,12 +154,19 @@ class RegistrationClientTest : StringSpec({
     }
 })
 
-/** A component declaring one client present everywhere, for a node to name as its registration client. */
-class RegistrationClientComponent : ComponentDefinition {
+/**
+ * A component declaring one client, for a node to name as its registration client: present everywhere unless
+ * [environments] says otherwise, and [customer]'s when one is given.
+ */
+class RegistrationClientComponent(
+    private val environments: Set<String> = ENV.names.toSet(),
+    private val customer: CustomerDef? = null,
+) : ComponentDefinition {
     override val providerName: String = "registrationClientFixture"
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
         gedraConfig(cxt, "leadsClient", clientNamespace(clientId), clientId) {
+            customer?.let { defineCustomer(it) }
             defineClient(
                 ClientDef(
                     clientId = clientId,
@@ -119,7 +174,8 @@ class RegistrationClientComponent : ComponentDefinition {
                     description = "The one client a deployment's new users land in.",
                     usageType = ClientUsageType.production,
                     audience = ClientAudience.customer,
-                    enabledEnvironments = ENV.names.toSet(),
+                    enabledEnvironments = environments,
+                    customerId = customer?.customerId,
                 ),
             )
         },

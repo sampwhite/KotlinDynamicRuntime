@@ -24,12 +24,12 @@ class GrantsDemoBootService : ServiceInitializer {
         ready = true
         val config = cxt.instanceConfig
         if (config.get(GrantsDemo.provisionAtBootKey) != true) return
-        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
-        if (RegistrationClient.skipsDemoAtBoot(cxt, "grants demo")) return
         if (!config.isTestInstance) {
             LogStartup.warn(cxt, "Not provisioning the grants demo at boot: this is not a test instance.")
             return
         }
+        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
+        if (RegistrationClient.skipsDemoAtBoot(cxt, "grants demo")) return
         // A bundle unchanged since the last start is left as it is, so a restart adds no revisions.
         val report = provisionGrantsDemo(cxt, skipUnchanged = true)
         LogStartup.info(cxt, "Provisioned the grants demo at boot: ${report.summary}")
