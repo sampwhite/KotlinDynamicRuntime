@@ -629,6 +629,9 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .op-table.data-grid td.data-grid-invalid { background: rgba(248, 113, 113, 0.18); color: #fecaca; box-shadow: inset 0 -2px 0 #f87171; }
 .op-table.data-grid td.data-grid-invalid.data-grid-active { box-shadow: inset 0 0 0 2px var(--accent-bright), inset 0 -2px 0 #f87171; }
 .op-table.data-grid thead th { position: sticky; top: 0; z-index: 1; }
+/* A sortable header (issue #1885): its label a link-styled button, the arrow beside it while sorted. */
+.op-table th.data-grid-sortable .ant-btn { padding: 0; height: auto; font-weight: 600; }
+.op-table th.data-grid-sortable .data-grid-sort-mark { font-size: 0.8em; }
 .data-grid-input { width: 100%; min-width: 72px; box-sizing: border-box; font: inherit; color: inherit; background: var(--surface-page, #0f172a); border: 1px solid var(--accent-bright); border-radius: 3px; padding: 1px 4px; user-select: text; }
 .data-grid-summary { display: flex; align-items: center; gap: 4px; justify-content: inherit; white-space: nowrap; }
 .data-grid-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }

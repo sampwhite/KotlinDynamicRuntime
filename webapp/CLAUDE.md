@@ -570,6 +570,11 @@ each row keeps its typed values and its problems, worked out when the row change
   typed day is checked as any cell is, and a bad cell is tinted red (`.data-grid-invalid`). A
   click on another cell commits the open edit first (`clickCell`, `openCell`): React draws the click's update before
   the browser moves focus, so the editor is gone before its blur could commit it.
+- **Sorting**: a column's header is a button (`sortableHeader`) -- ascending, then descending, an arrow and
+  `aria-sort` on the sorted one. In the grid it reorders the table itself (`sortBy`), as a spreadsheet's Sort does, so the
+  new order is saved with the form and Reset table undoes it; values compare as a report's do (`compareReportValues`,
+  a choice by its label), empty and invalid cells last, equal rows keeping their order. The read-only table sorts only
+  what it shows.
 - **Copy and paste** go through the clipboard's own events on the box: Copy writes the selected block as tab-separated
   text, and a paste fills from the cursor, skips a header row, adds rows up to the field's limit, and says how many did
   not fit (`GridPaste.droppedRows`).

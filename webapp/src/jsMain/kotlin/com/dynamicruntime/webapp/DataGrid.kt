@@ -157,6 +157,8 @@ private val GridEditor = FC<GridEditorProps> { props ->
     var loadError by useState<DisplayError?>(null)
     var note by useState<String?>(null)
     var combines by useState(emptyMap<String, ReportCombine>())
+    // The last sort asked of the header, for its arrow; the rows themselves are reordered.
+    var sort by useState<GridSort?>(null)
     val reloadState = useState(0)
     val reloadAsk = reloadState.component1()
     val setReloadAsk = reloadState.component2()
@@ -178,6 +180,7 @@ private val GridEditor = FC<GridEditorProps> { props ->
         loadedFor.current = wanted
         loadError = null
         note = null
+        sort = null
         // Rows this grid had unsaved when it was last taken off the page, on the file the field still names.
         val kept = props.drafts.takeKept(TableDraftKey(scope, props.path))
         if (kept != null && kept.baseFileId == id) {
@@ -345,11 +348,11 @@ private val GridEditor = FC<GridEditorProps> { props ->
                 thead {
                     tr {
                         th { className = ClassName("data-grid-rownum"); +"#" }
-                        for (column in g.columns) {
-                            th {
-                                key = column.name.unsafeCast<Key>()
-                                if (column.numeric) className = ClassName("op-num")
-                                +(column.label + if (column.required) " *" else "")
+                        g.columns.forEachIndexed { col, column ->
+                            sortableHeader(column, column.label + if (column.required) " *" else "", sort?.takeIf { it.col == col }) {
+                                val next = nextSort(sort, col)
+                                setGrid { it?.sortBy(next.col, next.descending) }
+                                sort = next
                             }
                         }
                     }
@@ -601,4 +604,34 @@ private fun ChildrenBuilder.dayEditor(edit: GridEdit, handlers: GridHandlers) {
 @Suppress("ConstPropertyName")
 object DAYF {
     const val pattern = "YYYY-MM-DD"
+}
+
+/**
+ * A column's header, sortable: its [label] on a link-styled button that asks for [onSort], with an arrow and
+ * `aria-sort` while the rows are sorted by it ([sorted]). The grid's and the read-only table's alike.
+ */
+internal fun ChildrenBuilder.sortableHeader(column: TableColumn, label: String, sorted: GridSort?, onSort: () -> Unit) {
+    th {
+        key = column.name.unsafeCast<Key>()
+        className = ClassName(if (column.numeric) "op-num data-grid-sortable" else "data-grid-sortable")
+        asDynamic()["aria-sort"] = when {
+            sorted == null -> "none"
+            sorted.descending -> "descending"
+            else -> "ascending"
+        }
+        Button {
+            type = "link"
+            size = "small"
+            onClick = { onSort() }
+            +label
+            span {
+                className = ClassName("data-grid-sort-mark")
+                +when {
+                    sorted == null -> ""
+                    sorted.descending -> " ▼"
+                    else -> " ▲"
+                }
+            }
+        }
+    }
 }

@@ -202,6 +202,9 @@ val DataTableValue = FC<DataTableValueProps> { props ->
         if (parsed != null && parsed.ok && rowType != null) loadGrid(rowType, props.type.tableRowLimit(), parsed, props.fileId) else null
     }
     val footer = useMemo(grid) { grid?.summaries() }
+    // A sort here orders what is shown and nothing else: the stored table is as it is.
+    var sort by useState<GridSort?>(null)
+    val shownRows = useMemo(grid, sort) { sort?.let { s -> grid?.sortBy(s.col, s.descending)?.rows } ?: grid?.rows.orEmpty() }
     div {
         className = ClassName("data-table-value")
         div {
@@ -231,17 +234,13 @@ val DataTableValue = FC<DataTableValueProps> { props ->
                         className = ClassName("op-table data-table")
                         thead {
                             tr {
-                                for (column in grid.columns) {
-                                    th {
-                                        key = column.name.unsafeCast<Key>()
-                                        if (column.numeric) className = ClassName("op-num")
-                                        +column.label
-                                    }
+                                grid.columns.forEachIndexed { col, column ->
+                                    sortableHeader(column, column.label, sort?.takeIf { it.col == col }) { sort = nextSort(sort, col) }
                                 }
                             }
                         }
                         tbody {
-                            for (row in grid.rows) {
+                            for (row in shownRows) {
                                 tr {
                                     key = row.id.toString().unsafeCast<Key>()
                                     grid.columns.forEachIndexed { at, column ->

@@ -317,4 +317,38 @@ class DataGridModelTest {
         assertEquals("'2026-11-03l' is not a day (yyyy-MM-dd).", bad.rows[0].problems[0])
         assertTrue(bad.problems().any { it.message.startsWith("Row 1, Day:") })
     }
+
+    private fun sortable(): GridState = grid(
+        "day,category,amount\r\n2026-11-03,taxi,10\r\n2026-11-01,meal,9\r\n,,\r\n2026-11-02,taxi,100\r\n2026-11-04,meal,x\r\n",
+    )
+
+    private fun GridState.column(col: Int) = rows.map { it.cells[col] }
+
+    @Test
+    fun aSortOrdersRowsByTheirValues() {
+        val g = sortable()
+        // Numbers by value; the empty cell and the bad one last, whichever way.
+        assertEquals(listOf("9", "10", "100", "", "x"), g.sortBy(2, descending = false).column(2))
+        assertEquals(listOf("100", "10", "9", "", "x"), g.sortBy(2, descending = true).column(2))
+        // Days in time.
+        assertEquals(listOf("2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", ""), g.sortBy(0, descending = false).column(0))
+        // A choice by its label; equal ones keep their order, so a sort by day then by category groups by category.
+        val byDayThenCategory = g.sortBy(0, descending = false).sortBy(1, descending = false)
+        assertEquals(listOf("meal", "meal", "taxi", "taxi", ""), byDayThenCategory.column(1))
+        assertEquals(listOf("2026-11-01", "2026-11-04", "2026-11-02", "2026-11-03", ""), byDayThenCategory.column(0))
+    }
+
+    @Test
+    fun aSortIsAChangeOnlyWhenTheOrderMoves() {
+        val g = sortable()
+        assertTrue(g.sortBy(0, descending = false).dirty)
+        val ordered = grid("day,amount\r\n2026-11-01,1\r\n2026-11-02,2\r\n")
+        assertFalse(ordered.sortBy(0, descending = false).dirty)
+        assertTrue(ordered.sortBy(0, descending = true).dirty)
+        // An open edit is committed first.
+        assertEquals("5", g.moveTo(GridCell(0, 2)).startEdit("5").sortBy(2, descending = false).column(2).first())
+        assertEquals(GridSort(1, false), nextSort(null, 1))
+        assertEquals(GridSort(1, true), nextSort(GridSort(1, false), 1))
+        assertEquals(GridSort(2, false), nextSort(GridSort(1, true), 2))
+    }
 }

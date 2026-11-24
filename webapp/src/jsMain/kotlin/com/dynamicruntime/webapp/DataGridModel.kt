@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
+import com.dynamicruntime.common.gedra.report.compareReportValues
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.uniquenessKey
@@ -437,3 +438,46 @@ fun GridState.openCell(cell: GridCell): GridState = committed().moveTo(cell).sta
  * not its cell's -- so Save is on before the click that commits it, which a disabled button would not take.
  */
 val GridState.unsaved: Boolean get() = dirty || editing?.let { it.text != text(it.at) } == true
+
+/** The sort a grid's header shows: the column sorted by, and whether from greatest to least. */
+data class GridSort(val col: Int, val descending: Boolean)
+
+/** The sort a click on column [col]'s header asks for, after [current]: ascending first, then the other way. */
+fun nextSort(current: GridSort?, col: Int): GridSort =
+    if (current?.col == col) GridSort(col, !current.descending) else GridSort(col, false)
+
+/**
+ * What a row sorts by in [column]: its typed value -- a choice by its label, so the order is the one a person reads --
+ * or null when the cell is empty or has a problem.
+ */
+private fun sortKey(row: GridRow, column: TableColumn): Any? {
+    val value = row.typed[column.name] ?: return null
+    val options = column.type.options ?: return value
+    return options.firstOrNull { it.value == value }?.label ?: value
+}
+
+/**
+ * The rows sorted by column [col] (issue #1885), as a spreadsheet's Sort does: the table itself reordered, which the
+ * form then saves, so a change of order is unsaved (Reset table undoes it). Values compare by their kind, as a report's
+ * do ([compareReportValues]) -- numbers by value, days in time, a choice by its label, text without regard to case, no
+ * before yes -- and an empty cell, or one with a problem, goes last whichever way. Rows that compare equal keep their
+ * order, so sorting by one column and then another groups by the second, ordered by the first. An open edit is
+ * committed first; the cursor and the selection keep their places.
+ */
+fun GridState.sortBy(col: Int, descending: Boolean): GridState {
+    val column = columns.getOrNull(col) ?: return this
+    val g = committed()
+    val sorted = g.rows.sortedWith { a, b ->
+        val ka = sortKey(a, column)
+        val kb = sortKey(b, column)
+        when {
+            ka == null && kb == null -> 0
+            ka == null -> 1
+            kb == null -> -1
+            descending -> compareReportValues(kb, ka)
+            else -> compareReportValues(ka, kb)
+        }
+    }
+    val moved = sorted.zip(g.rows).any { (a, b) -> a !== b }
+    return if (moved) g.copy(rows = sorted, dirty = true) else g
+}
