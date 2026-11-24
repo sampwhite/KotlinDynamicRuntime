@@ -5,6 +5,7 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -249,6 +250,48 @@ object Checks {
             else -> Outcome.notMet("$name does not, so a reviewer is not pointed at a form until someone starts it.")
         }
     }
+
+    /**
+     * The reply to the turn that wrote the review says a reviewer needs the `editor` role as well as the label (issue
+     * #1911): with the label alone, they see no form but their own. The assistant can give neither, so saying it is all it
+     * can do. Read from the reply's words ([saysEditorRole]), so a reply saying it some other way comes out not met, and is
+     * worth reading. Asked only of a review that takes a label.
+     */
+    fun reviewersToldRole(r: TrialResult): Outcome {
+        val review = r.view.review ?: return Outcome.notMet("No workflow with an approval task.")
+        val takesLabel = review[WFD.tasks].toJsonListOfMaps().any { task ->
+            task[WFD.functions].toJsonListOfMaps().any { it[WFD.fn] == ULH.fn }
+        }
+        if (!takesLabel) return Outcome.info("The review takes no label.")
+        val replies = r.conversations.flatMap { c ->
+            c.calls.filter { it.name == ATOOL.patchConfig && it.dryRun != true && !it.isError && CCT.workflowDef in patchedSlots(it) }
+                .map { it.turnId }.distinct().map { c.reply(it) }
+        }
+        val said = replies.flatMap { it.lines() }.firstOrNull { saysEditorRole(it) }
+        return when {
+            replies.isEmpty() -> Outcome.info("No turn wrote the review with ${ATOOL.patchConfig}.")
+            said != null -> Outcome.met(said.trim().take(240))
+            else -> Outcome.notMet("The reply does not mention the editor role.")
+        }
+    }
+
+    /**
+     * Whether [line] says a person is to be given the `editor` role: names it as a role or a box to check, or says to make
+     * them an editor, and does not say they do without it. The words are whole and beside each other, so the bundle editor
+     * in the sandbox ("box") is not taken for it.
+     */
+    fun saysEditorRole(line: String): Boolean {
+        // Markdown's marks and quotes may stand around the word.
+        val text = line.replace(Regex("[*`'\"“”‘]"), "")
+        return editorRoleForms.any { it.containsMatchIn(text) } && !notNeeded.containsMatchIn(text)
+    }
+
+    private val editorRoleForms = listOf(
+        Regex("\\beditor (role|access|persona|permission|box|checkbox)\\b", RegexOption.IGNORE_CASE),
+        Regex("\\b(role|access|persona)( of| called|:)? editor\\b", RegexOption.IGNORE_CASE),
+        Regex("\\b(make|makes|be|is|are|also) (them |each |each one |also )?(an )?editors?\\b", RegexOption.IGNORE_CASE),
+    )
+    private val notNeeded = Regex("\\b(not|nt|dont|doesnt|without|no) need(ing|ed)?\\b[^.;]*\\beditors?\\b", RegexOption.IGNORE_CASE)
 
     /**
      * The report is made whole by [ATOOL.createReport]: no write of [ATOOL.patchConfig] touches a report afterward

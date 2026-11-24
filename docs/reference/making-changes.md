@@ -79,6 +79,14 @@ them out its own way in a `types` of its own. Naming none, it shows the nearest 
 collects traits, or the tasks its `showTasks` names, never both lists.
 [The committee review](../demo-client/committee-review.md) is a whole example.
 
+**A reviewer needs a label and the `editor` role.** The label, which the task's `userHasLabel` function
+names, lets a person act on the review. The role lets them see forms that are not their own: with the label
+alone, the forms to review are not in their list, and they cannot open one. An administrator gives both on
+the Users page, the role with the **Editor** box under **More options**. Someone at the administrator level
+has that reach already, and needs only the label. In a client that groups its users in organizations, an
+editor or administrator with a primary one sees that organization's forms and those that belong to none,
+not every form. See [Roles and access](roles-and-access.md).
+
 **A workflow that starts with someone else's step highlights its Start.** When a workflow's first step is
 not the form owner's to take, such as a review or an approval, its definition sets
 `highlightStart` to `true`. A form that is eligible for it, and not yet in it, then shows in the

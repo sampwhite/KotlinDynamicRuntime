@@ -11,6 +11,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -217,6 +218,51 @@ class TrialHarnessTest : StringSpec({
         outcome(emptyMap(), mapOf(WFD.id to "score", WFD.saveWhen to "kdr:reviewer")) shouldBe OutcomeKind.notMet
         // The applicant's own step first: there is nobody else to point at the form.
         outcome(emptyMap(), mapOf(WFD.id to "budget")) shouldBe OutcomeKind.info
+    }
+
+    "a review's reply is held to saying a reviewer needs the editor role" {
+        fun outcome(reply: String, labeled: Boolean = true): OutcomeKind {
+            val function = mapOf(WFD.fn to ULH.fn, WFD.label to "reviewer")
+            val approve = mapOf(
+                WFD.id to "approve", WFD.approval to mapOf(WFD.cfact to "approved"),
+                WFD.functions to if (labeled) listOf(function) else emptyList(),
+            )
+            val review = mapOf(
+                CCT.workflowId to "review",
+                CCT.definition to mapOf(WFD.workflowId to "review", WFD.entry to WfEntry.normal.name, WFD.tasks to listOf(approve)),
+            )
+            val write = mapOf(
+                CFEP.dryRun to false, CFEP.configs to listOf(mapOf(CFEP.edits to listOf(mapOf(CFEP.slot to CCT.workflowDef)))),
+            )
+            fun assistant(vararg blocks: Map<String, Any?>) =
+                mapOf(ACNV.role to ABLK.assistant, ACNV.turnId to "t", ACNV.content to blocks.toList())
+            val messages = listOf(
+                assistant(mapOf(ABLK.type to ABLK.toolUse, ABLK.id to "c1", ABLK.name to ATOOL.patchConfig, ABLK.input to write)),
+                assistant(mapOf(ABLK.type to ABLK.text, ABLK.text to reply)),
+            )
+            val now = Clock.System.now()
+            val bundle = mapOf(CFEP.slots to mapOf(CCT.workflowDef to listOf(review)))
+            return Checks.reviewersToldRole(
+                TrialResult(
+                    smoke, smoke.variants.single(), "c", null, listOf(TrialConversation("c", emptyList(), messages)),
+                    mapOf("b" to bundle), emptyList(), now, now,
+                ),
+            ).kind
+        }
+        outcome("Done.\n- Give your reviewers the label, and the **Editor** role, on the Users page.") shouldBe OutcomeKind.met
+        // What every run said before the guidance did.
+        outcome("Give the label to your reviewers on the Users page.") shouldBe OutcomeKind.notMet
+        // Another editor, which no reviewer needs.
+        outcome("You can see it in the bundle editor.") shouldBe OutcomeKind.notMet
+        // "sandbox" is not a box to check.
+        outcome("Open it in the bundle editor, in the sandbox.") shouldBe OutcomeKind.notMet
+        outcome("They don't need the editor role.") shouldBe OutcomeKind.notMet
+        // The other ways of saying it.
+        for (said in listOf(
+            "Tick the **Editor** box under More options.", "Give them the role `editor` too.", "Make them an editor as well.",
+            "They need the label and the `editor` role; an administrator does not need it.",
+        )) outcome(said) shouldBe OutcomeKind.met
+        outcome("Done.", labeled = false) shouldBe OutcomeKind.info
     }
 
     "a report is held to being made whole by create_report, not patched afterward" {

@@ -11,7 +11,9 @@ import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.workflow.CDF
+import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.UADEP
 
 /**
@@ -164,6 +166,14 @@ val changeGroups: List<ChangeGroup> = listOf(
             them out its own way in a `${WFD.types}` of its own. Naming none, it shows the nearest task before it that
             collects traits, or the tasks its `${WFD.showTasks}` names, never both lists.
             [The committee review](../demo-client/committee-review.md) is a whole example.
+
+            **A reviewer needs a label and the `${ROLE.editor}` role.** The label, which the task's `${ULH.fn}` function
+            names, lets a person act on the review. The role lets them see forms that are not their own: with the label
+            alone, the forms to review are not in their list, and they cannot open one. An administrator gives both on
+            the Users page, the role with the **Editor** box under **More options**. Someone at the administrator level
+            has that reach already, and needs only the label. In a client that groups its users in organizations, an
+            editor or administrator with a primary one sees that organization's forms and those that belong to none,
+            not every form. See [Roles and access](roles-and-access.md).
 
             **A workflow that starts with someone else's step highlights its Start.** When a workflow's first step is
             not the form owner's to take, such as a review or an approval, its definition sets
