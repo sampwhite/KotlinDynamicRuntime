@@ -61,6 +61,7 @@ object CodeOverrides {
             reports = keysOf(CCT.reportDef).filter { it in config.reports }.toSet(),
             fileRefs = keysOf(CCT.fileRefDef).toSet(),
             counters = keysOf(CCT.counterDef).toSet(),
+            formTypes = keysOf(CCT.formTypeDef).toSet(),
         )
     }
 
@@ -148,6 +149,7 @@ object CodeOverrides {
             CCT.reportDef -> entry[CCT.reportId] in code.reports
             CCT.fileRefDef -> entry[CCT.refId] in code.fileRefs
             CCT.counterDef -> entry[CTR.counterId] in code.counters
+            CCT.formTypeDef -> entry[FTYPE.formTypeId] in code.formTypes
             CCT.workflowDef -> entry[CCT.workflowId] in code.workflows ||
                 ConfigCodeLayer.workflowKind(collector, entry)?.let { it in WfEntry.singletons && it in code.singletonKinds } == true
             else -> false

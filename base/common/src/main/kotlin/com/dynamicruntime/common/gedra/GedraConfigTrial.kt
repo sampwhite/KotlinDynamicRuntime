@@ -270,6 +270,8 @@ object GedraConfigTrial {
         FileRefService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client)
         // And its counters (issue #1849): one that is no good, or a field naming one the client lacks, is refused here.
         CounterService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client)
+        // And its form types (issue #1902): one naming a trait the client lacks, or a fact it does not have.
+        FormTypeService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client, present, schema)
         return TrialCandidate(capture.toList(), present != null, schema, workflows, def, PlanLimits.configUsageOf(scratch, client))
     }
 }

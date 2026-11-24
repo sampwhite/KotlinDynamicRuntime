@@ -75,6 +75,7 @@ names one thing in the whole client, whichever bundle holds it. The slots a clie
 | `$${CCT.uiBlockDef}` | Its changes to the menu and Home's cards ([Menu and home cards](menu-and-home-cards.md)). |
 | `$${CCT.fileRefDef}` | The named images its copy shows. |
 | `$${CCT.counterDef}` | Its counters, which number a field of its forms: a prefix, then a count. |
+| `$${CCT.formTypeDef}` | Its form types, the kinds of form it has: the traits a form of each collects, and who may set a form to it. |
 
 The rest are rarer: `$${CCT.schemaDef}` holds a type that several traits share, `$${CCT.cfactDef}` a fact its expressions
 may name, and `$${CCT.listingDef}` how its forms list is drawn as a whole, while `$${CCT.customerDef}` is the platform's,

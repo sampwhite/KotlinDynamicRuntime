@@ -131,6 +131,7 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 | [`kdr:fileRefDef`](#kdrfilerefdef) | `refId` | One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file store's are named by their `hash`; a local file's by a `root` and a `path` under it, and by no hash. |
 | [`kdr:listingDef`](#kdrlistingdef) | one entry | The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the one its code or template declares. |
 | [`kdr:counterDef`](#kdrcounterdef) | `counterId` | One counter of this client -- what numbers a field's ids, a prefix and then a zero-padded count -- keyed by its counter id. A field names it with `g-counter`. |
+| [`kdr:formTypeDef`](#kdrformtypedef) | `formTypeId` | One form type of this client -- a kind of form, and the traits it collects -- keyed by its id. A form says which type it is in its `kdr:formType` entry, a trait the client has once it defines a form type. |
 
 ### kdr:clientDef
 
@@ -334,6 +335,22 @@ Keyed by `counterId`.
 | `issue` | one of `onOpen`, `onSave` |  | When a form is given its id: `onOpen` (the default), as the form opens, so the person sees it before saving, or `onSave`, when the form is saved, so a form opened and left uses none up and the count has fewer gaps. With `onSave` a page does not show the field until the form is saved. |
 | `enabled` | boolean |  | Whether new ids are issued; true when left out. Disable a counter rather than remove it, so its ids still mean something. |
 | `description` | string |  | What the counter numbers, in the administrator's words. |
+| `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
+
+### kdr:formTypeDef
+
+One form type of this client -- a kind of form, and the traits it collects -- keyed by its id. A form says which type it is in its `kdr:formType` entry, a trait the client has once it defines a form type.
+
+Keyed by `formTypeId`.
+
+| Field | Type | Required | What it is |
+|---|---|---|---|
+| `formTypeId` | string | yes | The type's id within its client: letters, digits, and underscores, starting with a letter, at most 64 characters. |
+| `label` | string | yes | What the type is called, in the choices of a form's type. |
+| `description` | string |  | What a form of the type is, in the administrator's words. |
+| `traits` | array of [WfTraitRef](#wftraitref) |  | The traits a form of the type collects, in order. None for a type that only classifies. A form may hold a trait its type does not list: a type says what is asked for, and refuses nothing. |
+| `setWhen` | string |  | Who may set a form to this type: a cfact expression over the facts of whoever is writing. Absent, whoever may write the form. |
+| `mayLeave` | boolean |  | Whether a form of this type may be changed to another, or lose its type; false when left out, so a form's type is fixed once it is stored. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
 ## The types the slots refer to

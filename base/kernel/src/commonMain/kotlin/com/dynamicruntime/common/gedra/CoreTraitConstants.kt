@@ -33,6 +33,18 @@ object GT {
     const val nameMaxLength = 128
 
     /**
+     * The `formType` trait's id (issue #1902): which of its client's form types a form is, its one field [formTypeField]
+     * holding the type's id. A client supports it by defining form types, never through a group (`GedraTrait.joinsGroups`).
+     */
+    const val formType = "kdr:formType"
+
+    /** The [formType] trait's one field, the type's id. */
+    const val formTypeField = "formType"
+
+    /** The entry type the [formType] trait generates: `kdr.core.FormTypeEntry`. */
+    const val formTypeEntry = "FormTypeEntry"
+
+    /**
      * The `cfacts` **state** trait (issue #599): the state→cfact bridge's convention. A gedra's stored state may assert
      * cfact names in this trait's [facts]; `GedraDataService.formCfacts` reads them and feeds them into
      * `CFactRegistry.assemble` as target facts, so a workflow-eligibility expression can gate on state. `derived` -- a

@@ -50,6 +50,7 @@ names one thing in the whole client, whichever bundle holds it. The slots a clie
 | `kdr:uiBlockDef` | Its changes to the menu and Home's cards ([Menu and home cards](menu-and-home-cards.md)). |
 | `kdr:fileRefDef` | The named images its copy shows. |
 | `kdr:counterDef` | Its counters, which number a field of its forms: a prefix, then a count. |
+| `kdr:formTypeDef` | Its form types, the kinds of form it has: the traits a form of each collects, and who may set a form to it. |
 
 The rest are rarer: `kdr:schemaDef` holds a type that several traits share, `kdr:cfactDef` a fact its expressions
 may name, and `kdr:listingDef` how its forms list is drawn as a whole, while `kdr:customerDef` is the platform's,

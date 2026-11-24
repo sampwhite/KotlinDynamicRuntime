@@ -122,7 +122,8 @@ private fun sourceTraitNamesTests() = stringSpec {
                 val dataType = trait.appliesTo.firstNotNullOfOrNull { kind ->
                     store.types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]?.variants?.byValue?.get(trait.traitId)
                         ?.properties?.get(GE.data)?.valueType
-                }
+                    // A global trait that joins no group (issue #1902) is in no global union, so off its own entry type.
+                } ?: store.types[trait.typeName]?.properties?.get(GE.data)?.valueType
                 val heading = dataType?.name?.let { store.layouts[it] }?.label
                 dataType?.title.isNullOrBlank() && heading.isNullOrBlank()
             }.map { "${config.gedraId.client}: ${it.traitId}" }

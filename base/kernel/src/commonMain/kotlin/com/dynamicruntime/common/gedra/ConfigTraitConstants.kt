@@ -52,6 +52,9 @@ object CCT {
     /** One counter -- what numbers a field's ids -- keyed by its counter id (issue #1849). See `CounterDef`. */
     const val counterDef = "kdr:counterDef"
 
+    /** One form type -- the traits a kind of form collects -- keyed by its id (issue #1902). See `FormTypeDef`. */
+    const val formTypeDef = "kdr:formTypeDef"
+
     /**
      * Every slot, in the order the core config traits declare them, with what code handling slots one by one needs of
      * each (issue #1854): the code layer reads which stand over by key, a stored override reads their key fields, and a
@@ -73,6 +76,7 @@ object CCT {
         ConfigSlotRule(fileRefDef, "file ref", refId, SlotStandsOver.byKey),
         ConfigSlotRule(listingDef, "listing settings", null, SlotStandsOver.never),
         ConfigSlotRule(counterDef, "counter", CTR.counterId, SlotStandsOver.byKey),
+        ConfigSlotRule(formTypeDef, "form type", FTYPE.formTypeId, SlotStandsOver.byKey),
     )
 
     /**

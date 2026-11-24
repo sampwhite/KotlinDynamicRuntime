@@ -9,12 +9,16 @@ import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignView
+import com.dynamicruntime.common.gedra.FTYPE
+import com.dynamicruntime.common.gedra.FormTypeService
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
+import com.dynamicruntime.common.gedra.formTypeOf
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
+import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.filterByCFacts
@@ -324,6 +328,12 @@ fun resolveWorkflowView(
     // Design View (issue #972): where the workflow and each type the page draws were declared. Added beside an
     // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
     if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store)
+    // Every sourced choice list of the traits drawn, as the endpoint catalog resolves them for a form off-workflow (issue
+    // #1902). A form's type offers those the caller may set, and the form's own, so the page offers no choice its save
+    // would refuse; the catalog, which knows no form, lists them all.
+    val sources = SchemaService.get(cxt).optionsProviders +
+        (FTYPE.optionsSource to { c: KdrCxt, _: String -> FormTypeService.get(c).choicesFor(c, client, formTypeOf(formEntries)) })
+    view[SCH.dDefs] = resolveOptionsSources(cxt, defs, sources)
     if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
     if (keptToOwner) view[WVF.keptToOwner] = true
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, client, declared.def).name

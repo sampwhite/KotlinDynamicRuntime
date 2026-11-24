@@ -6,8 +6,7 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
  * The definitions a configuration holds, by the keys one configuration's definition stands over another's (issues
  * #945, #1634): traits by trait id, types by qualified name, cfacts by name, workflows by id -- and a creation or core
  * details workflow by its kind too, since a client has one of each -- reports by report id, file refs by ref id, counters
- * by counter id, and the
- * columns of the forms list as one set ([usages]).
+ * by counter id, form types by their id, and the columns of the forms list as one set ([usages]).
  *
  * One statement of those rules for both places a definition stands over another: a client's own configuration over its
  * template's copies (`ClientExtension.clones`), and a stored entry marked `"overrides": "code"` over the client's code
@@ -29,23 +28,26 @@ class ConfigKeys(
     val reports: Set<String> = emptySet(),
     val fileRefs: Set<String> = emptySet(),
     val counters: Set<String> = emptySet(),
+    val formTypes: Set<String> = emptySet(),
 ) {
     /** The creation and core details kinds among [workflows]: each stands over the other's of its kind, whatever its id. */
     val singletonKinds: Set<WfEntry> get() = workflows.values.filter { it in WfEntry.singletons }.toSet()
 
     val isEmpty: Boolean
         get() = traits.isEmpty() && types.isEmpty() && cfacts.isEmpty() && workflows.isEmpty() && !usages &&
-            reports.isEmpty() && fileRefs.isEmpty() && counters.isEmpty()
+            reports.isEmpty() && fileRefs.isEmpty() && counters.isEmpty() && formTypes.isEmpty()
 
     operator fun plus(other: ConfigKeys): ConfigKeys = ConfigKeys(
         traits + other.traits, types + other.types, cfacts + other.cfacts, workflows + other.workflows,
         usages || other.usages, reports + other.reports, fileRefs + other.fileRefs, counters + other.counters,
+        formTypes + other.formTypes,
     )
 
     /** These, less what [other] holds by key (a workflow by its id). */
     operator fun minus(other: ConfigKeys): ConfigKeys = ConfigKeys(
         traits - other.traits, types - other.types, cfacts - other.cfacts, workflows - other.workflows.keys,
         usages && !other.usages, reports - other.reports, fileRefs - other.fileRefs, counters - other.counters,
+        formTypes - other.formTypes,
     )
 
     /**
@@ -63,11 +65,13 @@ class ConfigKeys(
             reports intersect below.reports,
             fileRefs intersect below.fileRefs,
             counters intersect below.counters,
+            formTypes intersect below.formTypes,
         )
     }
 
     /** These without the file refs: what cuts a configuration whose refs a registry overrides by id instead. */
-    fun withoutFileRefs(): ConfigKeys = ConfigKeys(traits, types, cfacts, workflows, usages, reports, counters = counters)
+    fun withoutFileRefs(): ConfigKeys =
+        ConfigKeys(traits, types, cfacts, workflows, usages, reports, counters = counters, formTypes = formTypes)
 
     /**
      * Each definition held, as a person names it: "trait 'note'", "workflow 'review'", "the columns of the forms list".
@@ -83,14 +87,16 @@ class ConfigKeys(
         reports.sorted().forEach { add("report '$it'") }
         fileRefs.sorted().forEach { add("file ref '$it'") }
         counters.sorted().forEach { add("counter '$it'") }
+        formTypes.sorted().forEach { add("form type '$it'") }
     }
 
     override fun equals(other: Any?): Boolean =
         other is ConfigKeys && traits == other.traits && types == other.types && cfacts == other.cfacts &&
             workflows == other.workflows && usages == other.usages && reports == other.reports && fileRefs == other.fileRefs &&
-            counters == other.counters
+            counters == other.counters && formTypes == other.formTypes
 
-    override fun hashCode(): Int = listOf(traits, types, cfacts, workflows, usages, reports, fileRefs, counters).hashCode()
+    override fun hashCode(): Int =
+        listOf(traits, types, cfacts, workflows, usages, reports, fileRefs, counters, formTypes).hashCode()
 
     override fun toString(): String = described().joinToString(", ")
 
@@ -107,6 +113,7 @@ class ConfigKeys(
             reports = config.reports.keys,
             fileRefs = config.fileRefs.map { it.refId }.toSet(),
             counters = config.counters.map { it.counterId }.toSet(),
+            formTypes = config.formTypes.map { it.formTypeId }.toSet(),
         )
 
         /** Everything [configs] hold together. */
@@ -135,5 +142,6 @@ fun GedraConfig.cutBy(keys: ConfigKeys): GedraConfig {
         workflowParams = workflowParams.filterKeys { it !in lost },
         fileRefs = fileRefs.filter { it.refId !in keys.fileRefs },
         counters = counters.filter { it.counterId !in keys.counters },
+        formTypes = formTypes.filter { it.formTypeId !in keys.formTypes },
     )
 }

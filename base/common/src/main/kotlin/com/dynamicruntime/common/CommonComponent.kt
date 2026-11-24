@@ -84,7 +84,10 @@ import com.dynamicruntime.common.gedra.clientCopySchema
 import com.dynamicruntime.common.gedra.clientMenuSchema
 import com.dynamicruntime.common.gedra.clientOverviewSchema
 import com.dynamicruntime.common.gedra.coreClients
+import com.dynamicruntime.common.gedra.FormTypeHook
+import com.dynamicruntime.common.gedra.FormTypeService
 import com.dynamicruntime.common.gedra.coreTraits
+import com.dynamicruntime.common.gedra.formTypeSchema
 import com.dynamicruntime.common.gedra.adminGedraConfigSchema
 import com.dynamicruntime.common.gedra.designViewSchema
 import com.dynamicruntime.common.gedra.gedraConfigSchema
@@ -220,6 +223,9 @@ class CommonComponent : ComponentDefinition {
         // A counter's field holds only an id issued to the writer, stored once and never changed (issue #1849). First, so
         // a write it refuses fails before the work below is done for nothing; it reads only who is acting.
         collector.addWriteHook(CounterClaimHook)
+        // A form's type is one its client defines and the writer may set, and is kept once stored (issue #1902). Beside the
+        // counter's, and for its reason: it judges the writer's own facts.
+        collector.addWriteHook(FormTypeHook)
         // The links between forms and the data files their fields name (issue #1838), before the state hook: that hook
         // rebinds the write's context to the form's owner, and a file newly linked must be one the caller may use.
         collector.addWriteHook(DataFileLinkHook)
@@ -324,6 +330,8 @@ class CommonComponent : ComponentDefinition {
         }
         // Fragment checking: the operator endpoint that validates this instance's Markdown fragment files.
         collector.addModule(MarkdownFragmentService.schema(cxt))
+        // The choices of a form's type (issue #1902), which a core trait names, so on every kind of node.
+        collector.addModule(formTypeSchema(cxt))
         // Gedra data (issue #310): the form-document endpoints and the two tables under them.
         collector.addModule(gedraSchema(cxt), appOnly)
         // The global admin state surface (issue #600): read/replace a gedra's state, on `/admin/…`. Registered
@@ -501,6 +509,8 @@ class CommonComponent : ComponentDefinition {
             service(::FileRefService, roles = setOf(BOOT.app)),
             // A client's counters (issue #1849), read from its configuration: what numbers a field's ids.
             service(::CounterService, roles = setOf(BOOT.app)),
+            // A client's form types (issue #1902), read from its configuration: the kinds of form it has.
+            service(::FormTypeService, roles = setOf(BOOT.app)),
             // Resolves UiBlocks for a caller (issue #457). A regular service, so the startup tier's
             // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
             // compiled by the time this initializes.
