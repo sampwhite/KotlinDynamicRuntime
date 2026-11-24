@@ -32,8 +32,12 @@ import com.dynamicruntime.common.table.writeTable
 /** A cell's place: its row, by index from 0 among the rows, and its column, by index among the columns. */
 data class GridCell(val row: Int, val col: Int)
 
-/** The cell being edited, [at], and the text in its editor, not yet committed. */
-data class GridEdit(val at: GridCell, val text: String)
+/**
+ * The cell being edited, [at], and the text in its editor, not yet committed. [typed] when the edit began with a key
+ * typed, which replaces the cell: a day is then typed as text, where an edit opened another way picks it from a
+ * calendar.
+ */
+data class GridEdit(val at: GridCell, val text: String, val typed: Boolean = false)
 
 /**
  * One row of the grid: a [id] that stays with it however rows move (a React key), its [cells]' text, its [problems] by
@@ -172,7 +176,7 @@ fun GridState.extendTo(cell: GridCell): GridState {
 /** Editing the active cell, its editor starting with [initial] -- a key typed, which replaces the cell -- or its text. */
 fun GridState.startEdit(initial: String? = null): GridState {
     val at = active ?: return this
-    return copy(editing = GridEdit(at, initial ?: text(at)), anchor = at)
+    return copy(editing = GridEdit(at, initial ?: text(at), typed = initial != null), anchor = at)
 }
 
 /** The editor's text changed to [text]. */

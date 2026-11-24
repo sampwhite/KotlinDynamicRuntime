@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.gedra.report.ReportCombine
+import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.tableRowLimit
 import com.dynamicruntime.common.table.TableColumn
@@ -139,6 +140,10 @@ private class GridHandlers(
     val editorKey: (String, Boolean) -> Boolean,
     val commit: () -> Unit,
     val choose: (String) -> Unit,
+    /** The editor's text set to what its box holds, then committed: a day's picker, whose box the grid does not follow. */
+    val commitText: (String) -> Unit,
+    /** A key in an editor whose text the grid does not follow, with that text: true when the grid took the key. */
+    val keyWithText: (String, Boolean, String) -> Boolean,
 )
 
 private val GridEditor = FC<GridEditorProps> { props ->
@@ -267,6 +272,12 @@ private val GridEditor = FC<GridEditorProps> { props ->
             },
             commit = { setGrid { it?.commitEdit() } },
             choose = { value -> setGrid { it?.editText(value)?.commitEdit() } },
+            commitText = { text -> setGrid { it?.takeIf { g -> g.editing != null }?.editText(text)?.commitEdit() ?: it } },
+            keyWithText = { key, shift, text ->
+                val handled = latest.current?.editText(text)?.onEditorKey(key, shift) != null
+                if (handled) setGrid { it?.editText(text)?.onEditorKey(key, shift) ?: it }
+                handled
+            },
         )
     }
 
@@ -383,6 +394,18 @@ private val GridEditor = FC<GridEditorProps> { props ->
                     focusBox()
                 }
                 +(if (removable > 1) "Remove $removable rows" else "Remove row")
+            }
+            // Back to the field's saved table -- its file, or none -- this grid's unsaved changes dropped; the form's other
+            // fields keep theirs.
+            Button {
+                size = "small"
+                disabled = !g.unsaved
+                onClick = {
+                    setReloadAsk { it + 1 }
+                    note = null
+                    focusBox()
+                }
+                +"Reset table"
             }
             span { className = ClassName("type-hint"); +gridRowCountText(g.rows.size, g.maxRows) }
             if (g.unsaved) span { className = ClassName("type-hint"); +" · Unsaved: saved with the form" }
@@ -502,8 +525,15 @@ private val GridRowView = memo(
     },
 )
 
-/** The editor of the cell being edited: a choice's list, or a box of text for anything else. */
+/**
+ * The editor of the cell being edited: a choice's list; a day's calendar, unless the edit began with a key typed; or a
+ * box of text for anything else.
+ */
 private fun ChildrenBuilder.cellEditor(column: TableColumn, edit: GridEdit, handlers: GridHandlers) {
+    if (column.kind == ReportKind.date && !edit.typed) {
+        dayEditor(edit, handlers)
+        return
+    }
     val options = column.type.options
     if (options != null && column.closedChoices) {
         Select {
@@ -540,4 +570,35 @@ private fun ChildrenBuilder.cellEditor(column: TableColumn, edit: GridEdit, hand
         }
         onBlur = { handlers.commit() }
     }
+}
+
+/**
+ * A day's editor: antd's `DatePicker`, its calendar open, on the cell's day. A day picked commits it as `yyyy-MM-dd`, the
+ * CSV's spelling; a day typed into its box is committed as typed when the box is left, and checked as any cell is. Tab
+ * and Escape are the grid's, as in every editor.
+ */
+private fun ChildrenBuilder.dayEditor(edit: GridEdit, handlers: GridHandlers) {
+    DatePicker {
+        value = edit.text.trim().takeIf { it.isNotEmpty() }?.let { dayjs(it) }?.takeIf { it.isValid() }
+        asDynamic()["autoFocus"] = true
+        asDynamic()["defaultOpen"] = true
+        asDynamic()["format"] = DAYF.pattern
+        asDynamic()["size"] = "small"
+        style = js("({ width: '100%' })")
+        onChange = { date, dateString -> handlers.choose(if (date == null) "" else dateString) }
+        asDynamic()["onKeyDown"] = { e: dynamic ->
+            val key = e.key as String
+            if ((key == "Escape" || key == "Tab") && handlers.keyWithText(key, e.shiftKey == true, (e.target.value as? String).orEmpty())) {
+                e.preventDefault()
+                e.stopPropagation()
+            }
+        }
+        asDynamic()["onBlur"] = { e: dynamic -> handlers.commitText((e.target.value as? String).orEmpty()) }
+    }
+}
+
+/** How a day is spelled in a grid's picker: the CSV's own spelling. */
+@Suppress("ConstPropertyName")
+object DAYF {
+    const val pattern = "YYYY-MM-DD"
 }

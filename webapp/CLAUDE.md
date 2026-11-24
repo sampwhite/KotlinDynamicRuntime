@@ -564,7 +564,10 @@ each row keeps its typed values and its problems, worked out when the row change
   (`aria-activedescendant`); Tab leaves it. Arrows move, Shift+arrows select a block, Home/End and Ctrl+Home/End jump,
   Page Up/Down move 20 rows, Enter or F2 edits, a typed character replaces the cell, Delete clears, Space turns a yes or
   no (`onGridKey`). In a cell's editor, Enter commits and moves down (adding a row on the last), Tab and Shift+Tab move
-  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`). A
+  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`), and a
+  day column with an antd `DatePicker`, its calendar open, writing the CSV's `yyyy-MM-dd` -- except an edit begun by
+  typing a key (`GridEdit.typed`), which stays a text box, since a picker's box cannot start with the key typed; a
+  typed day is checked as any cell is, and a bad cell is tinted red (`.data-grid-invalid`). A
   click on another cell commits the open edit first (`clickCell`, `openCell`): React draws the click's update before
   the browser moves focus, so the editor is gone before its blur could commit it.
 - **Copy and paste** go through the clipboard's own events on the box: Copy writes the selected block as tab-separated
@@ -576,7 +579,8 @@ each row keeps its typed values and its problems, worked out when the row change
   and column, and the cursor goes to the cell), else each changed table is uploaded once as a new CSV and
   `applyTableUpdates` puts its file id at the field's path in the values the save then sends. A grid's unsaved rows --
   an open edit that changed its cell among them (`GridState.unsaved`), so Save is on before the click that commits it --
-  count as an unsaved change (`drafts.anyDirty()`), and Reset reloads every grid from its field's file (`resetAll`).
+  count as an unsaved change (`drafts.anyDirty()`), and Reset reloads every grid from its field's file (`resetAll`). A
+  grid's own **Reset table** does that for it alone, leaving the form's other fields as they are.
   **Save is guarded from the click** (`beginSave`/`endSave`), not by the page's busy state, which React draws a moment
   later: two clicks in that moment would otherwise upload and save twice. **A grid taken off the page keeps its unsaved
   rows with the page** (`keep`/`takeKept`) -- a workflow page draws one task at a time -- and takes them back when drawn

@@ -74,7 +74,7 @@ class DataGridModelTest {
     @Test
     fun anEditIsCommittedAsStoredAndChecked() {
         val g = grid().moveTo(GridCell(0, 1)).startEdit("Taxi")
-        assertEquals(GridEdit(GridCell(0, 1), "Taxi"), g.editing)
+        assertEquals(GridEdit(GridCell(0, 1), "Taxi", typed = true), g.editing)
         val done = g.commitEdit(dRow = 1)
         // A choice's label is stored as its value; the cursor moves down.
         assertEquals("taxi", done.text(GridCell(0, 1)))
@@ -302,5 +302,19 @@ class DataGridModelTest {
         assertTrue(g.startEdit().editText("2026-11-09").unsaved)
         assertTrue(g.startEdit("x").committed().dirty)
         assertTrue(g.committed() === g)
+    }
+
+    @Test
+    fun aDayIsTypedOrPicked() {
+        // Opened by a key typed, a day is typed as text; opened any other way, it is picked from a calendar.
+        assertTrue(grid().onGridKey("2", shift = false, ctrl = false)?.editing?.typed == true)
+        assertFalse(grid().onGridKey("Enter", shift = false, ctrl = false)?.editing?.typed == true)
+        assertFalse(grid().openCell(GridCell(1, 0)).editing?.typed == true)
+        // A day picked is stored in the CSV's spelling, and one typed with anything after it is a problem.
+        assertEquals("2026-11-09", grid().startEdit().editText("2026-11-09").commitEdit().text(GridCell(0, 0)))
+        val bad = grid().startEdit("2026-11-03l").commitEdit()
+        assertEquals("2026-11-03l", bad.text(GridCell(0, 0)))
+        assertEquals("'2026-11-03l' is not a day (yyyy-MM-dd).", bad.rows[0].problems[0])
+        assertTrue(bad.problems().any { it.message.startsWith("Row 1, Day:") })
     }
 }
