@@ -79,7 +79,7 @@ class ReportBindTest {
     private val unionDefs = mapOf(
         "$ns.Payment" to mapOf(
             SCH.type to SCT.kObject,
-            SCH.oneOf to listOf(mapOf(SCH.dRef to "#/\$defs/$ns.Card"), mapOf(SCH.dRef to "#/\$defs/$ns.Cash")),
+            SCH.oneOf to listOf(mapOf(SCH.dRef to $$"#/$defs/$$ns.Card"), mapOf(SCH.dRef to $$"#/$defs/$$ns.Cash")),
             SCH.discriminator to mapOf(SCH.propertyName to "kind"),
         ),
         // Both declare `total` as a number; they disagree on `settled`, a flag on a card and a count on cash.
@@ -353,8 +353,9 @@ class ReportBindTest {
         val latest = col("latest", "form.audit.visitedOn", rollup = ReportCombine.max)
         val visits = col("visits", "form.audit.revisits", rollup = ReportCombine.count)
         val plain = col("plain", "form.audit.score")
+        val listed = col("listed", "form.audit.score", rollup = ReportCombine.list)
         fun charted(kind: ReportChartKind, measure: String?, groupBy: List<String> = listOf("auditor")) =
-            report(auditor, score, average, latest, visits, plain, groupBy = groupBy, chart = ReportChart(kind, measure))
+            report(auditor, score, average, latest, visits, plain, listed, groupBy = groupBy, chart = ReportChart(kind, measure))
 
         // The count, a sum, and a count of a list's values all draw either way; an average draws only as bars.
         for (measure in listOf(null, "score", "visits")) {
@@ -365,7 +366,12 @@ class ReportBindTest {
         reportRefusal(charted(ReportChartKind.bar, null, groupBy = emptyList()), ReportBindProblem.chart, "groups by nothing")
         reportRefusal(charted(ReportChartKind.bar, "nope"), ReportBindProblem.chart, "not one of its columns")
         reportRefusal(charted(ReportChartKind.bar, "auditor"), ReportBindProblem.chart, "which it groups by")
+        // And it says which rollups would draw it: a number per group, and for a pie, one that adds up (issue #1894).
         reportRefusal(charted(ReportChartKind.bar, "plain"), ReportBindProblem.chart, "has no rollup")
+        reportRefusal(charted(ReportChartKind.bar, "plain"), ReportBindProblem.chart, "rollup: first, count, sum, min, max, or avg.")
+        // A list per group draws nothing, though its values are numbers.
+        reportRefusal(charted(ReportChartKind.bar, "listed"), ReportBindProblem.chart, "to a list, not a number")
+        reportRefusal(charted(ReportChartKind.pie, "plain"), ReportBindProblem.chart, "rollup: count or sum.")
         reportRefusal(charted(ReportChartKind.bar, "latest"), ReportBindProblem.chart, "to a date, not a number")
         reportRefusal(charted(ReportChartKind.pie, "average"), ReportBindProblem.chart, "rolls up by avg")
     }

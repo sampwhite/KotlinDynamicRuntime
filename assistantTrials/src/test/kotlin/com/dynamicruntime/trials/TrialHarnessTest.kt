@@ -171,6 +171,41 @@ class TrialHarnessTest : StringSpec({
         outcome(emptyMap()) shouldBe OutcomeKind.notMet
     }
 
+    "a report is held to being made whole by create_report, not patched afterward" {
+        @Suppress("CanBeVal") var id = 0
+        fun call(name: String, input: Map<String, Any?>, refused: Boolean = false) = listOf(
+            mapOf(
+                ACNV.role to ABLK.assistant, ACNV.turnId to "t",
+                ACNV.content to listOf(mapOf(ABLK.type to ABLK.toolUse, ABLK.id to "c${++id}", ABLK.name to name, ABLK.input to input)),
+            ),
+            mapOf(
+                ACNV.role to ABLK.user, ACNV.turnId to "t",
+                ACNV.content to listOf(
+                    mapOf(ABLK.type to ABLK.toolResult, ABLK.toolUseId to "c$id", ABLK.content to "ok", ABLK.isError to refused),
+                ),
+            ),
+        )
+        fun create(dryRun: Boolean, refused: Boolean = false) = call(ATOOL.createReport, mapOf(CFEP.dryRun to dryRun), refused)
+        fun patch(slot: String, dryRun: Boolean = false) = call(
+            ATOOL.patchConfig,
+            mapOf(CFEP.dryRun to dryRun, CFEP.configs to listOf(mapOf(CFEP.edits to listOf(mapOf(CFEP.slot to slot))))),
+        )
+        fun outcome(vararg messages: List<Map<String, Any?>>): OutcomeKind {
+            val now = Clock.System.now()
+            val conversation = TrialConversation("c", emptyList(), messages.flatMap { it })
+            return Checks.reportMadeWhole(
+                TrialResult(smoke, smoke.variants.single(), "c", null, listOf(conversation), emptyMap(), emptyList(), now, now),
+            ).kind
+        }
+        outcome(create(true), create(false)) shouldBe OutcomeKind.met
+        // A patch of something else, or one only dry-run, is not a patch of the report.
+        outcome(create(true), create(false), patch(CCT.workflowDef), patch(CCT.reportDef, dryRun = true)) shouldBe OutcomeKind.met
+        // What every run did before the tool took a rollup: made it, then patched the total and the chart in.
+        outcome(create(true, refused = true), create(true), create(false), patch(CCT.reportDef)) shouldBe OutcomeKind.varied
+        outcome(patch(CCT.reportDef)) shouldBe OutcomeKind.varied
+        outcome(create(false, refused = true)) shouldBe OutcomeKind.notMet
+    }
+
     "a change made without saying dryRun, through a tool that offers one, was not dry-run" {
         @Suppress("CanBeVal") var id = 0
         fun call(turn: String, input: Map<String, Any?>) = listOf(

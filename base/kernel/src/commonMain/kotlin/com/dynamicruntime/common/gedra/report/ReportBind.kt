@@ -14,6 +14,7 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.isDateFormat
+import com.dynamicruntime.common.user.joinedWithOr
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.ProblemCode
 
@@ -187,9 +188,17 @@ private fun chartProblem(report: ClientReport, chart: ReportChart, bound: List<B
     if (measure in report.groupBy) {
         return "Its chart measures '$measure', which it groups by; measure a rolled-up column, or leave the measure out to count the forms."
     }
+    // The rollups that would draw it, so the refusal says how to fix it (issue #1894): one number per group, and for a pie
+    // one that adds up.
+    fun draws(r: ReportCombine) = !r.yieldsList && r.resultKind(column.kind) == ReportKind.number
+    val drawable = ReportCombine.entries.filter {
+        it.allows(column.kind) && draws(it) && (chart.kind != ReportChartKind.pie || it.addsUp)
+    }
     val rollup = column.column.rollup
-        ?: return "Its chart measures '$measure', which has no rollup, so a group has no one value of it to draw."
-    if (rollup.resultKind(column.kind) != ReportKind.number) {
+        ?: return "Its chart measures '$measure', which has no rollup, so a group has no one value of it to draw; give it a " +
+            "${RDEF.rollup}: ${joinedWithOr(drawable.map { it.name })}."
+    if (rollup.yieldsList) return "Its chart measures '$measure', which rolls up by ${rollup.name} to a list, not a number."
+    if (!draws(rollup)) {
         return "Its chart measures '$measure', which rolls up by ${rollup.name} to a ${column.kind.name}, not a number."
     }
     if (chart.kind == ReportChartKind.pie && !rollup.addsUp) {

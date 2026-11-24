@@ -396,8 +396,9 @@ declaring none opens on its table alone.
 The checks, when the report binds:
 
 - the report groups by something, since a chart draws groups;
-- a measure names one of its columns that has a rollup whose result is a number (a `count`, or a number rolled up),
-  the same columns the History view offers to chart, and not one it groups by, which has one value per group;
+- a measure names one of its columns that has a rollup whose result is one number (a `count`, or a number rolled up,
+  but not to a `list` or `distinct`), the same columns the History view offers to chart, and not one it groups by,
+  which has one value per group. A measure with no rollup is refused naming the rollups that would draw it;
 - a pie's measure adds up (`ReportCombine.addsUp`): the count, or a `count` or `sum` rollup. A pie's slices are
   shares of a whole, which an average, a minimum or a maximum does not make.
 
