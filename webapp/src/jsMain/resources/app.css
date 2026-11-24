@@ -617,6 +617,24 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .op-table.data-table { margin-top: 0; }
 .op-table.data-table td { white-space: pre-wrap; }
 .op-table.data-table tfoot td { font-weight: 600; border-top: 2px solid var(--border); }
+/* The data grid (issue #1885): one focusable box, a cursor outline, a selection tint, invalid cells marked. */
+.data-grid-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.data-grid-box { max-height: 480px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; outline: none; }
+.data-grid-box:focus-visible { box-shadow: 0 0 0 2px var(--accent-bright); }
+.op-table.data-grid { margin-top: 0; user-select: none; }
+.op-table.data-grid td.data-grid-cell { cursor: cell; min-width: 72px; white-space: pre-wrap; }
+.op-table.data-grid .data-grid-rownum { color: var(--text-muted, #94a3b8); width: 1%; text-align: right; }
+.op-table.data-grid td.data-grid-selected { background: rgba(129, 140, 248, 0.16); }
+.op-table.data-grid td.data-grid-active { box-shadow: inset 0 0 0 2px var(--accent-bright); }
+.op-table.data-grid td.data-grid-invalid { box-shadow: inset 0 -2px 0 #f87171; }
+.op-table.data-grid td.data-grid-invalid.data-grid-active { box-shadow: inset 0 0 0 2px var(--accent-bright), inset 0 -2px 0 #f87171; }
+.op-table.data-grid thead th { position: sticky; top: 0; z-index: 1; }
+.data-grid-input { width: 100%; min-width: 72px; box-sizing: border-box; font: inherit; color: inherit; background: var(--surface-page, #0f172a); border: 1px solid var(--accent-bright); border-radius: 3px; padding: 1px 4px; user-select: text; }
+.data-grid-summary { display: flex; align-items: center; gap: 4px; justify-content: inherit; white-space: nowrap; }
+.data-grid-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.data-grid-problems { margin: 0; padding-left: 18px; color: #f87171; }
+.data-grid-problems .ant-btn { padding: 0; height: auto; color: #fca5a5 !important; white-space: normal; text-align: left; }
+.data-grid-empty { padding: 8px 12px; }
 .files-uses { margin: 4px 0; padding-left: 20px; }
 /* An image or a video, at most a modest box: a form shows the file, it is not a viewer. */
 .data-file-preview { display: block; max-width: min(480px, 100%); max-height: 360px; border-radius: 4px; background: var(--surface-page); }

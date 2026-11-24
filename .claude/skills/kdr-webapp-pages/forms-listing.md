@@ -382,9 +382,11 @@ its kind and size, and an image or a `<video preload="metadata">` in place (`.da
   aligned -- in a `.data-table-scroll` of at most 420 pixels, a footer summing up each column as the grid will
   (`TableSummary.defaultFor`: a sum for a number, a count otherwise), and how many rows. The file's text is read once
   through `/files/content` and kept by its id with its parse (`DataTableApi`, the 16 used most recently), so **Download
-CSV** reads nothing again. Edited, it is uploaded as any file
-  field is until the grid (#1885); the grid's pure model is already `DataGridModel.kt` (`GridState`), covered by
-  `DataGridModelTest`.
+  CSV** reads nothing again. Edited, it is a **data grid** (`DataGrid.kt`, issue #1885; see `webapp/CLAUDE.md`'s "Data
+  grid"): rows typed or pasted, a summary picker per column, the first ten problems listed under it, each focusing its
+  cell. The create page, the raw editor, and the workflow pages each keep a `TableDrafts`: Save first saves every changed
+  grid as a new CSV file and sets it in its field, a grid's problem stops the save, a grid's unsaved rows enable Save,
+  and Reset reloads the grids.
 - **The field takes the file's id only once the file is ready**, so the form's values never hold one still uploading,
   which a save would refuse. An upload stopped by the network keeps its id and the browser's file in the component, and
   offers **Resume** (asks `/files/upload/status`, sends from `nextOffset`, or the last chunk again when every byte is in)

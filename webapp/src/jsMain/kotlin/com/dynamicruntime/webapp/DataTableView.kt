@@ -70,6 +70,13 @@ object DataTableApi {
         return read
     }
 
+    /** [text] kept as [fileId]'s content: a table a grid just saved, which it need not read back. */
+    fun remember(fileId: String, text: String) {
+        kept.remove(fileId)
+        kept[fileId] = Kept(text)
+        while (kept.size > cacheSize) kept.remove(kept.keys.first())
+    }
+
     /** [fileId]'s content as text. */
     suspend fun readText(fileId: String): String = keptOf(fileId).text
 

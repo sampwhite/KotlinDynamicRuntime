@@ -554,6 +554,34 @@ validated — that a control renders the right choices, that an invalid choice s
 save navigates where it should. The run above used the API as the witness after every save for exactly this
 reason.
 
+## Data grid (issue #1885)
+
+A table field (a file field holding a CSV table, `isDataTable()`) is edited as a **grid** (`DataGrid.kt`), its rules a
+pure model (`DataGridModel.kt`, `GridState`, covered by `DataGridModelTest`): a cell's text is what the CSV stores, and
+each row keeps its typed values and its problems, worked out when the row changes.
+
+- **One Tab stop.** The grid box (`.data-grid-box`, `role="grid"`) takes the keys and names its active cell
+  (`aria-activedescendant`); Tab leaves it. Arrows move, Shift+arrows select a block, Home/End and Ctrl+Home/End jump,
+  Page Up/Down move 20 rows, Enter or F2 edits, a typed character replaces the cell, Delete clears, Space turns a yes or
+  no (`onGridKey`). In a cell's editor, Enter commits and moves down (adding a row on the last), Tab and Shift+Tab move
+  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`).
+- **Copy and paste** go through the clipboard's own events on the box: Copy writes the selected block as tab-separated
+  text, and a paste fills from the cursor, skips a header row, adds rows up to the field's limit, and says how many did
+  not fit (`GridPaste.droppedRows`).
+- **Saved with the form, not as you type.** The field holds a file's id, so a page that can save a form provides a
+  `TableDraftsContext` (`useTableDrafts()`; a workflow page also a `TableDraftsScopeContext` per trait), and each grid
+  registers there. Save calls `drafts.flushAll()` first: a grid with a problem refuses (the message names the field, row,
+  and column, and the cursor goes to the cell), else each changed table is uploaded once as a new CSV and
+  `applyTableUpdates` puts its file id at the field's path in the values the save then sends. A grid's unsaved rows count
+  as an unsaved change (`drafts.anyDirty()`), and Reset reloads every grid from its field's file (`resetAll`). Outside a
+  form surface -- no context -- a table field is a plain file field.
+- **Driving it from the browser tools.** The tools' `type` sends no `keydown` with a `key`, so it cannot start an edit in
+  the box: dispatch `KeyboardEvent('keydown', {key, bubbles: true})` to `.data-grid-box`, set an editor's text with the
+  native value setter and an `input` event, and dispatch `ClipboardEvent('paste'/'copy', {clipboardData: new
+  DataTransfer()})` to the box. A script-dispatched event renders on the next task, so measure with `setTimeout(0)`, and
+  never with `requestAnimationFrame`, which a background pane throttles to a second. Measured: a commit at 1,000 rows by
+  4 columns in 4 to 11 ms, a 1,000-row paste in about 90 ms.
+
 ## Errors: never a blank page (issue #223)
 <!-- Theme: #ENVAT -->
 

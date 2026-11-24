@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.report.ReportCombine
+import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.uniquenessKey
@@ -348,3 +349,68 @@ fun GridState.problems(limit: Int = 10): List<GridProblem> {
 
 /** The grid as its table's CSV, as a save stores it ([writeTable]): a header of the column names, then each row's cells. */
 fun GridState.csvText(): String = writeTable(rowType, rows.map { it.cells })
+
+/** The grid's keyboard numbers (issue #1885). Each name matches its value. */
+@Suppress("ConstPropertyName")
+object GRIDK {
+    /** How many rows Page Up and Page Down move. */
+    const val pageRows = 20
+}
+
+/** This grid, its field's table saved as [fileId]: the new base, with nothing unsaved. */
+fun GridState.savedAs(fileId: String): GridState =
+    GridState(rowType, columns, rows, active, anchor, null, false, fileId, maxRows, nextId)
+
+/** This grid on a new base file, [fileId], its unsaved rows kept: rows typed while the last save went up. */
+fun GridState.rebasedOn(fileId: String): GridState =
+    GridState(rowType, columns, rows, active, anchor, editing, dirty, fileId, maxRows, nextId)
+
+/** The active cell's yes or no turned the other way, when its column is a yes or no; an empty one becomes yes. */
+fun GridState.toggleBoolean(): GridState {
+    val at = active ?: return this
+    val column = columns.getOrNull(at.col) ?: return this
+    if (column.kind != ReportKind.boolean) return this
+    val now = typedCell(text(at), column).value as? Boolean
+    return setCells(mapOf(at to (now != true).toString()))
+}
+
+/**
+ * A key pressed on the grid while no cell is edited, as `KeyboardEvent.key` names it, or null when the grid does not
+ * take it -- a Tab among them, which leaves the grid, its one stop in the page's order:
+ *
+ * - the arrows move the cursor, and with Shift stretch the selection;
+ * - Home and End go to the row's first and last cell, and with Ctrl (or ⌘) to the grid's; Page Up and Page Down move
+ *   [GRIDK.pageRows] rows;
+ * - Enter and F2 edit the cell, and a character typed starts an edit with it, replacing what was there;
+ * - Delete and Backspace empty the selection; Space turns a yes or no the other way.
+ */
+fun GridState.onGridKey(key: String, shift: Boolean, ctrl: Boolean): GridState? {
+    val at = active ?: return null
+    fun go(cell: GridCell) = if (shift) extendTo(cell) else moveTo(cell)
+    return when (key) {
+        "ArrowUp" -> if (shift) extend(-1, 0) else move(-1, 0)
+        "ArrowDown" -> if (shift) extend(1, 0) else move(1, 0)
+        "ArrowLeft" -> if (shift) extend(0, -1) else move(0, -1)
+        "ArrowRight" -> if (shift) extend(0, 1) else move(0, 1)
+        "Home" -> go(if (ctrl) GridCell(0, 0) else GridCell(at.row, 0))
+        "End" -> go(if (ctrl) GridCell(rows.size - 1, columns.size - 1) else GridCell(at.row, columns.size - 1))
+        "PageUp" -> go(GridCell(at.row - GRIDK.pageRows, at.col))
+        "PageDown" -> go(GridCell(at.row + GRIDK.pageRows, at.col))
+        "Enter", "F2" -> startEdit()
+        "Delete", "Backspace" -> clear()
+        " " -> if (columns.getOrNull(at.col)?.kind == ReportKind.boolean) toggleBoolean() else startEdit(key)
+        else -> if (key.length == 1 && !ctrl) startEdit(key) else null
+    }
+}
+
+/**
+ * A key pressed in a cell's editor, or null when the editor keeps it (a character, an arrow within the text): Enter
+ * commits and moves down -- adding a row on the last, while the grid may hold one -- and Shift+Enter up; Tab commits and
+ * moves right, Shift+Tab left; Escape drops the edit.
+ */
+fun GridState.onEditorKey(key: String, shift: Boolean): GridState? = when (key) {
+    "Enter" -> if (shift) commitEdit(dRow = -1) else commitEdit(dRow = 1, addRowAtEnd = true)
+    "Tab" -> commitEdit(dCol = if (shift) -1 else 1)
+    "Escape" -> cancelEdit()
+    else -> null
+}

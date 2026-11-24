@@ -229,4 +229,53 @@ class DataGridModelTest {
         assertEquals("1 row", tableRowCountText(1))
         assertEquals("3 rows", tableRowCountText(3))
     }
+
+    @Test
+    fun theKeysMoveSelectAndEdit() {
+        val g = grid()
+        assertEquals(GridCell(1, 0), g.onGridKey("ArrowDown", shift = false, ctrl = false)?.active)
+        assertEquals(GridBlock(0, 0, 0, 1), g.onGridKey("ArrowRight", shift = true, ctrl = false)?.selection)
+        assertEquals(GridCell(0, 3), g.onGridKey("End", shift = false, ctrl = false)?.active)
+        assertEquals(GridCell(1, 3), g.onGridKey("End", shift = false, ctrl = true)?.active)
+        assertEquals(GridCell(1, 0), g.onGridKey("PageDown", shift = false, ctrl = false)?.active)
+        assertEquals(GridCell(0, 0), g.move(1, 2).onGridKey("Home", shift = false, ctrl = true)?.active)
+        assertEquals(GridEdit(GridCell(0, 0), "2026-11-02"), g.onGridKey("F2", shift = false, ctrl = false)?.editing)
+        // A character typed replaces the cell.
+        assertEquals("7", g.moveTo(GridCell(0, 2)).onGridKey("7", shift = false, ctrl = false)?.editing?.text)
+        assertEquals("", g.onGridKey("Delete", shift = false, ctrl = false)?.text(GridCell(0, 0)))
+        // Space turns a yes or no.
+        assertEquals("true", g.moveTo(GridCell(0, 3)).onGridKey(" ", shift = false, ctrl = false)?.text(GridCell(0, 3)))
+        assertEquals("false", g.moveTo(GridCell(0, 3)).toggleBoolean().toggleBoolean().text(GridCell(0, 3)))
+        // Tab, and a key with Ctrl, are left to the browser.
+        assertNull(g.onGridKey("Tab", shift = false, ctrl = false))
+        assertNull(g.onGridKey("c", shift = false, ctrl = true))
+    }
+
+    @Test
+    fun theEditorsKeysCommitMoveOrDrop() {
+        val g = grid().moveTo(GridCell(0, 2)).startEdit("5")
+        assertEquals(GridCell(1, 2), g.onEditorKey("Enter", shift = false)?.active)
+        assertEquals(GridCell(0, 3), g.onEditorKey("Tab", shift = false)?.active)
+        assertEquals(GridCell(0, 1), g.onEditorKey("Tab", shift = true)?.active)
+        assertEquals("12.50", g.onEditorKey("Escape", shift = false)?.text(GridCell(0, 2)))
+        assertEquals("5", g.onEditorKey("Enter", shift = false)?.text(GridCell(0, 2)))
+        assertNull(g.onEditorKey("a", shift = false))
+    }
+
+    @Test
+    fun aSaveRebasesTheGrid() {
+        val changed = grid().moveTo(GridCell(0, 2)).startEdit("5").commitEdit()
+        val saved = changed.savedAs("gd.df.c.9")
+        assertFalse(saved.dirty)
+        assertEquals("gd.df.c.9", saved.baseFileId)
+        val rebased = changed.rebasedOn("gd.df.c.9")
+        assertTrue(rebased.dirty)
+        assertEquals("gd.df.c.9", rebased.baseFileId)
+        assertEquals("Count", combineLabel(ReportCombine.count))
+        assertEquals("42.5", summaryValueText(42.5))
+        assertEquals("30", summaryValueText(30.0))
+        assertEquals("2 pasted rows did not fit: this field holds at most 5 rows.", pasteDroppedText(2, 5))
+        assertNull(pasteDroppedText(0, 5))
+        assertEquals("3 rows · at most 5", gridRowCountText(3, 5))
+    }
 }

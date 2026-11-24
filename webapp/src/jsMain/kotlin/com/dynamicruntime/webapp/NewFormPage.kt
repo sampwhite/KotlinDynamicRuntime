@@ -65,6 +65,8 @@ val NewFormPage = FC<Props> {
     // config) gets no picker.
     var createsForOthers by useState(false)
     var pickedUser by useState<AdminUser?>(null)
+    // The page's data grids (issue #1885), saved before the create.
+    val drafts = useTableDrafts()
 
     useEffectOnce {
         // Whether to offer the create-for-user picker (issue #727): its own coroutine, never awaited before the
@@ -130,31 +132,77 @@ val NewFormPage = FC<Props> {
                     FormUserPicker { onPick = { pickedUser = it } }
                 }
 
-                SchemaForm {
-                    type = inputType
-                    this.values = values
-                    editable = true
-                    // Friendly data-entry presentation: fields labeled by title/humanized key, and the derived
-                    // system fields (entryId, source, the audit stamps) hidden rather than shown read-only.
-                    friendly = true
-                    // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
-                    // not see is hidden here. The backend enforces the condition regardless of what is drawn.
-                    cfacts = cat.cfacts
-                    // The per-type layouts (issue #586): a field's label/description come from the layout for
-                    // its type, cascading over the schema's title/description. Joined by type name inside the form.
-                    fieldLayouts = cat.fieldLayouts
-                    // The fields the page answers itself, not the form (issues #727, #762): the one list both
-                    // create pages use; each defaults absent.
-                    omit = formCreateOmittedFields
-                    this.failures = failures
-                    onChange = { values = it }
-                    // Clearing on edit rather than re-checking: a field being corrected must not keep showing the
-                    // complaint about what it used to hold, and dropping the last failure returns to null (not an
-                    // empty list), because empty draws the ✓ that an unchecked edit has not earned.
-                    onFieldEdit = { path ->
-                        failures?.let { current ->
-                            failures = current.clearedAt(path).ifEmpty { null }
-                            revalidate = true
+                TableDraftsContext.Provider {
+                    value = drafts
+                    SchemaForm {
+                        type = inputType
+                        this.values = values
+                        editable = true
+                        // Friendly data-entry presentation: fields labeled by title/humanized key, and the derived
+                        // system fields (entryId, source, the audit stamps) hidden rather than shown read-only.
+                        friendly = true
+                        // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
+                        // not see is hidden here. The backend enforces the condition regardless of what is drawn.
+                        cfacts = cat.cfacts
+                        // The per-type layouts (issue #586): a field's label/description come from the layout for
+                        // its type, cascading over the schema's title/description. Joined by type name inside the form.
+                        fieldLayouts = cat.fieldLayouts
+                        // The fields the page answers itself, not the form (issues #727, #762): the one list both
+                        // create pages use; each defaults absent.
+                        omit = formCreateOmittedFields
+                        this.failures = failures
+                        onChange = { values = it }
+                        // Clearing on edit rather than re-checking: a field being corrected must not keep showing the
+                        // complaint about what it used to hold, and dropping the last failure returns to null (not an
+                        // empty list), because empty draws the ✓ that an unchecked edit has not earned.
+                        onFieldEdit = { path ->
+                            failures?.let { current ->
+                                failures = current.clearedAt(path).ifEmpty { null }
+                                revalidate = true
+                            }
+                        }
+                    }
+                }
+
+                // The create itself, from [sending]: the form's values with any grid's new file in its field.
+                fun createWith(sending: Map<String, Any?>) {
+                    val check = checkInput(inputType, sending)
+                    failures = check.failures
+                    revalidate = false
+                    val payload = check.payload
+                    if (payload == null) {
+                        // Something failed: show it, and send focus to the first problem rather than
+                        // making it be hunted for.
+                        focusRequest += 1
+                    } else {
+                        running = true
+                        runError = null
+                        // The address this create was launched under (#758 review): the return carries *this*
+                        // listing context home, and only while the user is still here.
+                        val launched = routeParams()
+                        formScope.launch {
+                            try {
+                                // Create for the picked user when an admin chose one (issue #727); absent
+                                // is the ordinary self-create.
+                                // With the tokens of the ids the page asked for (issue #1849).
+                                val sent = withCounterTokens(payload, counterIds.tokens)
+                                val body = pickedUser?.let { formForUserBody(it.primaryId, sent) } ?: sent
+                                val response = SchemaCatalogApi.invoke(ep, body)
+                                // Back to the listing (issue #663), flashing the new row -- the same
+                                // confirmation the edit form's save gives (issue #592) -- rather than an
+                                // in-place screen, and to the *same* listing the create was launched from
+                                // (issue #669): the originating search and sort ride in the address. The one
+                                // shared return (issue #758), flagged as a create so a row the active
+                                // filter excludes is announced rather than silently absent. No
+                                // running=false here: this navigation unmounts the page.
+                                val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
+                                formsCreateReturn(launched, routeParams(), newId)?.let { navigate(it) }
+                            } catch (e: Throwable) {
+                                // Only the failure path stays on the page, so re-enable the button here
+                                // rather than in a finally that would run after a create has navigated away.
+                                runError = userFacingError(e)
+                                running = false
+                            }
                         }
                     }
                 }
@@ -165,43 +213,16 @@ val NewFormPage = FC<Props> {
                         type = "primary"
                         loading = running
                         onClick = {
-                            val check = checkInput(inputType, values)
-                            failures = check.failures
-                            revalidate = false
-                            val payload = check.payload
-                            if (payload == null) {
-                                // Something failed: show it, and send focus to the first problem rather than
-                                // making it be hunted for.
-                                focusRequest += 1
-                            } else {
-                                running = true
-                                runError = null
-                                // The address this create was launched under (#758 review): the return carries *this*
-                                // listing context home, and only while the user is still here.
-                                val launched = routeParams()
-                                formScope.launch {
-                                    try {
-                                        // Create for the picked user when an admin chose one (issue #727); absent
-                                        // is the ordinary self-create.
-                                        // With the tokens of the ids the page asked for (issue #1849).
-                                        val sent = withCounterTokens(payload, counterIds.tokens)
-                                        val body = pickedUser?.let { formForUserBody(it.primaryId, sent) } ?: sent
-                                        val response = SchemaCatalogApi.invoke(ep, body)
-                                        // Back to the listing (issue #663), flashing the new row -- the same
-                                        // confirmation the edit form's save gives (issue #592) -- rather than an
-                                        // in-place screen, and to the *same* listing the create was launched from
-                                        // (issue #669): the originating search and sort ride in the address. The one
-                                        // shared return (issue #758), flagged as a create so a row the active
-                                        // filter excludes is announced rather than silently absent. No
-                                        // running=false here: this navigation unmounts the page.
-                                        val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
-                                        formsCreateReturn(launched, routeParams(), newId)?.let { navigate(it) }
-                                    } catch (e: Throwable) {
-                                        // Only the failure path stays on the page, so re-enable the button here
-                                        // rather than in a finally that would run after a create has navigated away.
-                                        runError = userFacingError(e)
-                                        running = false
-                                    }
+                            // A grid's unsaved rows first (issue #1885): each saved as its new file, set in its field.
+                            formScope.launch {
+                                val flushed = drafts.flushAll()
+                                val refusal = flushed.refusal
+                                if (refusal != null) {
+                                    runError = DisplayError.expected(refusal)
+                                } else {
+                                    val current = applyTableUpdates(values, flushed.updates)
+                                    if (flushed.updates.isNotEmpty()) values = current
+                                    createWith(current)
                                 }
                             }
                         }

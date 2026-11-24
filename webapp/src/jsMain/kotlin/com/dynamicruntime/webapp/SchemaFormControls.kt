@@ -67,8 +67,8 @@ enum class ControlKind {
     DataFile,
 
     /**
-     * A table field (issue #1884): a file holding a CSV table. Read-only it is drawn as its table ([DataTableValue]); until
-     * the grid edits it (#1885), edited as a file is, by uploading a CSV.
+     * A table field (issues #1884, #1885): a file holding a CSV table. Read-only it is drawn as its table
+     * ([DataTableValue]); edited, as a [DataGrid] saved with its form.
      */
     DataTable,
 
@@ -142,6 +142,10 @@ internal fun ChildrenBuilder.widget(
     zoneNoteId: String? = null,
     /** How many lines a long text field's box starts with on this form (issue #1550, [SchLayoutField.lines]). */
     lines: Int? = null,
+    /** The field's path in its form's values: where a data grid's saved file is set (issue #1885). */
+    path: String = "",
+    /** What the field is called on this form, for a grid's problem that stops a save. */
+    label: String? = null,
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
@@ -252,9 +256,18 @@ internal fun ChildrenBuilder.widget(
             }
             markInvalid(asDynamic(), describedBy)
         }
+        // A table field (issue #1885): its rows edited in a grid, saved with the form as a new file.
+        ControlKind.DataTable -> DataGrid {
+            type = vt
+            this.value = value?.toString()?.ifEmpty { null }
+            this.path = path
+            this.label = label ?: vt.title
+            this.describedBy = describedBy
+            onEmit = { id -> emit(id) }
+            onCommit = commit
+        }
         // A file in a form's data (issue #1840): uploaded by the field itself, which emits the file's id once it is ready.
-        // A table field is uploaded the same way until the grid edits it (#1885).
-        ControlKind.DataFile, ControlKind.DataTable -> DataFileField {
+        ControlKind.DataFile -> DataFileField {
             type = vt
             this.value = value?.toString()?.ifEmpty { null }
             this.describedBy = describedBy
