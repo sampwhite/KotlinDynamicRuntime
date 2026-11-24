@@ -226,9 +226,11 @@ object Checks {
         fun named(item: Map<String, Any?>, label: String): String? =
             (item[UIB.action] as? String)?.takeIf { !item[label].toOptStr().isNullOrBlank() && ClientPages.forName(it) != null }
         val text = card[HCARD.text].toOptStr().orEmpty()
-        return listOfNotNull(named(card, HCARD.actionLabel)) +
-            card[HCARD.links].toJsonListOfMaps().mapNotNull { named(it, HCARD.linkLabel) } +
-            ClientPages.all.filter { "](${ClientPages.address(it)})" in text }.map { it.page }
+        return buildList {
+            addAll(listOfNotNull(named(card, HCARD.actionLabel)))
+            card[HCARD.links].toJsonListOfMaps().mapNotNullTo(this) { named(it, HCARD.linkLabel) }
+            ClientPages.all.filter { "](${ClientPages.address(it)})" in text }.mapTo(this) { it.page }
+        }
     }
 
     /**
