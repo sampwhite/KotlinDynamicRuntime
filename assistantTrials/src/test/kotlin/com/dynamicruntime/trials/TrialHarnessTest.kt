@@ -171,6 +171,30 @@ class TrialHarnessTest : StringSpec({
         outcome(emptyMap()) shouldBe OutcomeKind.notMet
     }
 
+    "a review that starts with someone else's step is held to highlighting its Start" {
+        fun outcome(extra: Map<String, Any?>, firstTask: Map<String, Any?>? = null): OutcomeKind {
+            val approve = mapOf(WFD.id to "approve", WFD.approval to mapOf(WFD.cfact to "approved"))
+            val review = mapOf(
+                CCT.workflowId to "review",
+                CCT.definition to mapOf(
+                    WFD.workflowId to "review", WFD.entry to WfEntry.normal.name, WFD.tasks to listOfNotNull(firstTask, approve),
+                ) + extra,
+            )
+            val bundle = mapOf(CFEP.slots to mapOf(CCT.workflowDef to listOf(review)))
+            val now = Clock.System.now()
+            return Checks.reviewHighlightsStart(
+                TrialResult(smoke, smoke.variants.single(), "c", null, emptyList(), mapOf("b" to bundle), emptyList(), now, now),
+            ).kind
+        }
+        val highlighted = mapOf(WFD.highlightStart to true)
+        outcome(highlighted) shouldBe OutcomeKind.met
+        outcome(emptyMap()) shouldBe OutcomeKind.notMet
+        // A first task only a reviewer may save is someone else's step too.
+        outcome(emptyMap(), mapOf(WFD.id to "score", WFD.saveWhen to "kdr:reviewer")) shouldBe OutcomeKind.notMet
+        // The applicant's own step first: there is nobody else to point at the form.
+        outcome(emptyMap(), mapOf(WFD.id to "budget")) shouldBe OutcomeKind.info
+    }
+
     "a report is held to being made whole by create_report, not patched afterward" {
         @Suppress("CanBeVal") var id = 0
         fun call(name: String, input: Map<String, Any?>, refused: Boolean = false) = listOf(

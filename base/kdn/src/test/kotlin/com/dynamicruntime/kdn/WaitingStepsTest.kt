@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.workflow.CDF
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFC
@@ -46,6 +47,7 @@ import io.kotest.matchers.shouldBe
 class WaitingStepsTest : StringSpec({
     include(waitingStepsTests())
     include(highlightedStartTests())
+    include(highlightedApprovalTests())
 })
 
 /** This file's own tests, as the class describes them. */
@@ -299,5 +301,71 @@ private fun highlightedStartTests() = stringSpec {
         // waiting on the reviewer.
         owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "check"))
         reasons(owner, gid) shouldBe mapOf("check" to WfWaitsOn.others.name)
+    }
+}
+
+/**
+ * A highlighted Start whose first task is an **approval**, eligible on complete core details (issue #1895): the review the
+ * configuration assistant writes. The approval task collects nothing and offers no save, so what makes the Start the
+ * reviewer's is the approval's own condition.
+ */
+private fun highlightedApprovalTests() = stringSpec {
+    val cxt = TestInstances.default("highlightedApproval1895")
+    val client = "hlapprove1895"
+
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+        defineClient(
+            ClientDef(
+                clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                enabledEnvironments = setOf(ENV.unit, ENV.local), userLabels = listOf("reviewer"),
+            ),
+        )
+        cfact("askApproved", "Review", "A reviewer approved the ask.")
+        trait("AskEntry", "ask", setOf(GedraDataType.formDoc), "What is asked for.") { property("amount", "The amount.") }
+        workflow("details", WfEntry.coreDetails) {
+            task("describe", "Describe the ask") {
+                trait("ask")
+                save("saveAsk", "Save", WfSaveKind.edit)
+            }
+        }
+        workflow("review", WfEntry.normal) {
+            highlightStart = true
+            eligibility("coreDetailsDone", CDF.coreDetailsComplete, "The core details come first.")
+            task("approve", "Approve the ask") {
+                approval("askApproved", "Approve the ask?", "Approve")
+                function(userHasLabel { label = "reviewer" })
+            }
+        }
+    }
+    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 18950L }, config)
+    GedraConfigReload.reloadClient(cxt, client)
+
+    val owner = TestUser.create(cxt, "owner@$client.test", userClient = client)
+    val admin = TestUser.create(cxt, "admin@$client.test", level = ROLE.admin, userClient = client)
+    val reviewer = TestUser.create(cxt, "reviewer@$client.test", capabilities = listOf(ROLE.editor), userClient = client).also {
+        admin.postData(UADEP.userSetLabels, mapOf(ADF.userId to it.userId, ADF.labels to listOf("reviewer")))
+    }
+
+    /** Whether "waiting on you" lists form [gid] for [user], and the review step it lists there: its task, and whether a Start. */
+    fun turn(user: TestUser, gid: String): Pair<String?, Boolean>? =
+        user.client.sendJsonGetRequest(clientPath(GEP.formDocs, client), mapOf(GDF.withStates to true, GDF.needsMe to true))[EP.items]
+            .toJsonListOfMaps().firstOrNull { it[GDF.gedraId] == gid }?.get(GDF.waitingSteps).toJsonListOfMaps()
+            .firstOrNull { it[WFD.workflowId] == "review" }?.let { it[WFS.ctaTask].toOptStr() to (it[SWF.startsWorkflow] == true) }
+
+    fun create(vararg entries: Map<String, Any?>): String =
+        owner.postItem(GEP.formDocCreate, mapOf(GDF.entries to entries.toList()))[GDF.gedraId].toOptStr()!!
+
+    "an approval that starts a workflow is a reviewer's turn once the form may enter it, and before it has" {
+        val gid = create(mapOf(GE.traitId to "ask", GE.data to mapOf("amount" to "500")))
+        turn(reviewer, gid) shouldBe ("approve" to true)
+        // An approval left to its default is never the owner's.
+        turn(owner, gid) shouldBe null
+        // Once the form is in, the approval is the current task, and no longer a Start.
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "review"))
+        turn(reviewer, gid) shouldBe ("approve" to false)
+    }
+
+    "a form whose core details are not complete is nobody's to start" {
+        turn(reviewer, create()) shouldBe null
     }
 }

@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.workflow.CDF
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
@@ -160,6 +161,10 @@ object AssistantPrompt {
             |Reviews and approvals:
             |- A review works on a form's answers, so it waits for them: give it an eligibility test on
             |  '${CDF.coreDetailsComplete}', and a form may enter it only once its core details are complete.
+            |- A workflow whose first step is not the form owner's to take (a review, an approval) sets
+            |  '${WFD.highlightStart}' to true, beside its 'entry'. A form that may enter it, and has not, then shows as
+            |  the turn of whoever could take that step, in the forms list. Without it, a reviewer is not told of the
+            |  form until someone has started the review. It never decides who may start it.
             |- An approval task collects no traits and offers no saves. It is a button, pressed by whoever its
             |  'approveWhen' admits, by default a reviewer who does not own the form ('kdr:reviewer,~kdr:isOwner').
             |  'kdr:reviewer' comes from the task's 'userHasLabel' function, naming a label the client lists in its

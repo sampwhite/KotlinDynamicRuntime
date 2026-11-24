@@ -85,6 +85,10 @@ class ConfigView(val bundles: Map<String, Map<String, Any?>>) {
         it !== creation && it[WFD.entry] != WfEntry.coreDetails.name && it[WFD.fromTemplate] != WFT.coreDetails
     }
 
+    /** The review: the first normal workflow with an approval task. */
+    val review: Map<String, Any?>? get() =
+        normalWorkflows.firstOrNull { wf -> wf[WFD.tasks].toJsonListOfMaps().any { it[WFD.approval] != null } }
+
     /** The traits [workflow]'s tasks collect. */
     fun collected(workflow: Map<String, Any?>?): Set<String> = workflow?.get(WFD.tasks).toJsonListOfMaps()
         .flatMap { task -> task[WFD.traits].toJsonListOfMaps().mapNotNull { it[WFD.traitId].toOptStr() } }.toSet()
@@ -166,8 +170,7 @@ object Checks {
     fun approvalShowsNewForm(r: TrialResult): Outcome {
         val view = r.view
         val own = view.collected(view.creation).filterNot { ':' in it }
-        val workflow = view.normalWorkflows.firstOrNull { wf -> wf[WFD.tasks].toJsonListOfMaps().any { it[WFD.approval] != null } }
-            ?: return Outcome.notMet("No workflow with an approval task.")
+        val workflow = view.review ?: return Outcome.notMet("No workflow with an approval task.")
         if (own.isEmpty()) return Outcome.info("The New form collects no trait of the client's own.")
         val tasks = workflow[WFD.tasks].toJsonListOfMaps()
         val at = tasks.indexOfFirst { it[WFD.approval] != null }
@@ -191,6 +194,23 @@ object Checks {
                 "It shows them through task ${shownTasks.joinToString { "'${it[WFD.id]}'" }} of its workflow, not by naming them.",
             )
             else -> Outcome.notMet("It shows none of ${own.joinToString()}.")
+        }
+    }
+
+    /**
+     * The review highlights its Start (issue #1895), so whoever could take its first step sees a form that may enter it as
+     * their turn. Asked only of a review that starts with someone else's step: an approval, or a task whose save names
+     * who may save it. One that starts with a step of the applicant's own has nobody else to point at the form.
+     */
+    fun reviewHighlightsStart(r: TrialResult): Outcome {
+        val review = r.view.review ?: return Outcome.notMet("No workflow with an approval task.")
+        val name = "'${review[WFD.label] ?: review[WFD.workflowId]}'"
+        val first = review[WFD.tasks].toJsonListOfMaps().first()
+        return when {
+            review[WFD.highlightStart] == true -> Outcome.met("$name does.")
+            first[WFD.approval] == null && first[WFD.saveWhen] == null ->
+                Outcome.info("$name starts with '${first[WFD.label] ?: first[WFD.id]}', a step of the applicant's own.")
+            else -> Outcome.notMet("$name does not, so a reviewer is not pointed at a form until someone starts it.")
         }
     }
 
