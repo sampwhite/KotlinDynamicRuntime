@@ -2,7 +2,6 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.KdrSchemaStore
-import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
@@ -18,8 +17,6 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.kdn.Startup
-import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.sample.SampleTestInstances
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.stringSpec
