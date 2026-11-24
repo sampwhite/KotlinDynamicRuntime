@@ -560,6 +560,13 @@ without env access is refused, except `/kda/health` and the endpoints the deploy
 `envGateAllowList` config key, which a flavor sets) names, for a public website beside the node to call. The operator
 view `/kda/operator/envGate/anonymous` lists everything the node answers without env access.
 
+**One client for everyone.** Such a deployment usually keeps its own people and the visitors who register through the
+website in one client of its own. The `registrationClient` config key (which a flavor sets) names it: every new user
+lands there, administrators included, instead of in `hub` or `public`. A visitor holds `user` there, and the role the
+`registrationRole` key names, such as `lead`, if it names one. Your own people, on the admin domain, hold `admin` and
+`allClients` as before. The node refuses to start with a client that is not present, with `public` or `hub`, or with a
+registration role of `operator`, `admin`, `editor`, or `allClients`.
+
 It needs:
 
 - `KDR_GOOGLE_CLIENT_ID`, and the client's **secret** in `~/kdr/private/secrets.properties` as `googleClientSecret`.

@@ -210,7 +210,8 @@ class AuthFormHandler(
      * [personaSuffix] beside the address, the code arriving at that address as for anyone. That is how an
      * administrator provisions a truly new identity somewhere other than `public` -- a new identity is only
      * ever created by proving its address, so even they go through the code. Anyone else naming one of the
-     * three is refused: a self-registration lands in `public` as a member.
+     * three is refused: a self-registration lands in the default client as a member (`public`, or the deployment's
+     * registration client, issue #1867).
      */
     fun createInitialUser(
         cxt: KdrCxt, contactAddress: String, formAuthToken: String, verifyCode: String,
@@ -265,8 +266,9 @@ class AuthFormHandler(
                 verifiedAt = now, registered = true,
             )
         }
-        // A self-registration lands in the default client for its roles -- `hub` for an allClients user (the
-        // auto-admin domain's first admin, issue #799), else the placeholder `public` -- with the default persona;
+        // A self-registration lands in the default client for its roles -- the deployment's registration client when it
+        // names one (issue #1867), else `hub` for an allClients user (the auto-admin domain's first admin, issue #799)
+        // and the placeholder `public` for everyone else -- with the default persona;
         // the `+client%persona` tag that could once say otherwise is retired (issue #750).
         // In `public` every user administers their own users (issue #805), so the role is added once the client
         // is known -- after, so it never moves a registrant out of `public`. The persona stays the one asked for:
@@ -278,16 +280,20 @@ class AuthFormHandler(
             if (!existing.enabled) PlanLimits.requireRoomForUser(cxt, existing.client)
             userService.getOrCreateIdentity(cxt, address, verifiedAt = now)
             existing.username = AuthUserRow.placeholderUsername(address, existing.client, existing.persona, existing.personaSuffix)
-            existing.roles = AdminRules.rolesInClient(existing.client, initialRoles)
+            existing.roles = AdminRules.rolesInClient(
+                existing.client, RegistrationClient.withRegistrationRole(cxt, existing.client, initialRoles),
+            )
             existing.authUserData = mutableMapOf()
             existing.enabled = true
             existing.registeredAt = now
             userService.updateUser(cxt, existing)
             existing.userId
         } else {
+            // The registration client, when the deployment names one (issue #1867), with its registration role.
             val landsIn = AddressRules.defaultClient(cxt, initialRoles)
             userService.provisionUser(
-                cxt, address, landsIn, AdminRules.rolesInClient(landsIn, initialRoles),
+                cxt, address, landsIn,
+                AdminRules.rolesInClient(landsIn, RegistrationClient.withRegistrationRole(cxt, landsIn, initialRoles)),
                 createdAt = now, verifiedAt = now, registered = true, persona = PERSONA.defaultFor(initialRoles),
             )
         }
@@ -477,7 +483,8 @@ class AuthFormHandler(
      * The user a Google sign-in acts as (issue #749). A **registered** user of [identity] exists: the standard
      * default among the registered ones, and the sign-in registers nothing. None: Google can reach exactly one
      * user, the one the rules name -- the default client for the initial roles (`AddressRules.defaultClient`:
-     * `hub` for an allClients user, else `public`, until the request's host can say otherwise), the persona the
+     * the deployment's registration client when it names one, else `hub` for an allClients user and `public` for
+     * everyone else), the persona the
      * initial roles imply (`member`, or `admin` on the
      * auto-admin domain), no personaSuffix -- which the person is
      * claiming by signing in (`UserService.claimUser`): an existing one under that key is registered, a
@@ -496,9 +503,10 @@ class AuthFormHandler(
         val client = AddressRules.defaultClient(cxt, roles)
         // The persona from the roles as the rules chose them; `public`'s admin role (issue #805) is added after,
         // and marks no different kind of user, so it does not make the person an `admin` persona.
+        // A registration client's registration role (issue #1867) is added as a code registration adds it.
         return userService.claimUser(
             cxt, identity, client, PERSONA.defaultFor(roles), personaSuffix = "",
-            roles = AdminRules.rolesInClient(client, roles),
+            roles = AdminRules.rolesInClient(client, RegistrationClient.withRegistrationRole(cxt, client, roles)),
         )
     }
 

@@ -56,13 +56,17 @@ object AddressRules {
      * been invited anywhere; a `public` user is made an administrator of themselves only *after* landing there
      * (`AdminRules.rolesInClient`), so that grant never moves them.
      *
-     * The address used to be able to name a client (retired, issue #750); the request's host will be able to,
-     * later (the "default client" rule the Google sign-in and the registration share). Kept as a function so
-     * those callers name the seam rather than the constant. An explicitly named client always wins over this.
+     * A deployment that names a **registration client** (`REGC.client`, issue #1867) replaces all of that: every new
+     * user lands there, administrators included, so the people of a deployment that runs one organization are users
+     * of one client.
+     *
+     * The address used to be able to name a client (retired, issue #750). Kept as a function so the registration, the
+     * Google sign-in, and provisioning name the seam rather than the constant. An explicitly named client always wins
+     * over this.
      */
-    @Suppress("UNUSED_PARAMETER")
     fun defaultClient(cxt: KdrCxt, roles: Collection<String>): String =
-        if (ROLE.allClients in roles || ROLE.admin in roles || ROLE.editor in roles) CL.hub else CL.public
+        RegistrationClient.clientOf(cxt.instanceConfig)
+            ?: if (ROLE.allClients in roles || ROLE.admin in roles || ROLE.editor in roles) CL.hub else CL.public
 
     /**
      * Whether [address] sits on a domain this deployment treats as its own.

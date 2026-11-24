@@ -8,6 +8,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.RegistrationClient
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.ScriptZone
 import com.dynamicruntime.common.util.genericZoneLabel
@@ -283,6 +284,8 @@ class ClientService : ServiceInitializer {
             "Clients declared: ${clients.keys.joinToString(", ").ifEmpty { "(none)" }}; " +
                 "present in '$env': ${present.joinToString(", ").ifEmpty { "(none)" }}.",
         )
+        // The client every new user lands in, when the deployment names one (issue #1867), must be one present here.
+        RegistrationClient.checkBoot(cxt.instanceConfig, this)
         isInit = true
     }
 
