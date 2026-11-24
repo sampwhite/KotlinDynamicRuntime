@@ -57,7 +57,7 @@ fun saveWorkflow(
     }
     // What this workflow's form asks for beyond the schema (issue #1022): refused here as the page refuses it, so a
     // call made around the page is held to the same form. Never asked of a general data edit.
-    WorkflowFormRules.requireMet(cxt, declared, declaredTraits, entries)
+    WorkflowFormRules.requireMet(cxt, declared, declaredTraits, entries, create = save.kind == WfSaveKind.create)
 
     return when (save.kind) {
         WfSaveKind.create -> {

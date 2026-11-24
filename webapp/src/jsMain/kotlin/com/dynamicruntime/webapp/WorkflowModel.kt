@@ -240,6 +240,11 @@ class WorkflowView(
      */
     val fieldLayouts: Map<String, SchLayout> = emptyMap(),
     /**
+     * The counters a field of the view's types names that give their ids when a form is saved (issue #1852), by id: the
+     * page asks none of theirs for an id as a create opens, and draws no field of theirs until it holds one.
+     */
+    val countersOnSave: Set<String> = emptySet(),
+    /**
      * The earliest task still needing action (issue #700) -- the first, in order, whose status is incomplete or
      * invalid -- or null when every task is done. What the rail opens on when the URL names no task.
      */
@@ -371,6 +376,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         help = results[WVF.help].toOptStr().orEmpty(),
         cfacts = cfacts,
         fieldLayouts = fieldLayouts,
+        countersOnSave = countersOnSaveOf(results[CTR.counters]),
         focusTask = results[WVF.focusTask].toOptStr(),
         phase = results[WVF.phase].toOptStr(),
         engaged = results[WVF.engaged] as? Boolean,
@@ -701,6 +707,8 @@ fun localTaskStatus(
     values: Map<String, Map<String, Any?>>,
     /** The workflow's field layouts, whose form requirements count as the server's do (issue #1022). */
     layouts: Map<String, SchLayout> = emptyMap(),
+    /** The fields of a trait a counter gives an id at the save (issue #1852), which are not missing. */
+    givenAtSave: (WfTraitView) -> Set<String> = { emptySet() },
 ): WfTaskStatus {
     val missing = mutableListOf<String>()
     val problems = mutableListOf<WfProblem>()
@@ -708,7 +716,7 @@ fun localTaskStatus(
         val working = values[trait.traitId] ?: emptyMap()
         // An optional trait left empty has nothing to judge. A required one is judged by its schema, empty or not.
         if (!trait.required && comparableValues(working).isEmpty()) continue
-        val failures = checkFormInput(trait.type, working, layouts).failures
+        val failures = checkFormInput(trait.type, working, layouts, givenAtSave(trait)).failures
         if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
         failures.filter { it.code != SchFailCode.missingRequired }
             .forEach { problems.add(WfProblem(trait.traitId, it.path, it.userMessage ?: it.message)) }

@@ -74,6 +74,45 @@ private fun schCounterTests() = stringSpec {
             .failures.shouldBeEmpty()
     }
 
+    "a required counter field may be left out of a request, which the server fills, and not out of what is stored" {
+        val type = parseSchemaTypes(
+            schemaDefs(cxt, "c") {
+                type("Receipt") {
+                    type = SCT.kObject
+                    property("number", "The receipt's id.", required = true) { counter = "receipt" }
+                    property("note", "A note.")
+                }
+            },
+        ).getValue("c.Receipt")
+        coerceAndValidate(type, mapOf("note" to "cash"), SchOpts(forInput = true)).failures.shouldBeEmpty()
+        validate(type, mapOf("note" to "cash")).map { it.path } shouldContainExactly listOf("number")
+        // Nor when only a rule requires it, whichever way the rule goes.
+        val ruled = parseSchemaTypes(
+            mapOf(
+                "c.Ruled" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "kind" to mapOf(SCH.type to SCT.string),
+                        "number" to mapOf(SCH.type to SCT.string, SCH.counter to "receipt"),
+                    ),
+                    SCH.kIf to mapOf(SCH.required to listOf("kind"), SCH.properties to mapOf("kind" to mapOf(SCH.const to "sale"))),
+                    SCH.kThen to mapOf(SCH.required to listOf("number")),
+                ),
+            ),
+        ).getValue("c.Ruled")
+        coerceAndValidate(ruled, mapOf("kind" to "sale"), SchOpts(forInput = true)).failures.shouldBeEmpty()
+        validate(ruled, mapOf("kind" to "sale")).map { it.path } shouldContainExactly listOf("number")
+        // A layout that requires it is met by a form about to be given it, and not by one stored without it.
+        val layouts = mapOf(
+            "c.Receipt" to parseSchLayout(
+                "Type 'Receipt'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "number", SL.required to true))),
+            ),
+        )
+        val optional = parse { counter = "receipt" }
+        formRequirementFailures(optional, layouts, mapOf("note" to "cash"), excused = setOf("number")).shouldBeEmpty()
+        formRequirementFailures(optional, layouts, mapOf("note" to "cash")).map { it.path } shouldContainExactly listOf("number")
+    }
+
     "a counter is refused off a plain string, and beside a derivation or a list" {
         refusal { type = SCT.integer; counter = "receipt" } shouldContain "numbers a plain string"
         refusal { dayOnlyDate(); counter = "receipt" } shouldContain "numbers a plain string"

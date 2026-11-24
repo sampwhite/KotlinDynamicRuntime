@@ -287,6 +287,9 @@ enum class FieldHidden(val reason: String) {
 
     /** An authoritative layout lists the fields the form shows, and this is not one of them. */
     notInLayout("The layout leaves this field out."),
+
+    /** A counter fills it when the form is saved (issue #1852), so a form being filled in has nothing to show for it. */
+    givenAtSave("A counter gives this id when the form is saved, so the form shows nothing here until then."),
 }
 
 /** What the inspector shows: the workflow, a task or a save of it, one trait of a task, or one field of a trait's form. */

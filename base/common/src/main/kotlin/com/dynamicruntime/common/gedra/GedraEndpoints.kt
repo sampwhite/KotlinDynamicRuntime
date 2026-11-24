@@ -152,7 +152,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // document back (which is how every form works) has its derived fields dropped rather than refused.
     itemEndpoint(
         GEP.formDocCreate,
-        "Creates a form document carrying the supplied entries, and answers with it as stored.",
+        "Creates a form document carrying the supplied entries, and answers with it as stored. A field a counter fills " +
+            "that an entry leaves out is given the counter's next id.",
         HttpMethod.POST,
         outputRef = docType,
         // The sent shape, not the stored one: they differ by `allowAdditionalTraits` and the on-behalf `user`,
@@ -1408,8 +1409,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     generalEndpoint(
         GEP.workflowSave,
         "Saves a workflow task's entries. A `create` save creates the form (or, if incomplete, answers with the " +
-            "unmet required traits -- not an error); an `edit` save updates the form named by gedraId, recomputes " +
-            "its state and answers with its id, the new state being the workflow view's to show.",
+            "unmet required traits -- not an error), giving a field a counter fills that an entry leaves out the " +
+            "counter's next id; an `edit` save updates the form named by gedraId, recomputes its state and answers with " +
+            "its id, the new state being the workflow view's to show.",
         HttpMethod.POST,
         outputRef = GEP.workflowSaveType,
         inputFields = {
@@ -1990,8 +1992,9 @@ fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.admin
     val onBehalfDocType = "${GEP.gedraNamespace}.${GU.gedraName(onBehalfKind)}"
     itemEndpoint(
         GEP.adminFormDocForUser,
-        "Creates a form document owned by another user, in that user's client (issue #672). For an `allClients` " +
-            "admin; the shared `${GEP.formDocCreate}` is unchanged.",
+        "Creates a form document owned by another user, in that user's client (issue #672), giving a field a counter " +
+            "fills that an entry leaves out the counter's next id. For an `allClients` admin; the shared " +
+            "`${GEP.formDocCreate}` is unchanged.",
         HttpMethod.POST,
         outputRef = onBehalfDocType,
         inputFields = {

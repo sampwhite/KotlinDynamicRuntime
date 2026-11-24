@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.DebugTagDef
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.EnvGate
@@ -1476,6 +1478,15 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 ) {
                     type = SCT.kObject
                 }
+                property(
+                    CTR.counters,
+                    $$"The client's counters a field of the types in `$defs` names (issue #1852), by counter id, each with " +
+                        "`${CTR.issue}`: `${CTR.issueOnOpen}`, a page asks for the id as a form opens, or " +
+                        "`${CTR.issueOnSave}`, a create leaves the field out and the server gives the id. Absent when no " +
+                        "field names one.",
+                ) {
+                    type = SCT.kObject
+                }
             }
             generalEndpoint(
                 "/schema/endpoints",
@@ -2140,6 +2151,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 // the surface's own store, so a client that overlaid or narrowed a type gets that variant's.
                 EI.fieldLayouts to resolveDeliveredLayouts(cxt, surface.schema.layoutsFor(defs)),
             )
+            // When each counter the closure's fields name gives its ids (issue #1852), so a create page leaves an `onSave`
+            // counter's field to the server. Only where there is one: a client with no counters answers as before.
+            CounterService.getOrNull(cxt)?.deliveredFor(surface.client, defs)?.takeIf { it.isNotEmpty() }
+                ?.let { result[CTR.counters] = it }
             val providers = svc?.optionsProviders.orEmpty()
             return resolveOptionsSources(cxt, result, providers)
         }

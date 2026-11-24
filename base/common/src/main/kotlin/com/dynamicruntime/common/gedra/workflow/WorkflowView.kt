@@ -4,6 +4,8 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignView
@@ -308,6 +310,9 @@ fun resolveWorkflowView(
         // layout is a different thing, already applied to each task's trait order above.
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, store.layoutsFor(defs)),
     )
+    // When each counter the closure's fields name gives its ids (issue #1852), as the catalog says it: a page leaves an
+    // `onSave` counter's field to the server. Only where there is one.
+    CounterService.getOrNull(cxt)?.deliveredFor(client, defs)?.takeIf { it.isNotEmpty() }?.let { view[CTR.counters] = it }
     focusTask?.let { view[WVF.focusTask] = it }
     // The template it was made from (issue #1870), so whoever reads the view knows which an editor changes it over.
     declared.def.fromTemplate?.let { view[WFD.fromTemplate] = it }

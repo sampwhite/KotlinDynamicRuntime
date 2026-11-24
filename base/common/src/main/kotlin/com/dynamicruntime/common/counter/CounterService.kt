@@ -135,6 +135,21 @@ class CounterService : ServiceInitializer {
     /** [client]'s counters, by id; none for a client that has none. */
     fun forClient(client: String): Map<String, CounterDef> = registries[client].orEmpty()
 
+    /** Whether [client] has the counter [counterId] and it issues ids: one it lacks, or has disabled, gives none. */
+    fun issues(client: String, counterId: String): Boolean = forClient(client)[counterId]?.enabled == true
+
+    /**
+     * What a page is told of [client]'s counters (issue #1852), beside the types [defs] it is delivered: each counter a
+     * field of them names, by id, with when it issues ([CTR.issue]). Out of band, as the field layouts are, since how a
+     * counter issues is the client's configuration and no part of what the field is. Empty when no field names one the
+     * client has, and for no client at all.
+     */
+    fun deliveredFor(client: String?, defs: Map<String, Any?>): Map<String, Map<String, Any?>> {
+        val mine = client?.let { forClient(it) }.orEmpty()
+        if (mine.isEmpty()) return emptyMap()
+        return namedCounterIds(defs).mapNotNull { id -> mine[id]?.let { id to mapOf<String, Any?>(CTR.issue to it.issue) } }.toMap()
+    }
+
     /**
      * The next id of [counterId] for [client] (issue #1849), issued to the acting user: the counter's count for the
      * client's current period, plus one, under the row's lock. Refused for a counter the client does not have (404) or
@@ -253,6 +268,9 @@ class CounterService : ServiceInitializer {
         if (def.reset !in CTR.resets) {
             return "$counter resets '${def.reset}', which is not one of ${CTR.resets.joinToString { "'$it'" }}."
         }
+        if (def.issue !in CTR.issues) {
+            return "$counter issues '${def.issue}', which is not one of ${CTR.issues.joinToString { "'$it'" }}."
+        }
         prefixProblem(def)?.let { return "$counter $it" }
         return if (taken) "$counter is declared more than once among the client's configurations. The first is kept." else null
     }
@@ -289,6 +307,19 @@ class CounterService : ServiceInitializer {
         /** The service, or null on a node that keeps no gedras (an edge). */
         fun getOrNull(cxt: KdrCxt): CounterService? = cxt.instanceConfig.get(serviceName) as? CounterService
     }
+}
+
+/** The counter ids anything under [node] -- a schema, or a bag of them -- names in `g-counter`, sorted (issue #1852). */
+private fun namedCounterIds(node: Any?): List<String> {
+    val out = sortedSetOf<String>()
+    fun walk(n: Any?) {
+        when (n) {
+            is Map<*, *> -> n.forEach { (k, v) -> if (k == SCH.counter && v is String) out.add(v) else walk(v) }
+            is List<*> -> n.forEach(::walk)
+        }
+    }
+    walk(node)
+    return out.toList()
 }
 
 /** A field of a configuration's type that names a counter (issue #1849), and whether it is one of the type's own. */

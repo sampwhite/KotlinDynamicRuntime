@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CounterService
+import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.SCH
@@ -26,7 +28,8 @@ object WorkflowFormRules {
     /**
      * By trait id, the form requirements of [declared] that [entries] -- those whose trait is in [traitIds] and that
      * carry data -- do not meet; a trait with none is absent. Empty when the workflow's layouts ask for nothing more
-     * than the schema does. Failure paths start at the entry (`data.venue`), as the validator's do.
+     * than the schema does. Failure paths start at the entry (`data.venue`), as the validator's do. On a [create] a field
+     * a counter is about to fill (issue #1852) is not asked for.
      */
     fun failures(
         cxt: KdrCxt,
@@ -34,19 +37,22 @@ object WorkflowFormRules {
         declared: WfDeclared,
         traitIds: Set<String>,
         entries: List<Map<String, Any?>>,
+        create: Boolean = false,
     ): Map<String, List<SchFailure>> {
         val schema = SchemaService.get(cxt)
         val store = workflowSchemaStore(schema.storeFor(client), declared)
         val layouts = store.layouts
         if (layouts.values.none { layout -> layout.fields.any { it.required || it.choices != null } }) return emptyMap()
         val traits = schema.gedraTraitsFor(client).associateBy { it.traitId }
+        val counters = CounterService.getOrNull(cxt)
         val out = LinkedHashMap<String, MutableList<SchFailure>>()
         for (entry in entries) {
             val traitId = entry[GE.traitId].toOptStr()?.takeIf { it in traitIds } ?: continue
             val data = entry[GE.data] as? Map<*, *> ?: continue
             val typeName = traits[traitId]?.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) } ?: continue
             val type = store.types[typeName] ?: continue
-            val failures = formRequirementFailures(type, layouts, data, GE.data)
+            val given = if (create) counterFieldsOf(type).filterValues { counters?.issues(client, it) == true }.keys else emptySet()
+            val failures = formRequirementFailures(type, layouts, data, GE.data, given)
             if (failures.isNotEmpty()) out.getOrPut(traitId) { mutableListOf() }.addAll(failures)
         }
         return out
@@ -77,10 +83,10 @@ object WorkflowFormRules {
     /**
      * Refuses a save through [declared] whose [entries] miss the workflow's form requirements -- the save's half of
      * the rule the page runs before it sends, so a call made around the page is held to the same form. [traitIds]
-     * are the saving task's traits.
+     * are the saving task's traits, and [create] whether the save makes the form.
      */
-    fun requireMet(cxt: KdrCxt, declared: WfDeclared, traitIds: Set<String>, entries: List<Map<String, Any?>>) {
-        val failures = failures(cxt, cxt.client, declared, traitIds, entries)
+    fun requireMet(cxt: KdrCxt, declared: WfDeclared, traitIds: Set<String>, entries: List<Map<String, Any?>>, create: Boolean) {
+        val failures = failures(cxt, cxt.client, declared, traitIds, entries, create)
         if (failures.isEmpty()) return
         throw KdrException.mkInput(
             "This form asks for more than was given: " +

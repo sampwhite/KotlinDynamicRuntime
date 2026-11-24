@@ -385,10 +385,11 @@ fun errorMessageTemplateProblems(
  * request path, on the wire and in the interactive endpoint form (issue #191), an editor, a cross-client reader.
  *
  * Most options change only the coerced output or how something is reported, but some do change a verdict:
- * [forInput] reads a type as a **request**, so a `g-derived` property is not required and a plain string is
- * trimmed before it is measured (issue #765); [skipCompleteness] defers a fragment's completeness to where it
- * is assembled; and [allowUnknownVariant] off refuses an unknown branch the document admits. This is an object
- * rather than a parameter because the list is expected to grow as the frontend asks for more.
+ * [forInput] reads a type as a **request**, so a `g-derived` property is not required, nor is a field a counter
+ * fills (issue #1852), and a plain string is trimmed before it is measured (issue #765); [skipCompleteness] defers a
+ * fragment's completeness to where it is assembled; and [allowUnknownVariant] off refuses an unknown branch the
+ * document admits. This is an object rather than a parameter because the list is expected to grow as the frontend
+ * asks for more.
  *
  * A data class so a variant is derived with `copy`, which carries every other field along. Rebuilding one field by
  * field once dropped [existingTypes] under an `optionalContents` property (issue #812), and a field added later
@@ -793,6 +794,11 @@ fun validateObject(
         if (opts.forInput && reqType?.derived == true) {
             continue
         }
+        // Nor a field a counter fills (issue #1852): a create that leaves it out is given its id by the server, and a
+        // write that keeps the entry without one is refused where the stored shape is checked, which is not a request.
+        if (opts.forInput && reqType?.counter != null) {
+            continue
+        }
         val default = reqType?.default
         // A default is injected even for a fragment (issue #487): it is a value the schema *supplies*, not a
         // demand on the caller, so waiving completeness must not silently drop it. Only the missing-required
@@ -812,7 +818,7 @@ fun validateObject(
     // the property a condition keys on may live in the stored data the fragment folds into, not in the fragment
     // itself, so "given approved, is rejectionReason required?" cannot be answered here at all (issue #487).
     // It is answered on the assembled whole -- `checkStoredEntries`, whose existence this is the reason for.
-    if (!opts.skipCompleteness) type.condition?.let { checkCondition(type, it, map, dropped, path, failures) }
+    if (!opts.skipCompleteness) type.condition?.let { checkCondition(type, it, map, dropped, path, failures, opts) }
     return out ?: map
 }
 
@@ -836,12 +842,15 @@ fun checkCondition(
     dropped: Set<String>,
     path: String,
     failures: MutableList<SchFailure>,
+    opts: SchOpts,
 ) {
     val holds = condition.holds(map)
     fun supplied(name: String) = map.containsKey(name) && name !in dropped
     for (name in condition.requiredWhen(holds)) {
         if (!supplied(name)) {
             val target = type.properties[name]?.valueType
+            // A field a counter fills is not asked of a request (issue #1852), as the plain `required` loop has it.
+            if (opts.forInput && target?.counter != null) continue
             val at = childPath(path, name)
             val message = "Required property '$name' is missing."
             failures.add(

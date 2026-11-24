@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
@@ -60,8 +61,12 @@ val CreateForUserPage = FC<Props> {
     // Load the chosen user's client's create schema when a user is picked (issue #714 mechanism: resolve the
     // endpoint on that client's surface). Re-runs when the picked user changes -- including to null (the box was
     // cleared or edited), which resets the form so a stale one is never left under a changed pick.
-    // A counter's field (issue #1849): given its id, from the picked user's client, as its section is added.
-    val counterIds = useCounterIds(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, values, updateValues, picked?.client)
+    // A counter's field (issue #1849): given its id, from the picked user's client, as its section is added -- unless its
+    // counter gives ids when the form is saved (issue #1852), when the field is left to the server and not drawn.
+    val counterIds = useCounterIds(
+        catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, values, updateValues, picked?.client,
+        onSave = catalog?.countersOnSave.orEmpty(),
+    )
 
     useEffect(picked?.userId) {
         val user = picked
@@ -143,6 +148,7 @@ val CreateForUserPage = FC<Props> {
                     editable = true
                     friendly = true
                     cfacts = cat.cfacts
+                    countersOnSave = cat.countersOnSave
                     fieldLayouts = cat.fieldLayouts
                     // The fields the page answers itself, not the form (issue #762): the one list both create pages use.
                     omit = formCreateOmittedFields
@@ -175,7 +181,10 @@ val CreateForUserPage = FC<Props> {
                                 createForUserScope.launch {
                                     try {
                                         // With the tokens of the ids the page asked for (issue #1849).
-                                        val newId = AdminApi.createFormForUser(user.primaryId, withCounterTokens(payload, counterIds.tokens))
+                                        val made = AdminApi.createFormForUser(user.primaryId, withCounterTokens(payload, counterIds.tokens))
+                                        val newId = made[GDF.gedraId] as? String
+                                        // The ids counters gave it at save (issue #1852), for the listing to name.
+                                        val givenIds = givenIdsOf(cat, ep, made)
                                         // Back to the listing this page was launched from -- its search, sort and
                                         // chosen client as they were -- flashing the new row (issue #663), through the
                                         // one shared create return (issue #758: only while the user is still here).
@@ -184,7 +193,7 @@ val CreateForUserPage = FC<Props> {
                                         // view shows the row anyway, with its Client column saying whose it is; a
                                         // listing that cannot show it says the form was created. No running=false:
                                         // this navigation unmounts the page.
-                                        formsCreateReturn(launched, routeParams(), newId)?.let { navigate(it) }
+                                        formsCreateReturn(launched, routeParams(), newId, givenIds = givenIds)?.let { navigate(it) }
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
                                         running = false

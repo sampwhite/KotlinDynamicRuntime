@@ -40,6 +40,9 @@ fun offeredChoices(vt: SchType, field: SchLayoutField?): List<SchOption>? {
  * [SchFailCode.invalidOption] carrying the form's choices -- each marked [SchFailure.formRequirement]. Nested objects -- a `$ref` to a named type, an array of
  * them -- are judged under their own type's layout. [path] prefixes each failure's path, as the validator's do.
  *
+ * [excused] are top-level fields the form asks nothing for though its layout requires them: those a counter is about to
+ * fill (issue #1852), on a create or at an edit's Save. A form already stored without one is still held to it.
+ *
  * Only what the form adds is reported: a value the schema itself refuses is the validator's failure, not this one.
  * Pure, and in the kernel, so the page runs the rule the backend runs.
  */
@@ -48,9 +51,10 @@ fun formRequirementFailures(
     layouts: Map<String, SchLayout>,
     data: Map<*, *>,
     path: String = "",
+    excused: Set<String> = emptySet(),
 ): List<SchFailure> {
     val out = mutableListOf<SchFailure>()
-    collectFormFailures(type, layouts, data, path, out, depth = 0)
+    collectFormFailures(type, layouts, data, path, out, depth = 0, excused)
     return out
 }
 
@@ -64,6 +68,7 @@ private fun collectFormFailures(
     path: String,
     out: MutableList<SchFailure>,
     depth: Int,
+    excused: Set<String> = emptySet(),
 ) {
     if (depth >= maxFormRuleDepth) return
     val layout = type.name?.let { layouts[it] }
@@ -79,7 +84,7 @@ private fun collectFormFailures(
         val value = data[name]
         val at = childPath(path, name)
         layout?.fieldFor(name)?.let { entry ->
-            if (entry.required && name !in schemaRequires && isAbsentForForm(value)) {
+            if (entry.required && name !in schemaRequires && name !in excused && isAbsentForForm(value)) {
                 out.add(vt.failure(at, SchFailCode.missingRequired, "'$name' is required on this form.").copy(formRequirement = true))
             }
             // Blank is no answer, which `required` speaks to; only a given value can be one the form does not offer.
