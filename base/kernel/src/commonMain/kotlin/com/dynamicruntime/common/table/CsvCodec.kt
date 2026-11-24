@@ -89,7 +89,8 @@ class CsvParsed(val header: List<String>, val rows: List<List<String>>, val prob
  * - A line ends with CRLF, LF, or a lone CR. One line end after the last row ends that row; a second one is another
  *   row, of one empty cell.
  * - A leading byte-order mark is dropped: Excel writes one.
- * - Control characters other than a tab and the line ends are refused, as is a quote inside an unquoted cell.
+ * - Control characters other than a tab and the line ends are refused, as is a quote inside an unquoted cell --
+ *   unless the parse is lenient about quotes, as a paste's is.
  * - The header's names are its columns, read without the spaces around them: each has one, and no two the same.
  *   Every row has as many cells.
  * - [CsvLimits] bounds what is read, so a large file is refused as it is read, not after.
@@ -109,9 +110,20 @@ object Csv {
     /**
      * Reads [text] as CSV with [delimiter] cells. With [header], the first row is the header and every row is held to
      * its width; without, every row is a row, of any width -- a spreadsheet's paste.
+     *
+     * With [lenientQuotes], a quote out of place is text rather than a problem, as a spreadsheet's clipboard needs: a
+     * quote opens a quoted cell only at the cell's start, and a cell whose quote never closes, or is followed by more
+     * than a delimiter or a line end, is read again from its start as unquoted text, its quotes kept. So `5" screen`
+     * and `"5" screen` are cells as typed, while a quoted cell holding a line break is still one cell. Every other
+     * problem still stops the parse.
      */
-    fun parse(text: String, delimiter: Char = CSVT.comma, limits: CsvLimits = CsvLimits(), header: Boolean = true): CsvParsed =
-        CsvReader(text, delimiter, limits, header).read()
+    fun parse(
+        text: String,
+        delimiter: Char = CSVT.comma,
+        limits: CsvLimits = CsvLimits(),
+        header: Boolean = true,
+        lenientQuotes: Boolean = false,
+    ): CsvParsed = CsvReader(text, delimiter, limits, header, lenientQuotes).read()
 
     /**
      * [bytes] read as a CSV table with a header, or the problems that keep it from being one: the bytes are not UTF-8,
@@ -181,7 +193,7 @@ object Csv {
 
 /** One parse of [text] ([Csv.parse]): a loop over its characters, so its depth does not grow with the text. */
 @KdrPrivate
-class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, val header: Boolean) {
+class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, val header: Boolean, val lenientQuotes: Boolean = false) {
     val problems = ArrayList<CsvProblem>()
     val rows = ArrayList<List<String>>()
     var headerRow: List<String> = emptyList()
@@ -212,6 +224,7 @@ class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, va
         while (i < end && !stopped) {
             // One cell, from its first character to its delimiter or line end.
             if (text[i] == '"') {
+                val cellStart = i
                 val opened = line
                 i++
                 var closed = false
@@ -234,34 +247,31 @@ class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, va
                     if (cell.length > limits.maxCellLength) break
                 }
                 if (stopped) break
-                if (cell.length > limits.maxCellLength) {
-                    stop(CsvError.cellTooLong, opened, "a cell is longer than ${limits.maxCellLength} characters.")
-                    break
-                }
-                if (!closed) {
-                    stop(CsvError.unclosedQuote, opened, "a quoted cell has no closing quote.")
-                    break
-                }
-                if (i < end && text[i] != delimiter && text[i] != '\r' && text[i] != '\n') {
-                    stop(CsvError.strayQuote, line, "a quoted cell is followed by '${text[i]}', not by a delimiter or a line end.")
-                    break
+                val tooLong = cell.length > limits.maxCellLength
+                val strayAfter = closed && i < end && text[i] != delimiter && text[i] != '\r' && text[i] != '\n'
+                if (lenientQuotes && (tooLong || !closed || strayAfter)) {
+                    // Not a quoted cell after all: read again from its quote as text.
+                    i = cellStart
+                    line = opened
+                    cell.clear()
+                    i = readPlain(i, cell)
+                    if (stopped) break
+                } else {
+                    if (tooLong) {
+                        stop(CsvError.cellTooLong, opened, "a cell is longer than ${limits.maxCellLength} characters.")
+                        break
+                    }
+                    if (!closed) {
+                        stop(CsvError.unclosedQuote, opened, "a quoted cell has no closing quote.")
+                        break
+                    }
+                    if (strayAfter) {
+                        stop(CsvError.strayQuote, line, "a quoted cell is followed by '${text[i]}', not by a delimiter or a line end.")
+                        break
+                    }
                 }
             } else {
-                while (i < end) {
-                    val c = text[i]
-                    if (c == delimiter || c == '\r' || c == '\n') break
-                    if (c == '"') {
-                        stop(CsvError.strayQuote, line, "a quote inside a cell that is not quoted; quote the cell and write the quote twice.")
-                        break
-                    }
-                    if (!checkChar(c)) break
-                    cell.append(c)
-                    i++
-                    if (cell.length > limits.maxCellLength) {
-                        stop(CsvError.cellTooLong, line, "a cell is longer than ${limits.maxCellLength} characters.")
-                        break
-                    }
-                }
+                i = readPlain(i, cell)
                 if (stopped) break
             }
             cells.add(cell.toString())
@@ -292,6 +302,30 @@ class CsvReader(val text: String, val delimiter: Char, val limits: CsvLimits, va
         }
         if (!stopped && header && !anyRecord) problem(CsvError.emptyHeader, 1, "there is no header naming the columns.")
         return CsvParsed(headerRow, rows, problems)
+    }
+
+    /**
+     * An unquoted cell read into [cell] from [from] to its delimiter or line end, returning where it ended: a quote in it
+     * refused, or, with [lenientQuotes], kept as text.
+     */
+    fun readPlain(from: Int, cell: StringBuilder): Int {
+        var i = from
+        while (i < text.length) {
+            val c = text[i]
+            if (c == delimiter || c == '\r' || c == '\n') break
+            if (c == '"' && !lenientQuotes) {
+                stop(CsvError.strayQuote, line, "a quote inside a cell that is not quoted; quote the cell and write the quote twice.")
+                break
+            }
+            if (!checkChar(c)) break
+            cell.append(c)
+            i++
+            if (cell.length > limits.maxCellLength) {
+                stop(CsvError.cellTooLong, line, "a cell is longer than ${limits.maxCellLength} characters.")
+                break
+            }
+        }
+        return i
     }
 
     /** Whether [c] may be in a cell: anything but a control character other than a tab and the line ends. */

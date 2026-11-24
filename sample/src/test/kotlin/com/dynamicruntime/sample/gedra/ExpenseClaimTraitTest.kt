@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -27,12 +28,14 @@ import io.kotest.matchers.string.shouldContain
  * The sample's table trait (issue #1886), `sample:expenseClaim`: a client taking every global trait carries it, so its
  * forms hold a claim's lines as a CSV table whose columns are `ExpenseLine`'s, with the claim's count, total, and latest
  * day stored on each save -- what a developer exercises the data grid against by hand.
+ *
+ * Theme: #DTABL.
  */
 class ExpenseClaimTraitTest : StringSpec({
     val cxt = SampleTestInstances.default("expenseClaim")
     val user = TestUser.create(cxt, "claims@globex.test", userClient = SC.globex)
 
-    fun envelope(handler: com.dynamicruntime.common.http.request.RequestHandler): Map<String, Any?> =
+    fun envelope(handler: RequestHandler): Map<String, Any?> =
         handler.rptResponseData?.jsonMap().shouldNotBeNull()
 
     fun upload(name: String, text: String): String {
@@ -44,9 +47,10 @@ class ExpenseClaimTraitTest : StringSpec({
 
     fun claim(lines: String?) = mapOf(GE.traitId to ST.expenseClaim, GE.data to listOfNotNull(lines?.let { ST.lines to it }).toMap())
 
-    fun create(lines: String?): Map<String, Any?> = envelope(
-        user.client.sendEditRequest(clientPath(GEP.formDocCreate, SC.globex), null, mapOf(GDF.entries to listOf(claim(lines))), HttpMethod.POST),
-    )
+    fun create(lines: String?): Map<String, Any?> {
+        val body = mapOf(GDF.entries to listOf(claim(lines)))
+        return envelope(user.client.sendEditRequest(clientPath(GEP.formDocCreate, SC.globex), null, body, HttpMethod.POST))
+    }
 
     fun formIdOf(created: Map<String, Any?>): String = created[EP.item].toJsonMapOrEmpty()[GDF.gedraId].toOptStr().shouldNotBeNull()
 
@@ -62,7 +66,10 @@ class ExpenseClaimTraitTest : StringSpec({
                 mapOf(
                     GPF.targets to mapOf(
                         GedraDataType.formDoc.name to listOf(
-                            mapOf(GDF.gedraId to formId, GPF.edits to listOf(claim(lines) + (GED.action to GedraEditAction.addOrReplace.name))),
+                            mapOf(
+                                GDF.gedraId to formId,
+                                GPF.edits to listOf(claim(lines) + (GED.action to GedraEditAction.addOrReplace.name)),
+                            ),
                         ),
                     ),
                 ),
@@ -91,19 +98,22 @@ class ExpenseClaimTraitTest : StringSpec({
             mapOf(ST.lineCount to 2L, ST.totalAmount to 3.3, ST.lastSpentOn to "2026-11-09")
     }
 
+    /** [lines] refused as a claim's table: a bad-input refusal, not a failure, whose message is returned. */
+    fun refusal(lines: String): String {
+        val refused = create(lines)
+        refused[EP.status] shouldBe EXC.badInput.toLong()
+        return refused[EP.errorMessage].toOptStr().shouldNotBeNull()
+    }
+
     "a line that does not fit the columns refuses the save, named by its row and column" {
         val bad = upload("bad.csv", "spentOn,category,amount\r\n2026-11-02,travel,5\r\n2026-11-03,gifts,-1\r\n")
-        val refused = create(bad)
-        refused[EP.status] shouldBe EXC.badInput.toLong()
-        refused[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "Row 2, Category: 'gifts' is not one of the choices."
+        refusal(bad) shouldContain "Row 2, Category: 'gifts' is not one of the choices."
         // A line needs its day and its amount.
-        create(upload("short.csv", "description,amount\r\nTaxi,5\r\n"))[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain
-            "no 'spentOn'"
+        refusal(upload("short.csv", "description,amount\r\nTaxi,5\r\n")) shouldContain "no 'spentOn'"
     }
 
     "a claim holds at most its lines" {
         val many = "spentOn,amount\r\n" + (1..(ST.claimMaxLines + 1)).joinToString("") { "2026-11-01,1\r\n" }
-        create(upload("many.csv", many))[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain
-            "this field holds at most ${ST.claimMaxLines}"
+        refusal(upload("many.csv", many)) shouldContain "this field holds at most ${ST.claimMaxLines}"
     }
 })

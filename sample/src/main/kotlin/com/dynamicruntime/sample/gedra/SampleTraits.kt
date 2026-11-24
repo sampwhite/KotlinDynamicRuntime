@@ -336,6 +336,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
     // A table field and its summaries (issue #1886): a claim's lines are a CSV table, edited in the form as a grid, whose
     // columns are `ExpenseLine`'s properties; its count, total, and latest day are stored in the trait's own derived
     // fields on each save, by the same code the grid's footer runs. Global, so globex carries it, as it does site media.
+    // Theme: #DTABL.
     type(ST.expenseLine) {
         type = SCT.kObject
         description = "One line of an expense claim: what was spent, on what day, and whether there is a receipt."

@@ -22,8 +22,10 @@ judging an uploaded table and the browser reading one agree. It takes CRLF, LF, 
 cell that holds a delimiter, a quote (doubled), or a line break, and drops a leading byte-order mark; it refuses
 control characters but a tab and the line ends, a quote out of place, and a row of another width than the header's,
 each problem naming its line. A header's names are read without the spaces around them, and must be there and
-distinct. At most 5,000 rows, 100 columns, and 10,000 characters a cell. It writes CRLF line ends and a byte-order
-mark, which is how Excel knows the file is UTF-8.
+distinct. A spreadsheet's paste is read leniently about quotes (`lenientQuotes`): a quote opens a quoted cell only at
+the cell's start, and one out of place is text, as a spreadsheet leaves `5" screen` unquoted. At most 5,000 rows, 100
+columns, and 10,000 characters a cell. It writes CRLF line ends and a byte-order mark, which is how Excel knows the file
+is UTF-8.
 
 **Stored text is never rewritten.** A cell beginning `=`, `+`, `-`, or `@` is a formula to a spreadsheet; only a copy
 made to open in one has such a cell guarded with a leading apostrophe (`Csv.spreadsheetCopy`), and a number is left a

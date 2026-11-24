@@ -77,6 +77,24 @@ class CsvCodecTest {
     }
 
     @Test
+    fun readsQuotesOutOfPlaceAsTextWhenLenient() {
+        fun lenient(text: String): CsvParsed = Csv.parse(text, CSVT.tab, header = false, lenientQuotes = true)
+        // A quote inside a cell, a quoted start followed by more, and a quote that never closes are each text as typed.
+        assertEquals(listOf(listOf("5\" screen", "\"5\" screen", "\"open")), lenient("5\" screen\t\"5\" screen\t\"open\n").rows)
+        // A cell quoted for its line break is still one cell, beside a quote a spreadsheet left unquoted.
+        val mixed = lenient("2026-11-02\t\"Hotel\nlate check-out\"\t5\" screen\n2026-11-03\tTaxi\t7\n")
+        assertTrue(mixed.ok, "${mixed.problems}")
+        assertEquals(listOf(listOf("2026-11-02", "Hotel\nlate check-out", "5\" screen"), listOf("2026-11-03", "Taxi", "7")), mixed.rows)
+        // An unclosed quote reads only its own line again, not the rest of the paste.
+        assertEquals(listOf(listOf("\"a", "b"), listOf("c", "d")), lenient("\"a\tb\nc\td").rows)
+        // Every other problem still stops it.
+        assertEquals(CsvError.controlCharacter, lenient("a\t\"b\u000Bc\n").problems.first().error)
+        assertEquals(CsvError.controlCharacter, lenient("a\u000B\tb\n").problems.first().error)
+        val long = Csv.parse("\"" + "x".repeat(20), CSVT.tab, CsvLimits(maxCellLength = 10), header = false, lenientQuotes = true)
+        assertEquals(CsvError.cellTooLong, long.problems.first().error)
+    }
+
+    @Test
     fun refusesARaggedRowNamingItsLine() {
         val ragged = refused("a,b,c\n1,2,3\n4,5\n")
         assertEquals(CsvError.raggedRow, ragged.error)

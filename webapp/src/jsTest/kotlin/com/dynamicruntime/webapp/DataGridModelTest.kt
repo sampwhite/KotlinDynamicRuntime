@@ -156,12 +156,17 @@ class DataGridModelTest {
         assertEquals("'extra' is not yes or no (true or false).", g.rows[3].problems[3])
         // A single value fills the cursor's cell.
         assertEquals("99", grid().moveTo(GridCell(1, 2)).paste("99").state.text(GridCell(1, 2)))
-        // A quote mark a spreadsheet did not quote is pasted as typed, not the whole paste refused.
-        val quoted = grid().moveTo(GridCell(1, 1)).paste("2026-11-09\ttaxi\t5\" screen")
-        assertEquals("5\" screen", quoted.state.text(GridCell(1, 3)))
-        assertEquals(listOf(listOf("a", "=HYPERLINK(\"x\")"), listOf("b", "")), pastedRows("a\t=HYPERLINK(\"x\")\nb\t\n"))
-        // Nothing at all changes nothing.
+        // A quote mark a spreadsheet did not quote is pasted as typed, beside a cell it quoted for its line break.
+        val quoted = grid().moveTo(GridCell(1, 0)).paste("2026-11-09\t\"meal\nlate\"\t5\" x\n2026-11-10\ttaxi\t=HYPERLINK(\"x\")\n")
+        assertNull(quoted.refusal)
+        assertEquals(listOf("2026-11-09", "meal\nlate", "5\" x", ""), quoted.state.cells()[1])
+        assertEquals(listOf("2026-11-10", "taxi", "=HYPERLINK(\"x\")", ""), quoted.state.cells()[2])
+        // Text the codec refuses pastes nothing, and says why.
         val same = grid()
+        val refused = same.moveTo(GridCell(1, 0)).paste("2026-11-09\tmeal\u000B\t5\n")
+        assertEquals(same.cells(), refused.state.cells())
+        assertTrue(refused.refusal.orEmpty().startsWith("Nothing was pasted. Line 1: a control character"), refused.refusal)
+        // Nothing at all changes nothing.
         assertEquals(same.cells(), same.paste("").state.cells())
     }
 

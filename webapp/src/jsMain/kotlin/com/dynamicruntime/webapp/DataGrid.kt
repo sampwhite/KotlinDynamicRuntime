@@ -339,7 +339,7 @@ private val GridEditor = FC<GridEditorProps> { props ->
                         e.preventDefault()
                         val pasted = current.paste(text)
                         setGrid(pasted.state)
-                        note = pasteDroppedText(pasted.droppedRows, current.maxRows)
+                        note = pasted.refusal ?: pasteDroppedText(pasted.droppedRows, current.maxRows)
                     }
                 }
             }
