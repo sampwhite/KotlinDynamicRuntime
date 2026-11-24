@@ -13,6 +13,7 @@ import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.GOOG
 import com.dynamicruntime.common.user.JwtKeySource
 import com.dynamicruntime.common.user.LSRC
+import com.dynamicruntime.common.user.REGC
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.base64Encode
@@ -145,6 +146,22 @@ class GoogleLoginTest : StringSpec({
         val registered = TestUser.create(cxt, "goog-registered@example.com")
         login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-reg", "goog-registered@example.com"))[UPF.userId]
             .toOptLong() shouldBe registered.userId
+    }
+
+    "a first Google sign-in lands in the registration client, with its role" {
+        // Issue #1867. An ordinary domain: an address the auto-admin rule qualifies gets its own roles instead.
+        val cxt = Startup.mkTestBootCxt(
+            "googRegClient", "googleRegClient",
+            mapOf(
+                GOOG.googleClientId to clientId, GOOG.googleKeySource to keySource,
+                REGC.client to RegistrationClientComponent.clientId, REGC.role to "lead",
+            ),
+            additionalComponents = listOf(RegistrationClientComponent()),
+        )
+        val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-lead", "lead@other.test"))
+        val user = UserService.get(cxt).queryByUserId(cxt, info[UPF.userId].toOptLong()!!).shouldNotBeNull()
+        user.client shouldBe RegistrationClientComponent.clientId
+        user.roles shouldBe listOf(ROLE.user, "lead")
     }
 
     "signing in again with the same Google identity returns the same user" {

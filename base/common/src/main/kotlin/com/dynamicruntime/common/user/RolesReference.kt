@@ -160,6 +160,12 @@ Env access and the user signed in stay apart, as they do behind an edge. A Googl
 signs the person in as their own user, for convenience; after that they may sign in as, or switch to, another user and
 keep their env access.
 
+**A deployment with a registration client** (`$${REGC.client}`) puts every new user in that one client: a visitor
+registering by code, a first Google sign-in, the env gate's sign-in, and an administrator's new user placed in no named
+client. Otherwise a new user lands in `hub` when made an administrator, and in `public` when not. A person registering
+into the registration client holds `user` and the deployment's registration role (`$${REGC.role}`), if it names one;
+an address the auto-admin rule qualifies holds `admin` and `allClients` there instead.
+
 ## API keys and access tokens
 
 An API key acts as its user, with that user's roles and read scope as they are at each request: a role taken away
