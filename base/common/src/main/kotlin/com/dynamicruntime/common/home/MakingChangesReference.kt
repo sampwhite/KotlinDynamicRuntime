@@ -227,7 +227,7 @@ val changeGroups: List<ChangeGroup> = listOf(
                 menuPanel, MNU.resetPath, ATOOL.resetMenuItem,
             ),
             ChangeWay(
-                "A card on Home hidden or reworded",
+                "A card on Home added, hidden, or reworded",
                 bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
             ),
             // Home is a page document kept as copy (issue #1794), so rearranging it is a change of one copy key.

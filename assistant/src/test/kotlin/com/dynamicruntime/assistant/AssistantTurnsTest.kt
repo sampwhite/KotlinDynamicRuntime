@@ -5,6 +5,8 @@ import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.content.CPAGE
+import com.dynamicruntime.common.content.MDOC
+import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
@@ -65,6 +67,7 @@ import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.REFDOC
 import com.dynamicruntime.common.home.changeGroups
 import com.dynamicruntime.common.http.request.InProcessCaller
 import com.dynamicruntime.common.http.request.InProcessPrincipal
@@ -79,6 +82,7 @@ import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.resolveDocLink
 import com.dynamicruntime.common.util.json
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -1099,6 +1103,33 @@ class AssistantTurnsTest : StringSpec({
             AssistantTools.readableDoc(cxt, note).shouldNotBeNull().shouldContain("## Using ")
         }
         AssistantTools.readableDoc(cxt, "api-guide").shouldBeNull()
+    }
+
+    // A link the assistant follows is refused when its document is not on the list (issue #1869). Theme: #DOCDR.
+    "every document a readable document links is readable too" {
+        val declared = (cxt.instanceConfig.get(MDOC.registryKey) as List<*>).map { it as MarkdownDocDef }
+        val keyByPath = declared.associate { it.sourcePath to it.docId }
+        val readable = AssistantTools.readableDocIds(cxt).toSet()
+        // How a program calls the API, which the assistant does through its tools: linked, and not its to read.
+        val forPrograms = setOf(HDOC.apiGuide, HDOC.apiKeysAndTokens, "repo:/${REFDOC.endpointsPath}")
+        // A design note opens with a guide, which is what it is readable for; the design after it is for developers.
+        val notes = setOf(HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock, HDOC.clientDefinition)
+        val link = Regex("\\[[^]]*]\\(([^)\\s]+)\\)")
+        val problems = declared.filter { it.docId in readable }.flatMap { def ->
+            val whole = AssistantTools.readableDoc(cxt, def.docId).shouldNotBeNull()
+            val text = if (def.docId in notes) whole.substringAfter("\n## Using ").substringBefore("\n## The design") else whole
+            // A fence or a code span holds examples, not links.
+            val prose = text.split(Regex("(?m)^\\s*```")).filterIndexed { i, _ -> i % 2 == 0 }.joinToString("\n")
+                .replace(Regex("`[^`]*`"), "")
+            link.findAll(prose).map { it.groupValues[1] }.mapNotNull { url ->
+                // A document of the app's is its id; a file that is not one resolves under the repository's.
+                val to = resolveDocLink(url, def.sourcePath, keyByPath, "repo:") { key, _ -> "doc:$key" }
+                val isDocument = to.startsWith("doc:") || to.startsWith("repo:") && to.substringBefore('#').endsWith(".md")
+                val docId = to.removePrefix("doc:").substringBefore('#')
+                if (!isDocument || docId in readable || docId in forPrograms) null else "${def.docId} links $url, which is not readable."
+            }.toList()
+        }
+        problems.shouldBeEmpty()
     }
 
     "the demo provider goes through a real tool round: it lists the workflows, and names them" {

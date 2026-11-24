@@ -2,7 +2,6 @@ package com.dynamicruntime.trials
 
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.WFD
-import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -126,15 +125,7 @@ object GrantsBasics {
             Expectation("The review highlights its Start, for whoever takes its first step") { r -> Checks.reviewHighlightsStart(r) },
             Expectation("Home's introduction names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, program) },
             Expectation("The invitation mail names the program") { r -> Checks.copyMentions(r, AFRAG.mail, MAILNS.invitation, program) },
-            Expectation("A Home card to start an application") { r ->
-                val cards = r.view.homeCards.filter { it[HCARD.title] != null }
-                if (cards.isEmpty()) {
-                    Outcome.notMet("No card added or reworded on Home." + r.view.homeCards.takeIf { it.isNotEmpty() }
-                        ?.let { " Its overlay: ${it.joinToString { c -> cardSummary(c) }}." }.orEmpty())
-                } else {
-                    Outcome.met(cards.joinToString("; ") { cardSummary(it) })
-                }
-            },
+            Expectation("A Home card to start an application, which opens the New form") { r -> Checks.homeCardStartsForm(r) },
             Expectation("A report by category, counting and totaling the amount") { r ->
                 val reports = r.view.reports
                 val good = reports.firstOrNull { report ->
