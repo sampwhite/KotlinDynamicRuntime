@@ -414,3 +414,22 @@ fun GridState.onEditorKey(key: String, shift: Boolean): GridState? = when (key) 
     "Escape" -> cancelEdit()
     else -> null
 }
+
+/** The grid with its open edit committed where it is, or as it is when nothing is edited. */
+fun GridState.committed(): GridState = if (editing != null) commitEdit() else this
+
+/**
+ * A click on [cell], with Shift held or not: an open edit is committed first -- clicking another cell is how a spreadsheet
+ * finishes one -- then the cursor put there, or the selection stretched to it.
+ */
+fun GridState.clickCell(cell: GridCell, shift: Boolean): GridState =
+    committed().let { if (shift) it.extendTo(cell) else it.moveTo(cell) }
+
+/** A double click on [cell]: an open edit committed, then [cell] edited. */
+fun GridState.openCell(cell: GridCell): GridState = committed().moveTo(cell).startEdit()
+
+/**
+ * Whether the grid holds what is not saved: a change committed ([GridState.dirty]), or an edit still open whose text is
+ * not its cell's -- so Save is on before the click that commits it, which a disabled button would not take.
+ */
+val GridState.unsaved: Boolean get() = dirty || editing?.let { it.text != text(it.at) } == true

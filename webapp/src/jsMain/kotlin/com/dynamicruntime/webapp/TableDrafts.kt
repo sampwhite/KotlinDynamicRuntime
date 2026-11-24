@@ -45,12 +45,36 @@ class TableFlushOutcome(val updates: List<TableUpdate>, val refusal: String?)
 /**
  * A form surface's grids (issue #1885), registered by field. [onChange] is the page's, told when a grid's unsaved state
  * may have changed, so the page's Save and Reset, which consult [anyDirty], are drawn again.
+ *
+ * **A grid not drawn keeps its unsaved rows here** ([keep]): a workflow page draws one task at a time, so moving to
+ * another task takes a grid off the page, and its rows -- the grid's own state, unlike a field's typed value, which the
+ * page holds -- would go with it. The page counts them as unsaved, and the grid takes them back ([takeKept]) when it is
+ * drawn again.
  */
 class TableDrafts {
     private val drafts = LinkedHashMap<TableDraftKey, TableDraft>()
+    private val kept = LinkedHashMap<TableDraftKey, GridState>()
 
     /** The page's: re-renders it, since a grid's unsaved rows count as an unsaved change. */
     var onChange: () -> Unit = {}
+
+    /**
+     * Whether a save is under way: set the moment Save is clicked ([beginSave]), not when the page next draws, so a second
+     * click in the same moment -- before a busy button is drawn -- does not flush and save twice.
+     */
+    private var saving = false
+
+    /** Starts a save: true, unless one is already under way, when the click is ignored. Ended by [endSave]. */
+    fun beginSave(): Boolean {
+        if (saving) return false
+        saving = true
+        return true
+    }
+
+    /** Ends a save [beginSave] started: the page's own busy state covers the request it then sends. */
+    fun endSave() {
+        saving = false
+    }
 
     fun register(key: TableDraftKey, draft: TableDraft) {
         drafts[key] = draft
@@ -61,9 +85,19 @@ class TableDrafts {
         if (drafts.remove(key) != null) onChange()
     }
 
-    /** Whether any grid -- or, given [scopes], any grid in one of them -- has rows not yet saved. */
+    /** [state], the unsaved rows of the grid at [key], kept while the grid is not drawn. */
+    fun keep(key: TableDraftKey, state: GridState) {
+        kept[key] = state
+        onChange()
+    }
+
+    /** The rows kept for the grid at [key], handed back once: the grid is drawn again and holds them. */
+    fun takeKept(key: TableDraftKey): GridState? = kept.remove(key)
+
+    /** Whether any grid -- or, given [scopes], any grid in one of them -- has rows not yet saved, drawn or kept. */
     fun anyDirty(scopes: Set<String>? = null): Boolean =
-        drafts.any { (key, draft) -> (scopes == null || key.scope in scopes) && draft.dirty() }
+        drafts.any { (key, draft) -> (scopes == null || key.scope in scopes) && draft.dirty() } ||
+            kept.keys.any { scopes == null || it.scope in scopes }
 
     /**
      * Each grid -- or each in [scopes] -- flushed, in the order they registered: a changed table uploaded as a new file,
@@ -83,9 +117,10 @@ class TableDrafts {
         return TableFlushOutcome(updates, null)
     }
 
-    /** Every grid -- or each in [scopes] -- back to its field's file, its unsaved rows dropped: a page's Reset. */
+    /** Every grid -- or each in [scopes] -- back to its field's file, its unsaved rows dropped, kept ones too: a page's Reset. */
     fun resetAll(scopes: Set<String>? = null) {
         drafts.forEach { (key, draft) -> if (scopes == null || key.scope in scopes) draft.reset() }
+        if (kept.keys.removeAll { scopes == null || it.scope in scopes }) onChange()
     }
 }
 

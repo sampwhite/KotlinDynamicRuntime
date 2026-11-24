@@ -82,4 +82,42 @@ class TableDraftsTest {
         drafts.resetAll(setOf("other"))
         assertEquals(listOf("flush claim", "reset other"), log)
     }
+
+    @Test
+    fun aGridNotDrawnKeepsItsUnsavedRowsWithThePage() {
+        val line = com.dynamicruntime.common.schema.parseSchemaTypes(
+            mapOf(
+                "ns.L" to mapOf(
+                    com.dynamicruntime.common.schema.SCH.type to com.dynamicruntime.common.schema.SCT.kObject,
+                    com.dynamicruntime.common.schema.SCH.properties to mapOf("a" to mapOf(com.dynamicruntime.common.schema.SCH.type to com.dynamicruntime.common.schema.SCT.string)),
+                ),
+            ),
+        ).getValue("ns.L")
+        val state = loadGrid(line, 10, null, null).addRow()
+        var changes = 0
+        val drafts = TableDrafts().apply { onChange = { changes++ } }
+        val key = TableDraftKey("claim", "lines")
+        drafts.keep(key, state)
+        assertEquals(1, changes)
+        assertTrue(drafts.anyDirty())
+        assertTrue(drafts.anyDirty(setOf("claim")))
+        assertFalse(drafts.anyDirty(setOf("other")))
+        assertTrue(drafts.takeKept(key) === state)
+        // Handed back once.
+        assertNull(drafts.takeKept(key))
+        assertFalse(drafts.anyDirty())
+        // A Reset drops what is kept.
+        drafts.keep(key, state)
+        drafts.resetAll(setOf("claim"))
+        assertFalse(drafts.anyDirty())
+    }
+
+    @Test
+    fun aSaveUnderWayIgnoresASecondClick() {
+        val drafts = TableDrafts()
+        assertTrue(drafts.beginSave())
+        assertFalse(drafts.beginSave())
+        drafts.endSave()
+        assertTrue(drafts.beginSave())
+    }
 }

@@ -278,4 +278,29 @@ class DataGridModelTest {
         assertNull(pasteDroppedText(0, 5))
         assertEquals("3 rows · at most 5", gridRowCountText(3, 5))
     }
+
+    @Test
+    fun aClickElsewhereCommitsTheOpenEdit() {
+        val editing = grid().moveTo(GridCell(1, 2)).startEdit().editText("45")
+        val clicked = editing.clickCell(GridCell(0, 1), shift = false)
+        assertEquals("45", clicked.text(GridCell(1, 2)))
+        assertNull(clicked.editing)
+        assertEquals(GridCell(0, 1), clicked.active)
+        assertTrue(clicked.dirty)
+        // A double click elsewhere commits too, then edits there.
+        val opened = editing.openCell(GridCell(0, 0))
+        assertEquals("45", opened.text(GridCell(1, 2)))
+        assertEquals(GridEdit(GridCell(0, 0), "2026-11-02"), opened.editing)
+        assertEquals(GridBlock(0, 0, 1, 2), editing.clickCell(GridCell(0, 0), shift = true).selection)
+    }
+
+    @Test
+    fun anOpenEditThatChangedACellIsUnsaved() {
+        val g = grid()
+        assertFalse(g.unsaved)
+        assertFalse(g.startEdit().unsaved)
+        assertTrue(g.startEdit().editText("2026-11-09").unsaved)
+        assertTrue(g.startEdit("x").committed().dirty)
+        assertTrue(g.committed() === g)
+    }
 }

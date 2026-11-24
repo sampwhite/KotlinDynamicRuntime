@@ -564,7 +564,9 @@ each row keeps its typed values and its problems, worked out when the row change
   (`aria-activedescendant`); Tab leaves it. Arrows move, Shift+arrows select a block, Home/End and Ctrl+Home/End jump,
   Page Up/Down move 20 rows, Enter or F2 edits, a typed character replaces the cell, Delete clears, Space turns a yes or
   no (`onGridKey`). In a cell's editor, Enter commits and moves down (adding a row on the last), Tab and Shift+Tab move
-  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`).
+  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`). A
+  click on another cell commits the open edit first (`clickCell`, `openCell`): React draws the click's update before
+  the browser moves focus, so the editor is gone before its blur could commit it.
 - **Copy and paste** go through the clipboard's own events on the box: Copy writes the selected block as tab-separated
   text, and a paste fills from the cursor, skips a header row, adds rows up to the field's limit, and says how many did
   not fit (`GridPaste.droppedRows`).
@@ -572,9 +574,13 @@ each row keeps its typed values and its problems, worked out when the row change
   `TableDraftsContext` (`useTableDrafts()`; a workflow page also a `TableDraftsScopeContext` per trait), and each grid
   registers there. Save calls `drafts.flushAll()` first: a grid with a problem refuses (the message names the field, row,
   and column, and the cursor goes to the cell), else each changed table is uploaded once as a new CSV and
-  `applyTableUpdates` puts its file id at the field's path in the values the save then sends. A grid's unsaved rows count
-  as an unsaved change (`drafts.anyDirty()`), and Reset reloads every grid from its field's file (`resetAll`). Outside a
-  form surface -- no context -- a table field is a plain file field.
+  `applyTableUpdates` puts its file id at the field's path in the values the save then sends. A grid's unsaved rows --
+  an open edit that changed its cell among them (`GridState.unsaved`), so Save is on before the click that commits it --
+  count as an unsaved change (`drafts.anyDirty()`), and Reset reloads every grid from its field's file (`resetAll`).
+  **Save is guarded from the click** (`beginSave`/`endSave`), not by the page's busy state, which React draws a moment
+  later: two clicks in that moment would otherwise upload and save twice. **A grid taken off the page keeps its unsaved
+  rows with the page** (`keep`/`takeKept`) -- a workflow page draws one task at a time -- and takes them back when drawn
+  again. Outside a form surface -- no context -- a table field is a plain file field.
 - **Driving it from the browser tools.** The tools' `type` sends no `keydown` with a `key`, so it cannot start an edit in
   the box: dispatch `KeyboardEvent('keydown', {key, bubbles: true})` to `.data-grid-box`, set an editor's text with the
   native value setter and an `input` event, and dispatch `ClipboardEvent('paste'/'copy', {clipboardData: new

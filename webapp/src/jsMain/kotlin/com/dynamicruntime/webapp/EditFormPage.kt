@@ -386,8 +386,10 @@ val EditFormPage = FC<Props> {
                     val sendReason = reason?.takeIf { changedLocks.isNotEmpty() }
                     if (lockProblem != null) {
                         // Nothing to focus: the notice above the form says what to do.
+                        running = false
                     } else if (payload == null) {
                         focusRequest += 1
+                        running = false
                     } else {
                         running = true
                         runError = null
@@ -452,15 +454,29 @@ val EditFormPage = FC<Props> {
                         disabled = !dirty || keptToOwner
                         onClick = {
                             // A grid's unsaved rows first (issue #1885): each saved as its new file, set in its field.
-                            editScope.launch {
-                                val flushed = drafts.flushAll()
-                                val refusal = flushed.refusal
-                                if (refusal != null) {
-                                    runError = DisplayError.expected(refusal)
-                                } else {
-                                    val current = applyTableUpdates(values, flushed.updates)
-                                    if (flushed.updates.isNotEmpty()) values = current
-                                    saveWith(current)
+                            // Busy from the click, through the grids' uploads, so a second click cannot save twice.
+                            if (!running && drafts.beginSave()) {
+                                running = true
+                                runError = null
+                                editScope.launch {
+                                    val flushed = try {
+                                        drafts.flushAll()
+                                    } catch (e: Throwable) {
+                                        runError = userFacingError(e)
+                                        running = false
+                                        return@launch
+                                    } finally {
+                                        drafts.endSave()
+                                    }
+                                    val refusal = flushed.refusal
+                                    if (refusal != null) {
+                                        runError = DisplayError.expected(refusal)
+                                        running = false
+                                    } else {
+                                        val current = applyTableUpdates(values, flushed.updates)
+                                        if (flushed.updates.isNotEmpty()) values = current
+                                        saveWith(current)
+                                    }
                                 }
                             }
                         }

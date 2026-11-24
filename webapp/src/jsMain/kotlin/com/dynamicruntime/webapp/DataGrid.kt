@@ -173,6 +173,12 @@ private val GridEditor = FC<GridEditorProps> { props ->
         loadedFor.current = wanted
         loadError = null
         note = null
+        // Rows this grid had unsaved when it was last taken off the page, on the file the field still names.
+        val kept = props.drafts.takeKept(TableDraftKey(scope, props.path))
+        if (kept != null && kept.baseFileId == id) {
+            setGrid(kept)
+            return@useEffect
+        }
         if (id == null) {
             setGrid(loadGrid(rowType, maxRows, null, null))
             return@useEffect
@@ -230,25 +236,29 @@ private val GridEditor = FC<GridEditorProps> { props ->
         props.drafts.register(
             key,
             TableDraft(
-                dirty = { latest.current?.dirty == true },
+                dirty = { latest.current?.unsaved == true },
                 flush = { flushRef.current!!.invoke() },
                 reset = { setReloadAsk { it + 1 } },
             ),
         )
-        // An effect is a coroutine here, cancelled when the grid goes: that is when it leaves the page's grids.
+        // An effect is a coroutine here, cancelled when the grid goes: that is when it leaves the page's grids, its unsaved
+        // rows kept with the page until it is drawn again.
         try {
             awaitCancellation()
         } finally {
+            val last = latest.current
             props.drafts.unregister(key)
+            if (last != null && last.unsaved) props.drafts.keep(key, last.committed())
         }
     }
     // The page's Save and Reset follow whether the grid has unsaved rows.
-    useEffect(grid?.dirty) { props.drafts.onChange() }
+    useEffect(grid?.unsaved) { props.drafts.onChange() }
 
     val handlers = useMemo(setGrid) {
         GridHandlers(
-            down = { cell, shift -> setGrid { it?.let { g -> if (shift) g.extendTo(cell) else g.moveTo(cell) } } },
-            open = { cell -> setGrid { it?.moveTo(cell)?.startEdit() } },
+            // A click elsewhere commits the open edit, as a spreadsheet's does, rather than dropping it.
+            down = { cell, shift -> setGrid { it?.clickCell(cell, shift) } },
+            open = { cell -> setGrid { it?.openCell(cell) } },
             editText = { text -> setGrid { it?.editText(text) } },
             editorKey = { key, shift ->
                 val handled = latest.current?.onEditorKey(key, shift) != null
@@ -375,7 +385,7 @@ private val GridEditor = FC<GridEditorProps> { props ->
                 +(if (removable > 1) "Remove $removable rows" else "Remove row")
             }
             span { className = ClassName("type-hint"); +gridRowCountText(g.rows.size, g.maxRows) }
-            if (g.dirty) span { className = ClassName("type-hint"); +" · Unsaved: saved with the form" }
+            if (g.unsaved) span { className = ClassName("type-hint"); +" · Unsaved: saved with the form" }
         }
         note?.let { div { className = ClassName("type-hint"); +it } }
         val problems = g.problems()

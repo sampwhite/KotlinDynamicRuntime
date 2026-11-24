@@ -301,6 +301,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     fun valuesOf(traitId: String): Map<String, Any?> = valuesByTrait[traitId] ?: emptyMap()
 
+    /** Whether [task] holds edits not yet saved: its fields' values, or its traits' grids' rows (issue #1885). */
+    fun taskHasUnsaved(task: WfTaskView): Boolean =
+        taskUnsaved(task, valuesByTrait, stored) || drafts.anyDirty(task.traits.map { it.traitId }.toSet())
+
     // The per-field supplied-default descriptors for a trait's form (issue #710): each defaulted field's mode, an
     // `offer`'s value for its "Use it" link, whether a `filled` default is still a suggestion, and -- once the
     // user has touched it -- a reset that restores the value and the mark. Applying an offer needs no callback:
@@ -452,10 +456,23 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
      * field -- then the save, from the values with those files in them.
      */
     fun onSaveClicked(task: WfTaskView) {
+        if (savingTask != null || !drafts.beginSave()) return
         val scopes = task.traits.map { it.traitId }.toSet()
         val atClick = valuesByTrait
+        // Busy from the click, through the grids' uploads, so a second click cannot save twice. The save marks it again
+        // once it sends, and clears it however it ends.
+        savingTask = task.id
         wfFormScope.launch {
-            val flushed = drafts.flushAll(scopes)
+            val flushed = try {
+                drafts.flushAll(scopes)
+            } catch (e: Throwable) {
+                runError = userFacingError(e)
+                savingTask = null
+                return@launch
+            } finally {
+                drafts.endSave()
+            }
+            savingTask = null
             val refusal = flushed.refusal
             if (refusal != null) {
                 runError = DisplayError.expected(refusal)
@@ -849,8 +866,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         Button {
                             type = "primary"
                             loading = savingTask == task.id
-                            disabled = !(taskUnsaved(task, valuesByTrait, stored) || drafts.anyDirty(task.traits.map { it.traitId }.toSet())) ||
-                                savingTask != null
+                            disabled = !taskHasUnsaved(task) || savingTask != null
                             onClick = { onSaveClicked(task) }
                             +save.label
                         }
@@ -867,7 +883,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // task, and the title / aria-label carry what the mark means -- a hover tooltip alone is not enough for
     // touch or a screen reader.
     fun ChildrenBuilder.railItem(task: WfTaskView, active: Boolean) {
-        val unsaved = taskUnsaved(task, valuesByTrait, stored)
+        val unsaved = taskHasUnsaved(task)
         val status = statusFor(task, unsaved)
         val mark = railMark(status)
         // Name a missing trait by its name (issue #1520), so the tooltip and the panel's heading agree.
@@ -1048,7 +1064,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // (issue #719) and opens on the trait heading.
                     val shown = shownTask ?: wf.tasks.first()
                     // A satisfied task says so and offers the next one (issue #1694), by the mark its rail entry draws.
-                    val shownUnsaved = taskUnsaved(shown, valuesByTrait, stored)
+                    val shownUnsaved = taskHasUnsaved(shown)
                     val shownMark = railMark(statusFor(shown, shownUnsaved))
                     taskPanel(
                         shown, showLabel = false, next = nextTaskAfter(wf.tasks, shown.id, shownMark),
