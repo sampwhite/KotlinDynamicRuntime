@@ -42,7 +42,8 @@ which the page does not draw yet: the editor closes on a save and has no note to
 (issue #1765), each edit's result also names the bundle it landed in (`configName`), a workflow's definition read gives
 the stamp its block does (`basedOn`), and the shared field and the fields shown take a `dryRun` -- judged as the save
 would be and stored nowhere, answering a draft's `draftImpact` -- which the page itself does not use. A field's summary keeps what the data requires apart from what this form
-asks for (issue #1022): **Required by the data** beside **Required on this form** and **Choices on this form**, the
+asks for (issue #1022; a field whose choices are sourced, such as a form's type, has no choices to restate, #1902):
+**Required by the data** beside **Required on this form** and **Choices on this form**, the
 form's requirements from its layout entry. The workflow copy editor sets them (issue #1048,
 `formRequirementControls`): a **Required on this form** checkbox -- locked when the data already requires the field,
 and replaced by the reason on a derived or `g-visibleWhen` field, which the load check refuses -- and, for a field

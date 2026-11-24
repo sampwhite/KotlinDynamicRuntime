@@ -167,7 +167,12 @@ class WfDesign(
     val shownFields: Map<String, List<String>> = emptyMap(),
     /** By approval task id, what each approval lays out its own way for what it shows (issue #1875); see `DSV.approvals`. */
     val approvals: Map<String, WfDesign> = emptyMap(),
+    /** By type name, the fields whose choices are sourced, which no form restates (issue #1902); see `DSV.sourcedFields`. */
+    val sourcedFields: Map<String, List<String>> = emptyMap(),
 ) {
+    /** Whether the choices of [field] of [typeName] are sourced, so a form may not restate them. */
+    fun isSourced(typeName: String, field: String): Boolean = field in sourcedFields[typeName].orEmpty()
+
     /** The workflow's own entry for [field] of [typeName], with what it replaced, or null when it has none. */
     fun layoutEdit(typeName: String, field: String): LayoutEdit? = layoutEdits[typeName]?.get(field)
 
@@ -180,7 +185,7 @@ class WfDesign(
         val own = approvals[taskId]
         return WfDesign(
             workflow, types, canEdit, editRefusal, basedOn,
-            own?.layoutEdits.orEmpty(), own?.headingEdits.orEmpty(), own?.shownFields.orEmpty(), approvals,
+            own?.layoutEdits.orEmpty(), own?.headingEdits.orEmpty(), own?.shownFields.orEmpty(), approvals, sourcedFields,
         )
     }
 }
@@ -233,6 +238,7 @@ fun parseWfDesign(raw: Any?): WfDesign? {
         headingEdits = layouts.headingEdits,
         shownFields = layouts.shownFields,
         approvals = block[DSV.approvals].toJsonMapOrEmpty().mapValues { (_, a) -> parseDesignLayouts(a.toJsonMapOrEmpty()) },
+        sourcedFields = block[DSV.sourcedFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
     )
 }
 
@@ -604,13 +610,15 @@ fun copyFallback(
 class FormChoiceRow(val value: String, val schemaLabel: String, val offered: Boolean, val label: String)
 
 /**
- * The editor's choice rows for a field of type [vt] whose layout entry is [entry] (issue #1048), or null when the
+ * The editor's choice rows for a field of type [vt] whose layout entry is [entry] (issue #1048) -- [sourced] when its
+ * choices are resolved for the caller and the form (issue #1902), which no form restates -- or null when the
  * field has no closed list for a form to restate. Each row starts with its label filled in -- the entry's, else the
  * schema's -- since a form customizing its list owns all of it, copy included. With no `choices` in the entry, every
  * choice is offered. With some, the offered ones come first in the entry's order -- the editor does not reorder,
  * but keeps an order written by hand -- then the rest in the schema's, not offered. Pure.
  */
-fun formChoiceRowsOf(vt: SchType, entry: Map<String, Any?>): List<FormChoiceRow>? {
+fun formChoiceRowsOf(vt: SchType, entry: Map<String, Any?>, sourced: Boolean = false): List<FormChoiceRow>? {
+    if (sourced) return null
     val options = vt.options?.takeIf { !vt.openOptions } ?: return null
     val restated = (entry[SL.choices] as? List<*>)?.map { it.toJsonMapOrEmpty() }
         ?: return options.map { FormChoiceRow(it.value, it.label, offered = true, label = it.label) }

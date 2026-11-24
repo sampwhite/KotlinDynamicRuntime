@@ -246,6 +246,13 @@ object DSV {
     const val shownFields = "shownFields"
 
     /**
+     * In the block: by type name, the fields whose choices are **sourced** (`g-optionsSource`, issue #1902). The view has
+     * them resolved, for the caller and the form, so to the page they read as the schema's own; they are not, and a form
+     * may not restate them. A type with none is absent.
+     */
+    const val sourcedFields = "sourcedFields"
+
+    /**
      * In the block: by approval task id, what each approval lays out its own way for what it shows (issue #1875) --
      * its [layoutEdits], [headingEdits], and [shownFields], in the shapes the workflow's take, each against the
      * workflow's view of the type rather than the client's. An approval that lays out nothing of its own is absent.

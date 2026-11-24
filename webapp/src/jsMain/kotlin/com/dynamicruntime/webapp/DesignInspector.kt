@@ -754,7 +754,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
     var asJson by useState(false)
     var values by useState(copyKeys.associateWith { start[it].toOptStr().orEmpty() })
     var required by useState(start[SL.required] == true)
-    var choiceRows by useState(formChoiceRowsOf(target.prop.valueType, start))
+    var choiceRows by useState(formChoiceRowsOf(target.prop.valueType, start, session.design.isSourced(owner.typeName, target.name)))
     var jsonText by useState(start.toJsonStr())
     var saving by useState(false)
     var failure by useState<DisplayError?>(null)

@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.FTYPE
 import com.dynamicruntime.common.gedra.FormTypeService
 import com.dynamicruntime.common.gedra.GCFG
@@ -31,8 +32,10 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.globalTraitBases
@@ -43,6 +46,8 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
@@ -235,6 +240,35 @@ class FormTypesTest : StringSpec({
         // The form's own though the caller may not set it, and, when the form may not leave it, no other.
         service.choicesFor(caller, site.client, "video").map { it.value } shouldContainExactly listOf("video")
         service.choicesFor(caller, site.client, "note").map { it.value } shouldContainExactly listOf("lead", "note", "memo")
+    }
+
+    "a form of a type no longer defined is still offered it, so its page does not refuse it" {
+        val site = createSite("site1902k")
+        val form = site.lead.make(typed("lead"))
+        write(siteConfig(site.client) { formType("note", "Note", mayLeave = true) }, site.client)
+        val caller = cxt.mkSubContext("choices", site.client)
+        FormTypeService.get(cxt).choicesFor(caller, site.client, "lead") shouldContainExactly
+            listOf(SchOption("lead", "lead"), SchOption("note", "Note"))
+        site.lead.typeOf(form) shouldBe "lead"
+    }
+
+    "Design View says the choices are sourced, which a workflow's own layout may not restate" {
+        val site = createSite("site1902l")
+        // Published, as an edit on the page needs.
+        GedraConfigService.get(cxt).publish(asClient(site.client), listOf(GedraId.of(GedraConfigType.configDoc, site.client, "main")))
+        GedraConfigReload.reloadClient(cxt, site.client)
+        val block = site.admin.getData(clientPath(GEP.workflowView, site.client), mapOf(EP.view to DSV.design))[DSV.designBlock]
+            .toJsonMapOrEmpty()
+        val typeName = block[DSV.types].toJsonMapOrEmpty().keys.single { it.endsWith("FormTypeData") }
+        fun setEntry(entry: Map<String, Any?>) = mapOf(
+            DSV.workflowId to "make", DSV.typeName to typeName, DSV.field to GT.formTypeField, DSV.entry to entry,
+            DSV.basedOn to block[DSV.basedOn],
+        )
+        val restated = setEntry(mapOf(SL.choices to listOf(mapOf(SL.value to "lead", SL.label to "Prospect"))))
+        site.admin.refused(EXC.badInput, DSV.layoutEntryEdit, restated) shouldContain "no closed list of choices"
+        block[DSV.sourcedFields] shouldBe mapOf(typeName to listOf(GT.formTypeField))
+        // Its copy is a workflow's to change, as any field's is.
+        site.admin.postData(DSV.layoutEntryEdit, setEntry(mapOf(SL.label to "What is this?")))
     }
 
     "a client has the trait by defining types, and by no group" {

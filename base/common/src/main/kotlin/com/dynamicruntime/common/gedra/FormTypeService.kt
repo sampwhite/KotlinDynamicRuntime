@@ -108,7 +108,8 @@ class FormTypeService : ServiceInitializer {
 
     /**
      * The choices of the type of a form whose type is [current]: those [cxt]'s caller may set, and the form's own -- which
-     * is the only one when the form may not leave it.
+     * is the only one when the form may not leave it, and is offered by its id when it is no longer defined, so that a
+     * page does not refuse the value its form already holds.
      */
     fun choicesFor(cxt: KdrCxt, client: String, current: String?): List<SchOption> {
         val types = forClient(client)
@@ -116,9 +117,14 @@ class FormTypeService : ServiceInitializer {
         val registry = SchemaService.get(cxt).cfactsFor(client)
         // The caller's facts once, for every type's rule.
         val facts by lazy { registry.assemble(cxt) }
-        return types.values
-            .filter { it.formTypeId == current || (fixed == null && (it.setWhen == null || isMet(it, registry, facts))) }
-            .map { SchOption(it.formTypeId, it.label) }
+        val undefined = current?.takeIf { it !in types }
+        return buildList {
+            undefined?.let { add(SchOption(it, it)) }
+            for (type in types.values) {
+                val offered = type.formTypeId == current || (fixed == null && (type.setWhen == null || isMet(type, registry, facts)))
+                if (offered) add(SchOption(type.formTypeId, type.label))
+            }
+        }
     }
 
     /** What [client]'s types are judged by on the running node, or null for a client not present here. */

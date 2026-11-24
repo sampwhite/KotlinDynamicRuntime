@@ -35,6 +35,7 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -159,6 +160,12 @@ object DesignView {
             out[DSV.editRefusalCode] = refusal.code.name
         }
         out.putAll(alterationEdits(declared.def.typeAlterations, declared.def.typeBasis, clientStore, store))
+        // The fields whose choices are sourced (issue #1902), read off the types as declared: the view's are resolved.
+        val sourced = defs.mapValues { (_, body) ->
+            body.toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+                .filterValues { SCH.optionsSource in it.toJsonMapOrEmpty() }.keys.toList()
+        }.filterValues { it.isNotEmpty() }
+        if (sourced.isNotEmpty()) out[DSV.sourcedFields] = sourced
         // Each approval's own layouts of what it shows (issue #1875), against the workflow's view of the types.
         val approvals = declared.def.tasks.mapNotNull { task ->
             val approval = task.approval?.takeIf { it.typeAlterations.isNotEmpty() } ?: return@mapNotNull null
