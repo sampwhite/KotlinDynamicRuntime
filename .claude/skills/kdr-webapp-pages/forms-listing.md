@@ -360,11 +360,16 @@ workflow view say which counters do (`countersOnSave`, from their `counters`), a
 
 - asks none of theirs for an id, and draws none of their fields while it is empty (`FieldHidden.givenAtSave`); the
   workflow form draws no section for a trait with nothing else to show (`hiddenUntilSaved`), and still sends its entry,
-  for the server to fill;
+  for the server to fill, saying "There is nothing to fill in here. The form is given its id when you save it." when that
+  leaves a task no section, with Save live, since there is an id to give;
 - names the ids the server gave on arrival at the listing ("The form T-042 was created."), on screen or not: they ride
-  the return as `hli` (`HP.createdIds`, `idsGivenAtSave`), as transient as the flash.
+  the return as `hli` (`HP.createdIds`, `idsGivenAtSave`), as transient as the flash, and a JSON list, since a prefix may hold a comma.
 
-An edit adding such a field asks for its id when Save is clicked, once the form's check has passed (`onSaveSlotsToFill`).
+An edit adding such a field asks for its id when Save is clicked, once the form's check has passed, and keeps it in the
+form, so a save refused after that sends the same id again. Which fields a section is given is the form's own plan
+(`fieldsGivenAtSave`, over `formFieldPlan`): one its layout leaves out, the viewer is not offered, or the answers rule out
+is given none, and the save would be refused it. An id its counter will not issue leaves the field empty, and the save
+goes on.
 
 ## A file field uploads a file, then holds its id (issue #1840)
 

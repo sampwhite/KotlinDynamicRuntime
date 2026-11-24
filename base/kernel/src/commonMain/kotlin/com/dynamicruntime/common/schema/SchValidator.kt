@@ -818,7 +818,7 @@ fun validateObject(
     // the property a condition keys on may live in the stored data the fragment folds into, not in the fragment
     // itself, so "given approved, is rejectionReason required?" cannot be answered here at all (issue #487).
     // It is answered on the assembled whole -- `checkStoredEntries`, whose existence this is the reason for.
-    if (!opts.skipCompleteness) type.condition?.let { checkCondition(type, it, map, dropped, path, failures) }
+    if (!opts.skipCompleteness) type.condition?.let { checkCondition(type, it, map, dropped, path, failures, opts) }
     return out ?: map
 }
 
@@ -842,12 +842,15 @@ fun checkCondition(
     dropped: Set<String>,
     path: String,
     failures: MutableList<SchFailure>,
+    opts: SchOpts,
 ) {
     val holds = condition.holds(map)
     fun supplied(name: String) = map.containsKey(name) && name !in dropped
     for (name in condition.requiredWhen(holds)) {
         if (!supplied(name)) {
             val target = type.properties[name]?.valueType
+            // A field a counter fills is not asked of a request (issue #1852), as the plain `required` loop has it.
+            if (opts.forInput && target?.counter != null) continue
             val at = childPath(path, name)
             val message = "Required property '$name' is missing."
             failures.add(

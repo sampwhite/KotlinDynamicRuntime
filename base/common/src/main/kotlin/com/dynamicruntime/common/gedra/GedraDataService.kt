@@ -524,8 +524,9 @@ class GedraDataService : ServiceInitializer {
         requireEntryKind(kind)
         // At most one entry per trait -- or per primary-key value, for a keyed trait (issue #487) -- refused
         // before anything is minted (issue #337). This was not checked when create was written, so a caller
-        // could store two entries nothing could address, which is how the patch, and the form, address them.
-        checkEntryKeys(entries, pkFieldsOf(cxt, kind))
+        // could store two entries nothing could address, which is how the patch, and the form, address them. An entry
+        // keyed by a field a counter is to fill (issue #1852) has no key yet; it is judged with the rest once it has.
+        checkEntryKeys(entries - keyedByEmptyCounter(cxt, kind, entries), pkFieldsOf(cxt, kind))
         checkTraitsSupported(cxt, kind, entries.mapNotNull { it[GE.traitId].toOptStr() }, allowAdditionalTraits)
         // Trait save-time functions (issue #728): calculate or validate each entry's data before anything is
         // minted or locked. A validation throws a 400 from here; a calculation's output is what gets stamped and
@@ -571,16 +572,22 @@ class GedraDataService : ServiceInitializer {
         //
         // A counter's field an entry leaves out is given its id by the server (issue #1852), issued only once nothing
         // before the write can refuse the create, so a refused one uses up no id: the check first, excusing the fields
-        // the server fills, then the plan's room for the form. Then the ids, and the whole check again on what will be
-        // stored. The write's claim hook takes the tokens as it takes a page's.
-        val slots = leftOutCounterSlots(cxt, kind, stored)
+        // the server fills, then the plan's room for the form. Then the ids, the `g-onWrite` functions again over the
+        // data that now holds them (a value computed from an id), and the whole check on what will be stored. The
+        // write's claim hook takes the tokens as it takes a page's. A save-time function has run by then, so it sees an
+        // id only when the caller sent it.
+        val slots = leftOutCounterSlots(cxt, kind, stored, gate)
         if (slots.isEmpty()) {
             checkStoredEntries(cxt, kind, stored)
             return insertStoredGedra(cxt, kind, stored, creationWorkflowId)
         }
         checkStoredEntries(cxt, kind, stored, excused = slots.map { it.entryIndex to childPath(GE.data, it.field) }.toSet())
         if (kind == GedraDataType.formDoc) PlanLimits.requireRoomForForm(cxt, cxt.client)
-        val filled = fillCounterIds(cxt, stored, slots)
+        val given = slots.map { it.entryIndex }.toSet()
+        val filled = fillCounterIds(cxt, stored, slots).mapIndexed { i, entry ->
+            if (i !in given) return@mapIndexed entry
+            entry + (GE.data to onWrite(entry[GE.traitId].toOptStr().orEmpty(), entry[GE.data].toJsonMapOrEmpty()))
+        }
         checkStoredEntries(cxt, kind, filled)
         return insertStoredGedra(cxt, kind, filled, creationWorkflowId)
     }
@@ -588,16 +595,42 @@ class GedraDataService : ServiceInitializer {
     /** A counter's field an entry of a create leaves out (issue #1852): which entry, which field, and which counter. */
     private class CounterSlot(val entryIndex: Int, val field: String, val counterId: String)
 
-    /** The counter fields [entries] of a create leave out -- no value, or a blank one -- in the order they appear. */
-    private fun leftOutCounterSlots(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): List<CounterSlot> {
+    /**
+     * The counter fields [entries] of a create leave out -- no value, or a blank one -- in the order they appear, for the
+     * server to fill. Not one the form is not to hold: a field the type's condition forbids for these answers, or one
+     * whose `g-visibleWhen` the caller fails ([gate]). And not one whose counter issues no ids, because it is disabled or
+     * the client does not have it: the field stays empty, and the check refuses a form that requires it.
+     */
+    private fun leftOutCounterSlots(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        entries: List<Map<String, Any?>>,
+        gate: GatedWrite,
+    ): List<CounterSlot> {
         val union = clientUnion(cxt, kind) ?: return emptyList()
+        val counters = CounterService.getOrNull(cxt) ?: return emptyList()
         return entries.flatMapIndexed { i, entry ->
-            val traitId = entry[GE.traitId].toOptStr() ?: return@flatMapIndexed emptyList()
+            val type = entry[GE.traitId].toOptStr()?.let { traitDataTypeIn(union, it) } ?: return@flatMapIndexed emptyList()
             val data = entry[GE.data].toJsonMapOrEmpty()
-            traitDataTypeIn(union, traitId)?.let(::counterFieldsOf).orEmpty()
-                .filter { (field, _) -> data[field].toOptStr().isNullOrBlank() }
-                .map { (field, counterId) -> CounterSlot(i, field, counterId) }
+            val forbidden = type.condition?.let { it.forbiddenWhen(it.holds(data)) }.orEmpty()
+            counterFieldsOf(type).filter { (field, counterId) ->
+                data[field].toOptStr().isNullOrBlank() && field !in forbidden &&
+                    type.properties[field]?.visibleWhen?.let(gate::offers) != false && counters.issues(cxt.client, counterId)
+            }.map { (field, counterId) -> CounterSlot(i, field, counterId) }
         }
+    }
+
+    /**
+     * The [entries] of a create keyed by a counter's field they leave out (issue #1852): they have no key until the server
+     * gives it, so a check of keys before then leaves them out.
+     */
+    private fun keyedByEmptyCounter(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): Set<Map<String, Any?>> {
+        val union = clientUnion(cxt, kind) ?: return emptySet()
+        return entries.filter { entry ->
+            val type = entry[GE.traitId].toOptStr()?.let { traitDataTypeIn(union, it) } ?: return@filter false
+            val data = entry[GE.data].toJsonMapOrEmpty()
+            counterFieldsOf(type).keys.any { it in type.primaryKey && data[it].toOptStr().isNullOrBlank() }
+        }.toSet()
     }
 
     /**
@@ -1835,6 +1868,8 @@ class GedraDataService : ServiceInitializer {
                 return gated.data
             }
 
+            override fun offers(expression: String): Boolean = allows(expression)
+
             override fun checkRemoval(traitId: String, stored: Map<String, Any?>) {
                 val dataType = dataTypeOf(traitId) ?: return
                 if (holdsGatedValue(dataType, stored, allows)) {
@@ -1916,7 +1951,9 @@ class GedraDataService : ServiceInitializer {
          */
         excused: Set<Pair<Int, String>> = emptySet(),
     ) {
-        checkEntryKeys(entries, pkFieldsOf(cxt, kind))
+        // A key the server has yet to fill is judged once it has (issue #1852).
+        val keyed = if (excused.isEmpty()) entries else entries - keyedByEmptyCounter(cxt, kind, entries)
+        checkEntryKeys(keyed, pkFieldsOf(cxt, kind))
         val union = clientUnion(cxt, kind) ?: return
         val failures = entries.flatMapIndexed { i, entry ->
             validate(union, entry).filterNot { it.code == SchFailCode.missingRequired && (i to it.path) in excused }
@@ -2337,6 +2374,9 @@ interface GatedWrite {
      * throws when the caller changed a value its gate hides.
      */
     fun write(traitId: String, stored: Map<String, Any?>?, incoming: Map<String, Any?>): Map<String, Any?>
+
+    /** Whether the caller passes a gate's [expression], and so is offered the field it gates. */
+    fun offers(expression: String): Boolean
 
     /** Throws when removing the [traitId] entry holding [stored] would take a value the caller's gate hides. */
     fun checkRemoval(traitId: String, stored: Map<String, Any?>)

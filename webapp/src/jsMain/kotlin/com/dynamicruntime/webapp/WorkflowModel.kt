@@ -707,6 +707,8 @@ fun localTaskStatus(
     values: Map<String, Map<String, Any?>>,
     /** The workflow's field layouts, whose form requirements count as the server's do (issue #1022). */
     layouts: Map<String, SchLayout> = emptyMap(),
+    /** The fields of a trait a counter gives an id at the save (issue #1852), which are not missing. */
+    givenAtSave: (WfTraitView) -> Set<String> = { emptySet() },
 ): WfTaskStatus {
     val missing = mutableListOf<String>()
     val problems = mutableListOf<WfProblem>()
@@ -714,7 +716,7 @@ fun localTaskStatus(
         val working = values[trait.traitId] ?: emptyMap()
         // An optional trait left empty has nothing to judge. A required one is judged by its schema, empty or not.
         if (!trait.required && comparableValues(working).isEmpty()) continue
-        val failures = checkFormInput(trait.type, working, layouts).failures
+        val failures = checkFormInput(trait.type, working, layouts, givenAtSave(trait)).failures
         if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
         failures.filter { it.code != SchFailCode.missingRequired }
             .forEach { problems.add(WfProblem(trait.traitId, it.path, it.userMessage ?: it.message)) }

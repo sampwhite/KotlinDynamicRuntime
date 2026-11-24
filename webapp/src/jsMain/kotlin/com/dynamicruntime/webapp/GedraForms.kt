@@ -60,7 +60,10 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.validate
+import com.dynamicruntime.common.util.jsonArrayResult
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -318,7 +321,7 @@ fun formsArrivalNote(hp: Map<String, String>, appliedSearch: Map<String, Any?>, 
         rowIds,
         created = hp[HP.created] == formsRouteFlagOn,
         customSort = formsCustomSort(hp),
-        createdIds = hp[HP.createdIds]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty(),
+        createdIds = hp[HP.createdIds]?.jsonArrayResult()?.valueOrNull().toJsonListOfStrings(),
     )
 
 /**
@@ -370,7 +373,7 @@ fun formsListingReturn(
         addAll(formsSearchRouteParams(formsSearchFromRoute(hp)))
         highlightId?.let { add(HP.highlight to it) }
         if (created) add(HP.created to formsRouteFlagOn)
-        if (created && createdIds.isNotEmpty()) add(HP.createdIds to createdIds.joinToString(","))
+        if (created && createdIds.isNotEmpty()) add(HP.createdIds to createdIds.toJsonStr(compact = true))
     }
 
 /**

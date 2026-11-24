@@ -135,6 +135,9 @@ class CounterService : ServiceInitializer {
     /** [client]'s counters, by id; none for a client that has none. */
     fun forClient(client: String): Map<String, CounterDef> = registries[client].orEmpty()
 
+    /** Whether [client] has the counter [counterId] and it issues ids: one it lacks, or has disabled, gives none. */
+    fun issues(client: String, counterId: String): Boolean = forClient(client)[counterId]?.enabled == true
+
     /**
      * What a page is told of [client]'s counters (issue #1852), beside the types [defs] it is delivered: each counter a
      * field of them names, by id, with when it issues ([CTR.issue]). Out of band, as the field layouts are, since how a

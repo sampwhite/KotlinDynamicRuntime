@@ -310,8 +310,11 @@ and shows it read-only; the write that stores it sends the token it was issued w
 
 - **A create may leave the field out** (issue #1852): `/gedra/formDoc/create`, a creation workflow's save, and
   `/admin/formDocForUser` give it the counter's next id, issued once nothing before the write can refuse the create, and
-  answer with it. A field `required` is not required of a request for that reason (`SchOpts.forInput`), nor by a layout.
-  A patch or an edit save that adds the field still sends an issued id with its token.
+  answer with it. A field `required`, outright or by an `if`/`then` rule, is not required of a request for that reason
+  (`SchOpts.forInput`), nor by a creation workflow's layout. Not filled: a field the rule forbids for these answers, one
+  whose `g-visibleWhen` the caller fails, and one whose counter is disabled or missing. `g-onWrite` functions see the id; a
+  save-time function (`GedraPrepForSaveFn`) sees only one the caller sent. A patch or an edit save that adds the field
+  still sends an issued id with its token.
 - **When ids are issued** is the counter's `issue`: `onOpen` (the default) as above, or `onSave`, when no page asks for
   one or shows the field on a create and the server gives it at save, so a form opened and left uses none up. The
   catalog and the workflow view say each named counter's `issue` under `counters`, out of band.

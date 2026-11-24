@@ -30,6 +30,7 @@ import react.dom.html.ReactHTML.li
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.util.escapeMarkdown
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -307,6 +308,22 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // `offer`'s value for its "Use it" link, whether a `filled` default is still a suggestion, and -- once the
     // user has touched it -- a reset that restores the value and the mark. Applying an offer needs no callback:
     // it runs through the field's ordinary edit path in SchemaForm, so only the reset is wired here.
+    // How this page's forms decide which fields they draw, as each section's [SchemaForm] does, so what is given an id at
+    // save (issue #1852) is judged by the same plan that leaves it off.
+    val fieldOpts = FormOpts(
+        friendly = true, gateAllows = buildCfactGate(wf.cfacts), fieldLayouts = wf.fieldLayouts, countersOnSave = wf.countersOnSave,
+    )
+
+    /** The fields of [trait] a counter gives an id when this form is saved (issue #1852); none of a trait locked here. */
+    fun givenAtSave(trait: WfTraitView): Set<String> = when {
+        wf.countersOnSave.isEmpty() || trait.traitId in wf.lockedTraits -> emptySet()
+        else -> fieldsGivenAtSave(trait.type, valuesOf(trait.traitId), fieldOpts)
+    }
+
+    /** [trait]'s values as they stand, checked as its save would be. */
+    fun checkTrait(trait: WfTraitView): InputCheck =
+        checkFormInput(trait.type, valuesOf(trait.traitId), wf.fieldLayouts, givenAtSave(trait))
+
     fun prefillFor(traitId: String): Map<String, FieldPrefill> {
         if (traitId in resolvedTraits) return emptyMap()
         val modes = presentation.modes[traitId] ?: return emptyMap()
@@ -357,7 +374,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // A trait locked for this caller (issue #857) is not theirs to send: it stays as stored, and a save that
         // named it would be refused whole.
         val checks = task.traits.filterNot { it.traitId in wf.lockedTraits }
-            .associate { it.traitId to checkFormInput(it.type, valuesOf(it.traitId), wf.fieldLayouts) }
+            .associate { it.traitId to checkTrait(it) }
         failuresByTrait = failuresByTrait + checks.mapValues { it.value.failures }
         wholeChecked = wholeChecked + checks.keys
         if (checks.values.any { it.failures.isNotEmpty() }) return
@@ -376,15 +393,16 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // An edit that adds a field a counter fills at save (issue #1852) asks for its id now, once the check has passed,
         // since the server gives one only on a create; a create leaves the field to the server.
         val atSave = if (isEdit) {
-            onSaveSlotsToFill(
-                task.traits.filterNot { it.traitId in wf.lockedTraits }.map { it.traitId to it.type }, wf.countersOnSave,
-            ) { valuesByTrait[it] ?: emptyMap() }
+            task.traits.flatMap { trait ->
+                val fields = givenAtSave(trait)
+                counterFieldsOf(trait.type).filterKeys { it in fields }.map { (field, id) -> CounterSlot(trait.traitId, field, id) }
+            }
         } else {
             emptyList()
         }
         // What this save sends, by trait, as the working values held it at the click -- what "stored" becomes for them.
         val savedTraitIds = task.traits.map { it.traitId }.toSet()
-        val sent = valuesByTrait.filterKeys { it in savedTraitIds }
+        var sent = valuesByTrait.filterKeys { it in savedTraitIds }
         savingTask = task.id
         runError = null
         refreshError = null
@@ -398,7 +416,25 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // make a second form. The sibling create pages skip the same reset for the same reason.
             var leaving = false
             try {
-                val given = atSave.map { it to CounterApi.issue(it.counterId, props.client) }
+                // As the ids of a form that opens are: one its counter will not issue leaves its field empty, said under
+                // the form, and the save goes on, refused by the server if the field is required. Each id issued is put in
+                // the form with its token, so a save refused after this sends the same id again rather than another.
+                val given = atSave.mapNotNull { slot ->
+                    try {
+                        slot to CounterApi.issue(slot.counterId, props.client)
+                    } catch (e: Throwable) {
+                        counterError = userFacingError(e)
+                        null
+                    }
+                }
+                fun withGiven(values: Map<String, Map<String, Any?>>) = given.fold(values) { acc, (slot, id) ->
+                    acc + (slot.traitId to (acc[slot.traitId].orEmpty() + (slot.field to id.value)))
+                }
+                if (given.isNotEmpty()) {
+                    sent = withGiven(sent)
+                    updateValues { withGiven(it) }
+                    updateCounterTokens { it + given.map { (_, id) -> id.token } }
+                }
                 val body = workflowSaveBody(
                     wf.workflowId, task.id, save.id, given.fold(entries) { acc, (slot, id) -> withCounterId(acc, slot, id.value) },
                     gedraId, forUserRef, counterTokens + given.map { (_, id) -> id.token },
@@ -478,14 +514,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     useEffect(pendingChecks) {
         if (pendingChecks.isEmpty()) return@useEffect
         val traits = wf.tasks.flatMap { it.traits }.filter { it.traitId in pendingChecks }
-        failuresByTrait = failuresByTrait + traits.associate { it.traitId to checkFormInput(it.type, valuesOf(it.traitId), wf.fieldLayouts).failures }
+        failuresByTrait = failuresByTrait + traits.associate { it.traitId to checkTrait(it).failures }
         pendingChecks = emptySet()
     }
 
     // Leaving a task in the rail checks it as a whole (issue #718): the user is done with it for now, so what
     // it still needs shows when they come back, and the mark reflects the check straight away.
     fun checkWholeTask(task: WfTaskView) {
-        failuresByTrait = failuresByTrait + task.traits.associate { it.traitId to checkFormInput(it.type, valuesOf(it.traitId), wf.fieldLayouts).failures }
+        failuresByTrait = failuresByTrait + task.traits.associate { it.traitId to checkTrait(it).failures }
         wholeChecked = wholeChecked + task.traits.map { it.traitId }
     }
 
@@ -494,7 +530,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // a required field drops the check at once; otherwise the server's verdict from the view (re-read after a save),
     // which stays the authority for anything the kernel check cannot see.
     fun statusFor(task: WfTaskView, unsaved: Boolean): WfTaskStatus? =
-        if (unsaved) localTaskStatus(task, valuesByTrait, wf.fieldLayouts) else task.status
+        if (unsaved) localTaskStatus(task, valuesByTrait, wf.fieldLayouts, ::givenAtSave) else task.status
 
     // An approval task drawn in its own way (issue #832): once approved, who approved it and when; before, the prompt
     // and -- for a reviewer -- the button, which asks first, since an approval cannot be taken back. Anyone else is
@@ -675,6 +711,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
     }
 
+    /** Whether [trait]'s section has nothing to show until this form is saved and its id is given (issue #1852). */
+    fun sectionHidden(task: WfTaskView, trait: WfTraitView): Boolean =
+        editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits &&
+            hiddenUntilSaved(trait.type, valuesOf(trait.traitId), fieldOpts)
+
     // One trait of a task, as its panel draws it (issue #1695 made it its own, so an approval draws the traits of the
     // task it approves the same way, read-only: an approval task saves nothing, so nothing in it is editable). Drawn for
     // an approval, [shownBy] is it: the traits it names come with their own values (issue #1875), since no task of this
@@ -683,7 +724,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // A trait whose only field a counter fills at save (issue #1852) has nothing to show until the form holds its id,
         // so it draws no section; its entry is still sent, for the server to fill. Design View still draws it, its
         // field a ghost saying why.
-        if (shownBy == null && designSession == null && hiddenUntilSaved(trait.type, valuesOf(trait.traitId), wf.countersOnSave)) return
+        if (shownBy == null && designSession == null && sectionHidden(task, trait)) return
         // In Design View, a trait an approval shows is that approval's to lay out (issue #1875).
         val approvalTask = shownBy?.let { task.id }
         designFramed(designSession, DesignTarget.Trait(trait, approvalTask), trait.traitId) {
@@ -805,6 +846,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     +"There is nothing to fill in for this step here."
                 }
             }
+            // Every section of it waits for the save to be given its id (issue #1852): say so, rather than draw an empty panel.
+            if (designSession == null && task.traits.isNotEmpty() && task.traits.all { sectionHidden(task, it) }) {
+                p {
+                    className = ClassName("subtitle")
+                    +"There is nothing to fill in here. The form is given its id when you save it."
+                }
+            }
             task.traits.forEach { traitSection(task, it) }
             // The save is per task (each task's own entries), shown only while editing. Disabled while there is
             // nothing to save (issue #717) -- the working values match the stored snapshot, the same comparison
@@ -842,7 +890,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         Button {
                             type = "primary"
                             loading = savingTask == task.id
-                            disabled = !taskUnsaved(task, valuesByTrait, stored) || savingTask != null
+                            // An id to be given at the save (issue #1852) is something to save, as an id shown is.
+                            disabled = (!taskUnsaved(task, valuesByTrait, stored) && task.traits.all { givenAtSave(it).isEmpty() }) ||
+                                savingTask != null
                             onClick = { onSave(task) }
                             +save.label
                         }

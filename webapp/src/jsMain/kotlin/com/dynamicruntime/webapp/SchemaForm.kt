@@ -881,13 +881,14 @@ fun fieldHiddenReason(
     // withholds it on read, so hiding the box is the whole of the gate. (An endpoint input may be enforced by its own
     // handler -- the admin-only list filters are.)
     editable && prop.visibleWhen?.let { !opts.gateAllows(it) } == true -> FieldHidden.notForViewer
-    // A field a counter fills when the form is saved (issue #1852): nobody enters it, and until the form is stored it
-    // has nothing to show, so an editable form leaves it off. Once it holds its id it is drawn read-only, as any is.
-    editable && prop.valueType.counter in opts.countersOnSave && isBlankValue(values[name]) -> FieldHidden.givenAtSave
     // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide its failure
     // too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown, it carries its own "not
     // allowed" message and can be emptied.
     name in forbidden && isBlankValue(values[name]) -> FieldHidden.forbidden
+    // A field a counter fills when the form is saved (issue #1852): nobody enters it, and until the form is stored it
+    // has nothing to show, so an editable form leaves it off. Once it holds its id it is drawn read-only, as any is.
+    // Last, so a field with another reason to be left off has that one, and is given no id ([fieldsGivenAtSave]).
+    editable && prop.valueType.counter in opts.countersOnSave && isBlankValue(values[name]) -> FieldHidden.givenAtSave
     else -> null
 }
 

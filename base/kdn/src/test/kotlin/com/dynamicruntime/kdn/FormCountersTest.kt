@@ -2,13 +2,17 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -21,21 +25,30 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.computeValue
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.ScriptZone
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.zonedDayText
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -238,6 +251,128 @@ class FormCountersTest : StringSpec({
         )[EP.errorMessage].toString() shouldContain "bogus"
         // The count did not move.
         clerk.issue("receipt").first shouldBe "R$day-0001"
+    }
+
+    "a create past the client's plan uses up no id" {
+        val client = "${CUST.free}_count1852"
+        val full = TestUser.createFullAdmin(cxt, "operator@count1852.test")
+        full.postData(
+            ADEP.clientCreate,
+            mapOf(
+                CLD.clientId to client, CLD.name to client, CLD.usageType to ClientUsageType.dev.name,
+                CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+                CLD.starterWorkflows to false,
+            ),
+        )
+        val config = gedraConfig(cxt, "numbers", clientNamespace(client), client) {
+            counter("order", "ORD-", digits = 2)
+            trait("OrderEntry", "order", setOf(GedraDataType.formDoc), "An order.") {
+                property("orderNo", "The order's id.") { counter = "order" }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+        GedraConfigReload.reloadClient(cxt, client)
+        val forms = GedraDataService.get(cxt)
+        val owner = asClient(client)
+        repeat(PLAN.freeQuotas.forms!!) { forms.createGedra(owner, GedraDataType.formDoc, emptyList()) }
+        shouldThrow<KdrException> {
+            forms.createGedra(owner, GedraDataType.formDoc, listOf(mapOf(GE.traitId to "order", GE.data to emptyMap<String, Any?>())))
+        }.message.orEmpty() shouldContain "as many as its plan allows"
+        CounterService.get(cxt).issue(owner, client, "order").value shouldBe "ORD-01"
+    }
+
+    "a field its form is not to hold, or whose counter issues no ids, is given none" {
+        val client = "store1852d"
+        val refunds: GedraConfigBuilder.() -> Unit = {
+            counter("refund", "RF-", digits = 2)
+            counterFromMap(mapOf(CTR.counterId to "retired", CTR.prefix to "X-", CTR.enabled to false))
+            trait("RefundEntry", "refund", setOf(GedraDataType.formDoc), "A refund.") {
+                property("kind", "Sale or refund.")
+                property("refundNo", "The refund's id.") { counter = "refund" }
+                property("oldNo", "An id no longer given.") { counter = "retired" }
+                property("auditNo", "The auditors' id.") {
+                    counter = "refund"
+                    visibleWhen = CFACTS.hasAdminLevel
+                }
+                presentWhen("refundNo", on = "kind", value = "refund")
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(client), storeConfig(client, refunds))
+        GedraConfigReload.reloadClient(cxt, client)
+        val clerk = TestUser.create(cxt, "clerk@$client.test", userClient = client)
+        fun made(kind: String) = clerk.postItem(
+            GEP.formDocCreate, create(listOf(mapOf(GE.traitId to "refund", GE.data to mapOf("kind" to kind))), emptyList()),
+        )[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()
+        // The rule forbids the refund's id on a sale, the gate hides the auditors', and a disabled counter gives none.
+        made("sale") shouldBe mapOf("kind" to "sale")
+        // Required by the same rule on a refund, and so not asked of the caller: the first id, none used up above.
+        made("refund") shouldBe mapOf("kind" to "refund", "refundNo" to "RF-01")
+    }
+
+    "entries keyed by their counter's field are each given their key, and a value computed on write sees the id" {
+        val client = "store1852e"
+        val seats: GedraConfigBuilder.() -> Unit = {
+            counter("seat", "S-", digits = 2)
+            trait("SeatEntry", "seat", setOf(GedraDataType.formDoc), "A seat.") {
+                primaryKey("seatNo")
+                property("seatNo", "The seat's id.", required = true) { counter = "seat" }
+                property("label", "Computed.") { derived = true }
+                onWrite(computeValue("label", "'Seat ' ~ seatNo"))
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(client), storeConfig(client, seats))
+        GedraConfigReload.reloadClient(cxt, client)
+        val clerk = TestUser.create(cxt, "clerk@$client.test", userClient = client)
+        val seat = mapOf(GE.traitId to "seat", GE.data to emptyMap<String, Any?>())
+        val form = clerk.postItem(GEP.formDocCreate, create(listOf(seat, seat), emptyList()))
+        form[GDF.entries].toJsonListOfMaps().map { it[GE.data].toJsonMapOrEmpty() } shouldBe listOf(
+            mapOf("seatNo" to "S-01", "label" to "Seat S-01"), mapOf("seatNo" to "S-02", "label" to "Seat S-02"),
+        )
+    }
+
+    "a layout that requires a counter's field is met by a create, and not by a form already stored without it" {
+        val client = "store1852f"
+        // Its own configuration: the store's has a creation workflow already, and a client has one.
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(clientDef(client))
+            counter("order", "ORD-", digits = 2)
+            trait("OrderEntry", "order", setOf(GedraDataType.formDoc), "An order.") {
+                property("orderNo", "The order's id.") { counter = "order" }
+            }
+            val requires = mapOf(SCH.layout to mapOf(SL.schemaFields to listOf(mapOf(SL.field to "orderNo", SL.required to true))))
+            val orderData = "${clientNamespace(client)}.${traitDataTypeName("OrderEntry")}"
+            workflow("take", WfEntry.creation) {
+                alterType(orderData, requires)
+                task("take", "Take") {
+                    trait("order")
+                    save("create", "Create")
+                }
+            }
+            workflow("check", WfEntry.coreDetails) {
+                alterType(orderData, requires)
+                task("check", "Check") {
+                    trait("order")
+                    save("save", "Save", WfSaveKind.edit)
+                }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+        GedraConfigReload.reloadClient(cxt, client)
+        val clerk = TestUser.create(cxt, "clerk@$client.test", userClient = client)
+        val order = mapOf(GE.traitId to "order", GE.data to emptyMap<String, Any?>())
+        fun save(workflow: String, save: String, gedraId: String? = null) = buildMap {
+            put(GDF.workflowId, workflow)
+            put(GDF.taskId, workflow)
+            put(GDF.saveId, save)
+            put(GDF.entries, listOf(order))
+            gedraId?.let { put(GDF.gedraId, it) }
+        }
+        val path = clientPath(GEP.workflowSave, client)
+        val made = clerk.postData(path, save("take", "create"))[WSF.item].toJsonMapOrEmpty()
+        made[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()["orderNo"] shouldBe "ORD-01"
+        // A form made without the trait: an edit adding it must bring the id.
+        val bare = clerk.postItem(GEP.formDocCreate, create(emptyList(), emptyList()))[GDF.gedraId].toOptStr()!!
+        clerk.expectError(EXC.badInput, path, save("check", "save", bare))[EP.errorMessage].toString() shouldContain "orderNo"
     }
 
     "an edit adding a counter's field still sends an issued id with its token" {

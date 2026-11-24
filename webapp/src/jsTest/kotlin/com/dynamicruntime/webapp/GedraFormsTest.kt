@@ -1029,8 +1029,8 @@ class GedraFormsTest {
         assertEquals(mapOf(EI.q to "roof"), applied)
         assertEquals("The form T-042 was created.", formsArrivalNote(arriving, applied, listOf("g.fd.acme.new")))
         assertTrue(formsArrivalNote(arriving, applied, listOf("g.fd.acme.a"))!!.startsWith("The form T-042 was created, but"))
-        val two = formsListingReturn(launched, null, created = true, createdIds = listOf("T-042", "R-7")).toMap()
-        assertEquals("The form T-042 / R-7 was created.", formsArrivalNote(two, applied, emptyList()))
+        val two = formsListingReturn(launched, null, created = true, createdIds = listOf("A,042", "R-7")).toMap()
+        assertEquals("The form A,042 / R-7 was created.", formsArrivalNote(two, applied, emptyList()))
         assertTrue(HP.createdIds !in formsListingReturn(launched, "g.fd.acme.new", createdIds = listOf("T-042")).toMap())
     }
 

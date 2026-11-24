@@ -5,6 +5,9 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchLayoutMode
+import com.dynamicruntime.common.schema.parseSchLayout
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -74,7 +77,6 @@ class CounterIdsTest {
         assertTrue(countersOnSaveOf(null).isEmpty())
         val traits = listOf("receipt" to receipt, "ticket" to ticket)
         assertEquals(listOf("receipt"), counterSlotsToFill(traits, onSave) { emptyMap() }.map { it.counterId })
-        assertEquals(listOf("ticket"), onSaveSlotsToFill(traits, onSave) { emptyMap() }.map { it.counterId })
         val entries = listOf(mapOf(GE.traitId to "ticket", GE.data to emptyMap<String, Any?>()))
         assertTrue(counterSlotsInEntries(entries, onSave) { ticket }.isEmpty())
     }
@@ -82,11 +84,44 @@ class CounterIdsTest {
     /** A section whose only field such a counter fills is not drawn until it holds the id; a derived field does not count. */
     @Test
     fun aSectionWithNothingButAnIdGivenAtSaveIsHidden() {
-        assertTrue(hiddenUntilSaved(ticket, emptyMap(), setOf("ticket")))
-        assertTrue(!hiddenUntilSaved(ticket, mapOf("ticketNo" to "TK-001"), setOf("ticket")))
-        assertTrue(!hiddenUntilSaved(ticket, emptyMap(), emptySet()))
+        val opts = FormOpts(friendly = true, countersOnSave = setOf("ticket", "receipt"))
+        assertTrue(hiddenUntilSaved(ticket, emptyMap(), opts))
+        assertTrue(!hiddenUntilSaved(ticket, mapOf("ticketNo" to "TK-001"), opts))
+        assertTrue(!hiddenUntilSaved(ticket, emptyMap(), FormOpts(friendly = true)))
         // A section with a field of its own to fill is drawn, its id field left off.
-        assertTrue(!hiddenUntilSaved(receipt, emptyMap(), setOf("receipt")))
+        assertTrue(!hiddenUntilSaved(receipt, emptyMap(), opts))
+        assertEquals(setOf("number"), fieldsGivenAtSave(receipt, emptyMap(), opts))
+    }
+
+    /** A field the form does not show for another reason is given no id: the save would be refused it. */
+    @Test
+    fun aFieldTheFormDoesNotOfferIsGivenNoId() {
+        val refund = parseSchemaTypes(
+            mapOf(
+                "c.Refund" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "kind" to mapOf(SCH.type to SCT.string),
+                        "refundNo" to mapOf(SCH.type to SCT.string, SCH.counter to "refund"),
+                        "auditNo" to mapOf(SCH.type to SCT.string, SCH.counter to "refund", SCH.visibleWhen to "kdr:hasAdminLevel"),
+                    ),
+                    SCH.kIf to mapOf(SCH.required to listOf("kind"), SCH.properties to mapOf("kind" to mapOf(SCH.const to "refund"))),
+                    SCH.kThen to mapOf(SCH.required to listOf("refundNo")),
+                    SCH.kElse to mapOf(SCH.not to mapOf(SCH.required to listOf("refundNo"))),
+                ),
+            ),
+        ).getValue("c.Refund")
+        val opts = FormOpts(friendly = true, gateAllows = { false }, countersOnSave = setOf("refund"))
+        assertEquals(setOf("refundNo"), fieldsGivenAtSave(refund, mapOf("kind" to "refund"), opts))
+        assertTrue(fieldsGivenAtSave(refund, mapOf("kind" to "sale"), opts).isEmpty())
+        // A layout that chooses its fields and leaves this one out.
+        val layout = parseSchLayout(
+            "Refund", mapOf(SL.mode to SchLayoutMode.authoritative.name, SL.schemaFields to listOf(mapOf(SL.field to "kind"))),
+        )
+        val laidOut = FormOpts(friendly = true, fieldLayouts = mapOf("c.Refund" to layout), countersOnSave = setOf("refund"))
+        assertTrue(fieldsGivenAtSave(refund, mapOf("kind" to "refund"), laidOut).isEmpty())
+        // The client's check asks nothing for a field about to be given its id.
+        assertTrue(checkFormInput(refund, mapOf("kind" to "refund"), emptyMap()).isValid)
     }
 
     /** The ids such counters gave a stored form, which the listing names. */
