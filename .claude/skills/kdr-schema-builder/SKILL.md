@@ -441,6 +441,26 @@ type("ExpenseData") {
   problem outside `g-layout` fails the alteration (`isLayoutProblem`), and one inside drops only the client's layout.
 - **Stored values follow a changed script** through the derived-state recompute (nightly, or Recalculate form states),
   and the publish impact report counts the forms a change would recompute (`ImpactKind.valuesRecomputed`).
+- **A table's summary: `summarizeTable`** (issue #1883, `datafile/SummarizeTable.kt`) is the second kind. It stores a
+  column of a table field's CSV table summed up -- `count`, `sum`, `avg`, `min`, or `max` (`TableSummary.combines`), a
+  count with no column counting the rows -- in a `g-derived` property, computed by the kernel's
+  `TableSummary.summarize`, which a grid's footer runs too:
+
+  ```kotlin
+  onWrite(
+      summarizeTable("lineCount", "lines", ReportCombine.count),
+      summarizeTable("totalAmount", "lines", ReportCombine.sum, "amount"),
+      summarizeTable("lastSpentOn", "lines", ReportCombine.max, "day"),
+  )
+  ```
+
+  Checked when loaded: `table` is a table field of the type, `column` one of its row type's columns, the combine one
+  the column's kind allows, and the target derived, ungated, and of a type that holds the result -- a number for a
+  sum or an average (an integer only for a count, or a sum or the least or greatest of whole numbers), a day for a
+  day's least or greatest, a plain string for text's. No table, a table that does not fit its columns, or bytes it
+  cannot read clear the target; it reads only a file the writer may (`DataTables.summaryRead`: a linked one for the
+  system), in the form's client. A total of decimals is rounded to its cells' places. The target checks are shared
+  with `computeValue` (`derivedTargetProblem`). <!-- Theme: #DTABL -->
 - **Published typed**: each kind's settings type and the `kdr.fn.WriteFunction` union over them are in the catalog, and
   the meta-schema types `g-onWrite`'s items with it; workflow function lists are typed the same way
   (`kdr.fn.WorkflowFunction`, `kdr.fn.WorkflowTaskFunction`).

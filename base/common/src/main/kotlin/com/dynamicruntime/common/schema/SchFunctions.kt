@@ -196,3 +196,34 @@ fun validatedFunctionSettings(type: SchType, usage: SchFunctionUsage, fn: String
     }
     return result.value.toJsonMapOrEmpty()
 }
+
+/**
+ * What keeps [target] from holding a write function's [what] on [dataType] (issues #1501, #1883), or null: it must be a
+ * property the type declares, `g-derived` -- so no caller supplies it, which also keeps it out of the type's key, since
+ * a key field may not be derived (issue #1521) and a computed value can then never move an entry to another key -- and
+ * not gated by `g-visibleWhen`, whose question is who may change it, while a function changes it for everyone. The
+ * rule every kind that stores a value in a property holds its target to.
+ */
+fun derivedTargetProblem(dataType: SchType, target: String, what: String): String? {
+    val prop = dataType.properties[target] ?: return "the type declares no property '$target' to store the $what in."
+    if (!prop.valueType.derived) {
+        return "'$target' is not '${SCH.derived}', so a caller could supply it and this would overwrite what they sent."
+    }
+    if (prop.visibleWhen != null) {
+        return "'$target' is gated by '${SCH.visibleWhen}', which decides who may change it; this changes it for everyone."
+    }
+    return null
+}
+
+/**
+ * A function kind's settings type ([SchFunctionCreation.initDataTypeName]), parsed from its definitions once and kept:
+ * the schema is a constant of the runtime. Volatile, since boots, reloads, and trials resolve on their own threads; a
+ * race only parses it twice.
+ */
+class SchInitTypeCache(private val creation: SchFunctionCreation) {
+    @Volatile
+    private var parsed: SchType? = null
+
+    fun get(cxt: KdrCxt): SchType =
+        parsed ?: parseSchemaTypes(creation.initDataDefs(cxt)).getValue(creation.initDataTypeName).also { parsed = it }
+}

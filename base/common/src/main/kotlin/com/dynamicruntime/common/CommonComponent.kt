@@ -5,6 +5,7 @@ import com.dynamicruntime.common.datafile.dataFileSweepJob
 import com.dynamicruntime.common.datafile.DataFileLinkHook
 import com.dynamicruntime.common.datafile.DataFileService
 import com.dynamicruntime.common.datafile.dataFileSchema
+import com.dynamicruntime.common.datafile.SummarizeTableCreation
 import com.dynamicruntime.common.cfact.addCommonCFacts
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.counter.CounterClaimHook
@@ -212,6 +213,8 @@ class CommonComponent : ComponentDefinition {
         // The first schema function (issue #1501): a type's `g-onWrite` usages compute a derived property from the
         // object's own data each time it is written.
         collector.addSchemaFunction(ComputeValueCreation)
+        // A table's summary (issue #1883): a column of a table field's CSV table summed up into a derived property.
+        collector.addSchemaFunction(SummarizeTableCreation)
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the core details save) keep core details state fresh.
         // A counter's field holds only an id issued to the writer, stored once and never changed (issue #1849). First, so

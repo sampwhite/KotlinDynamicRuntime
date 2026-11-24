@@ -121,19 +121,12 @@ object ComputeValueCreation : SchFunctionCreation {
     }
 
     override fun create(cxt: KdrCxt, usage: SchFunctionUsage, dataType: SchType): SchFunction {
-        val m = validatedFunctionSettings(initDataType(cxt), usage, CVF.fn)
+        val m = validatedFunctionSettings(initType.get(cxt), usage, CVF.fn)
         val target = m[CVF.target].toOptStr().orEmpty()
         val script = m[CVF.script].toOptStr().orEmpty()
         fun refuse(problem: String): Nothing = throw KdrException.mkConv("'${CVF.fn}' of '$target': $problem")
-        val prop = dataType.properties[target] ?: refuse("the type declares no property '$target' to store the value in.")
-        // Derived, which also keeps it out of the type's key: a key field may not be derived (issue #1521), so a computed
-        // value can never move an entry to another key.
-        if (!prop.valueType.derived) {
-            refuse("'$target' is not '${SCH.derived}', so a caller could supply it and this would overwrite what they sent.")
-        }
-        if (prop.visibleWhen != null) {
-            refuse("'$target' is gated by '${SCH.visibleWhen}', which decides who may change it; this changes it for everyone.")
-        }
+        derivedTargetProblem(dataType, target, "value")?.let { refuse(it) }
+        val prop = dataType.properties.getValue(target)
         val expression = try {
             ScriptExpression.parse(script)
         } catch (e: KdrException) {
@@ -164,11 +157,5 @@ object ComputeValueCreation : SchFunctionCreation {
         return true
     }
 
-    // Parsed once and kept: the schema is a constant of the runtime, as each workflow function kind keeps its own.
-    // Volatile, since boots, reloads, and trials resolve on their own threads; a race only parses it twice.
-    @Volatile
-    private var parsed: SchType? = null
-
-    private fun initDataType(cxt: KdrCxt): SchType =
-        parsed ?: parseSchemaTypes(initDataDefs(cxt)).getValue(initDataTypeName).also { parsed = it }
+    private val initType = SchInitTypeCache(this)
 }
