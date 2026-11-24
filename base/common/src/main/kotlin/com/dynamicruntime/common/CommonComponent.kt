@@ -13,6 +13,8 @@ import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.counter.counterTables
 import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
+import com.dynamicruntime.common.gedra.UniqueClaimHook
+import com.dynamicruntime.common.gedra.uniqueClaimsJob
 import com.dynamicruntime.common.gedra.valueClaimTables
 import com.dynamicruntime.common.gedra.workflow.OwnerOnlyGuard
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
@@ -198,6 +200,7 @@ class CommonComponent : ComponentDefinition {
         // The batch job that recomputes derived state nightly and on demand (issue #793): the derivers above run
         // on every write, and this catches the forms nobody wrote -- state gone stale against configuration or time.
         collector.addJob(stateRecomputeJob())
+        collector.addJob(uniqueClaimsJob())
         // The nightly report snapshots (issue #1035), half an hour after the recompute they read the results of.
         collector.addJob(reportHistoryJob())
         // The nightly sweep of data files (issue #1839): what uploads leave behind, an hour after the snapshots.
@@ -226,6 +229,8 @@ class CommonComponent : ComponentDefinition {
         // A form's type is one its client defines and the writer may set, and is kept once stored (issue #1902). Beside the
         // counter's, and for its reason: it judges the writer's own facts.
         collector.addWriteHook(FormTypeHook)
+        // A value another of the owner's forms holds is refused, and a form's own claimed (issue #1851).
+        collector.addWriteHook(UniqueClaimHook)
         // The links between forms and the data files their fields name (issue #1838), before the state hook: that hook
         // rebinds the write's context to the form's owner, and a file newly linked must be one the caller may use.
         collector.addWriteHook(DataFileLinkHook)

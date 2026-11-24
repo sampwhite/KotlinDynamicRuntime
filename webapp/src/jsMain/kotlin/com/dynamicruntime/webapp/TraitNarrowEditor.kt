@@ -113,7 +113,7 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
         p {
             className = ClassName("subtitle")
             +("How this client takes the trait. Its name, its introduction, and hiding a field change only its forms; " +
-                "requiring a field or keeping fewer choices changes what its data accepts.")
+                "requiring a field, making it unique for each owner, or keeping fewer choices changes what its data accepts.")
         }
         choiceRow("Name") {
             Input {
@@ -184,6 +184,10 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
                         th { +"Field" }
                         th { +"Shown" }
                         th { +"Required" }
+                        th {
+                            title = "No two forms of one owner may share its value, whatever the case or punctuation."
+                            +"Unique"
+                        }
                         th { +"Choices kept" }
                     }
                 }
@@ -217,6 +221,17 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
                                         checked = row.baseRequired || row.field in draft.required
                                         disabled = busy || requireLock != null
                                         onChange = { e -> draft = draft.withRequired(row.field, e.target.checked == true) }
+                                    }
+                                }
+                            }
+                            td {
+                                if (!row.mayBeUnique) {
+                                    +"—"
+                                } else {
+                                    Checkbox {
+                                        checked = row.field in draft.unique
+                                        disabled = busy
+                                        onChange = { e -> draft = draft.withUnique(row.field, e.target.checked == true) }
                                     }
                                 }
                             }
@@ -298,7 +313,7 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
                 Button {
                     disabled = busy
                     asDynamic()["title"] =
-                        "Take the trait as the platform declares it: its name, with nothing hidden, required, or restricted here."
+                        "Take the trait as the platform declares it: its name, with nothing hidden, required, unique, or restricted here."
                     onClick = { save(TraitNarrowing(props.trait.traitId), acknowledge = false) }
                     +"As the trait is declared"
                 }

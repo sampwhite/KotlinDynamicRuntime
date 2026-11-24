@@ -20,9 +20,9 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
      *
      * In the prior system it was tracked aggressively in the history tables, and third-party integrations
      * bound to it — which is what makes a name not merely a label but something other systems have opinions
-     * about. Uniqueness guarantees within the scope of a user are wanted eventually and are not here: this is
-     * the trait and its shape, and a constraint that spans stored rows needs somewhere to be enforced that
-     * does not exist yet.
+     * about. A client may keep the names of one owner's forms apart, by marking the field `g-unique` in its own
+     * alteration of the type (issue #1851), which a new client starts with; the platform's type does not, so a
+     * client that wants names to repeat may let them.
      *
      * Bound to form documents **and workflow data**: it means the same thing on both, which is exactly why
      * `appliesTo` is a set and this is one trait rather than a `name` beside a `wfDataName` meaning the same

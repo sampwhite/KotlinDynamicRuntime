@@ -457,10 +457,11 @@ platform's shows none. Where the platform's is a fragment pull (`CIT.namePulled`
 one given replaces it, and a stored name that is a template or introduction that is a pull is not the editor's
 (`traitNarrowingOf` refuses it). The preview's heading says the name, and the introduction is under it, since the form
 draws only the fields. Then the editor lists the trait's fields (`narrowFieldRows`, labeled from the
-catalog's resolved `layouts`) with **Shown**, **Required**, and **Choices kept**, offering only moves that narrow: hiding
+catalog's resolved `layouts`) with **Shown**, **Required**, **Unique**, and **Choices kept**, offering only moves that narrow: hiding
 is the layout's -- an authoritative field list, the default for every workflow, the data unchanged -- and a field the
-data requires cannot be hidden (`hideLockedReason`); requiring and keeping fewer choices change the data
-(`requireLockedReason`). The model is the kernel's `TraitNarrowing`, whose `toAlteration` the preview merges over the
+data requires cannot be hidden (`hideLockedReason`); requiring, making unique for each owner (issue #1851, plain text a
+person types, `mayBeUnique`), and keeping fewer choices change the data
+(`requireLockedReason`). A new client's name trait starts with **Unique** on. The model is the kernel's `TraitNarrowing`, whose `toAlteration` the preview merges over the
 platform's type (`narrowPreviewDefs`) exactly as the backend writes it: the client's alteration of the trait's data
 type, saved through `/clientAdmin/client/traits/narrow` (`traitNarrowRequest`) into `narrow_<trait>` or where a stored
 alteration is. **As the trait is declared** clears it. A narrowing does not include a trait, and says so for one the

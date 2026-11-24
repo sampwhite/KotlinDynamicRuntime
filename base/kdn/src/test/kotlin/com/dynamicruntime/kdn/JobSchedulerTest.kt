@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.JobHandling
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.datafile.DFSW
 import com.dynamicruntime.common.gedra.SRJ
+import com.dynamicruntime.common.gedra.UCJ
 import com.dynamicruntime.common.gedra.report.RHJ
 import com.dynamicruntime.common.job.BCHKJ
 import com.dynamicruntime.common.job.JPF
@@ -245,4 +246,4 @@ private class SchedFixture(private val defs: List<JobDef>) : ComponentDefinition
 }
 
 /** The jobs every node carries, which a case reporting on its own leaves out. */
-private val builtInJobs = setOf(SRJ.jobType, RHJ.jobType, DFSW.jobType)
+private val builtInJobs = setOf(SRJ.jobType, RHJ.jobType, DFSW.jobType, UCJ.jobType)

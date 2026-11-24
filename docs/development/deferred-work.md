@@ -1597,3 +1597,17 @@ derived fields only when the form is saved (`summarizeTable`, issue #1883).
 - **Summaries grouped or filtered** *(#1886, deferred here 2026-11-24).* A total per category, or of the lines with a
   receipt: a `summarizeTable` with a `groupBy` column (a map in a derived field) or a `where` on another column. Trigger:
   a client asking for a breakdown a single total cannot give.
+
+## When a client wants a value unique beyond one owner's forms
+
+A field marked `g-unique: "owner"` (issue #1851) is held for the forms of one owner, on a trait with one entry a form.
+
+- **Unique in a client, or in an organization** *(#1851, deferred here 2026-11-24).* A SKU, say, no two of a client's forms
+  may share. Another value of `g-unique`, and another scope key on its claims (`VCL.scopeKey`); the claims are already
+  found by key, so nothing walks the client's forms. What a refusal may say of a form its reader cannot see is the
+  question to settle then.
+- **A keyed trait's entries** *(#1851).* An entry of a keyed trait could hold a value another entry of the same form
+  holds, so a claim would name the entry as well as the form.
+- **Two spellings of one letter** *(#1851).* An accented letter written as one character and as a letter with a
+  combining mark compare as different, as do letters outside the basic plane, which are dropped. Trigger: a person
+  reports two names that look the same.

@@ -106,6 +106,15 @@ val EditFormPage = FC<Props> {
     // them.
     val editedSinceSave = useRef(false)
 
+    // A unique field (issue #1851): asked about as it is left, of the form's owner's other forms.
+    val uniqueChecks = useUniqueChecks(gedraId = gedraId) { path ->
+        uniqueAskInEntries(values, path) { traitId ->
+            entryDataType(
+                catalog?.let { cat -> patchEndpoint?.let { formDocPatchTargetType(cat.inputType(it)) } }, GPF.edits, traitId,
+            )
+        }
+    }
+
     // Keep the open id in step with the address, so a navigation to another edit URL re-runs the load below. App is
     // the router; an editForm->editForm move does not remount this page, so without this the first form
     // would stay loaded under the new URL (issue #417).
@@ -342,8 +351,9 @@ val EditFormPage = FC<Props> {
                         elementNote = { _, element -> lockNoteFor(shownLocks, element[GE.traitId].toOptStr()) }
                         // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
                         this.openTraitEntry = openTraitEntry
-                        this.failures = failures
+                        this.failures = withTaken(failures, uniqueChecks.failures)
                         onChange = { values = it; saved = false; editedSinceSave.current = true }
+                        onFieldCommit = { path -> uniqueChecks.left(path) }
                         onFieldEdit = { path ->
                             failures?.let { current ->
                                 failures = current.clearedAt(path).ifEmpty { null }

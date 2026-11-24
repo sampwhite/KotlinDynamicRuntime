@@ -92,6 +92,9 @@ object CIT {
     const val kind = "kind"
     const val required = "required"
     const val choices = "choices"
+
+    /** On a narrowing: the plain text fields no two forms of one owner may share a value of (issue #1851). */
+    const val unique = "unique"
     const val value = "value"
 
     /**

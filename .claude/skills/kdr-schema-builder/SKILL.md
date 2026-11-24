@@ -328,6 +328,26 @@ and shows it read-only; the write that stores it sends the token it was issued w
 - **Where.** A field of a trait's own data. One named inside a nested object or a list, or naming a counter the client
   does not have, is reported when the configuration loads, and refused when it is written.
 
+## A value unique for each owner: `unique` (issue #1851)
+
+`unique = UNQ.owner` on a plain string field (the custom `g-unique` keyword) says no two forms of one owner may share its
+value, compared after `normalizeUnique`: lowercase, each run of characters that are not letters or digits one space, and
+trimmed, so "Q3 Budget" and "q3-budget " are one value. A value with nothing left claims nothing.
+
+- **Not validation.** Any text passes the schema. The write holds it (`UniqueClaims`, through `UniqueClaimHook`): a create,
+  a patch, or an import storing a value another of the owner's forms holds is refused (400), naming that form in
+  `extraData`. Changing the value, or deleting the form, frees it.
+- **Where.** A field of a trait's own data, on a trait with one entry a form. The parser refuses it in a nested object or a
+  list, beside a `g-primaryKey` on the type, and with `derived`, `counter`, `const`, or `sensitive`.
+- **A client may add it to a platform type**, since that narrows, and may not remove one the platform declares. A client made
+  with the starter workflows starts with its form's name unique (`kdr:name`), stored as the traits editor's own narrowing,
+  which drops it. The platform's name type does not declare it.
+- **Turning it on over forms that share a value** keeps them as they are, reports them in the impact report
+  (`ImpactKind.valuesShared`), and refuses a new use until the last of them lets the value go. The reload that makes a field
+  unique claims what forms already hold, and a nightly job (`uniqueClaims`) claims what it missed -- a field a component's
+  code makes unique, which no reload reports, waits for it.
+- **Asking:** `GET /gedra/unique/check` says whether a value is taken, for the caller, a form's owner, or a user named.
+
 ## Choice lists: written down, or sourced at render time
 <!-- Theme: #NARRW -->
 

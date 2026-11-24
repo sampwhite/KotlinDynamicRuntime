@@ -121,6 +121,7 @@ object ClientCreate {
                 add(ConfigWrite(config, mustBeNew = true))
                 if (copy.isNotEmpty()) add(ConfigWrite(copyConfig(bound, client, copy), mustBeNew = true))
                 starterConfigs(bound, client, starters).forEach { add(ConfigWrite(it, mustBeNew = true)) }
+                starterUniqueNameConfig(bound, client, starters)?.let { add(ConfigWrite(it, mustBeNew = true)) }
                 add(ConfigWrite(starterReportConfig(bound, client, definition), mustBeNew = true))
             }
             try {
@@ -309,6 +310,21 @@ object ClientCreate {
                 mapOf(CCT.workflowDef to listOf(mapOf(CCT.workflowId to id, CCT.definition to overlay))),
             )
         }
+    }
+
+    /**
+     * The configuration that keeps the names of one owner's forms apart (issue #1851), for a client whose [starters]
+     * collect the form's name: the name trait narrowed as its editor narrows one, in the configuration that editor uses, so
+     * the administrator drops it there. Null for a client that starts without the name.
+     */
+    private fun starterUniqueNameConfig(bound: KdrCxt, client: String, starters: List<WfDef>): GedraConfig? {
+        if (starters.none { w -> w.tasks.any { t -> t.traits.any { it.traitId == GT.name } } }) return null
+        val base = globalTraitBases(bound)[GT.name] ?: return null
+        val body = TraitNarrowing(GT.name, unique = setOf(GT.nameField)).toAlteration(base.body) ?: return null
+        return reassembleForWrite(
+            bound, narrowConfigName(GT.name), clientNamespace(client), client,
+            mapOf(CCT.schemaDef to listOf(mapOf(CCT.typeName to base.typeName, CCT.schema to body))),
+        )
     }
 
     /**

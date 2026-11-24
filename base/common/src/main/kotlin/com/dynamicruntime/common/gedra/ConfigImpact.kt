@@ -105,6 +105,8 @@ object ConfigImpact {
         val at = cxt.instanceNow()
         // The forms' write functions run as a write of them would: in their client, whose files they may read (#1883).
         val formsCxt = if (cxt.client == client) cxt else cxt.mkSubContext("impactForms", client)
+        // The forms holding each value of a field the candidate makes unique (issue #1851), by kind, owner, and key.
+        val holders = LinkedHashMap<Triple<String, Long, String>, MutableList<GedraDataRow>>()
         for ((kind, ids) in idsByKind) {
             for (batch in ids.chunked(readBatch)) {
                 val rows = data.readGedras(cxt, kind, batch, scope)
@@ -113,11 +115,28 @@ object ConfigImpact {
                     val row = rows[id] ?: continue
                     report.scanned++
                     judgeEntries(formsCxt, report, row, now.union(kind), next.union(kind))
+                    collectNewlyUnique(row, now.union(kind), next.union(kind), holders)
                     judgeStates(cxt, report, row, states[id].orEmpty(), now.workflows, next.workflows, at)
                 }
             }
         }
+        for ((at, rows) in holders) {
+            if (rows.size > 1) rows.forEach { report.add(ImpactKind.valuesShared, it, traitId = UniqueClaims.traitOfKind(at.first)) }
+        }
         return report
+    }
+
+    /** Adds to [holders] the values [row] holds in fields unique under [next] and not under [now]. */
+    private fun collectNewlyUnique(
+        row: GedraDataRow,
+        now: SchType?,
+        next: SchType?,
+        holders: MutableMap<Triple<String, Long, String>, MutableList<GedraDataRow>>,
+    ) {
+        val was = UniqueClaims.slotsOf(now, row.entries).keys
+        for (slot in UniqueClaims.slotsOf(next, row.entries).values) {
+            if (slot.claimKind !in was) holders.getOrPut(Triple(slot.claimKind, row.userId, slot.key)) { mutableListOf() }.add(row)
+        }
     }
 
     /**
@@ -358,6 +377,7 @@ class ImpactFinding(val kind: ImpactKind, val traitId: String?, val workflowId: 
         val what = when (kind) {
             ImpactKind.traitGone -> "trait '$traitId' would no longer be supported"
             ImpactKind.dataInvalid -> "entries of trait '$traitId' would no longer validate"
+            ImpactKind.valuesShared -> "values of trait '$traitId' that would have to be unique are shared by forms of one owner"
             ImpactKind.workflowGone -> "workflow '$workflowId' would no longer exist"
             ImpactKind.stateStranded -> "workflow '$workflowId' would no longer define task '$taskId'"
             ImpactKind.workflowFrozen -> "workflow '$workflowId' would stop being tracked now, freezing what it shows"

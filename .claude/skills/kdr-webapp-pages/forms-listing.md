@@ -336,6 +336,14 @@ Within the caller's read scope, like every listing, and `review=mine` too: a rev
 nor an editor cannot list other people's forms, so their reviews do not show here (`deferred-work.md`).
 
 
+## A unique value is asked about as its field is left (issue #1851)
+
+A field that must be unique for its owner (`g-unique`) is asked about when it is left (`useUniqueChecks`,
+`/gedra/unique/check`): on the workflow form, the trait picker, the create for another user, and the raw editor. The answer
+shows under the field for as long as the field holds the value asked about, so it needs no clearing. It is asked for the
+form's owner when editing, and for the user a form is being made for, whose change asks afresh. An answer never blocks
+Save, and an ask that fails says nothing: the save's refusal is what holds the value.
+
 ## A counter's id is shown before the form is saved (issue #1849)
 
 A field a client's counter fills (`g-counter`) is drawn read-only on every form page, with no required mark, since

@@ -1112,6 +1112,8 @@ class GedraDataService : ServiceInitializer {
         // One document's survivors and the traits excluded from it, computed in the validate phase and written
         // in the insert phase.
         val plans = mutableListOf<Pair<List<Map<String, Any?>>, List<String>>>()
+        // The unique values the documents planned so far hold (issue #1851), by claim kind and key.
+        val importedUnique = HashSet<Pair<String, String>>()
 
         // Phase one -- validate everything, write nothing. An unforgivable fault throws here, before any insert,
         // which is what makes "reject the entire call" true across documents rather than only within one: a bad
@@ -1199,6 +1201,23 @@ class GedraDataService : ServiceInitializer {
                     cxt.mkUniqueId()
                 }
                 val stored = slim.asStoredEntry(entryId = entryId, source = GSRC.user, createdAt = now, createdBy = actor)
+                // A value one of the owner's forms already holds (issue #1851), or an earlier document of this import does, is an
+                // invalid entry like any other. The write's own check decides a race.
+                val shared = UniqueClaims.slotsOf(union, listOf(stored)).values.filter { slot ->
+                    (slot.claimKind to slot.key) in importedUnique ||
+                        UniqueClaims.heldElsewhere(cxt, cxt.client, kind, cxt.userId ?: 0L, slot) != null
+                }
+                if (shared.isNotEmpty()) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw KdrException.mkInput(
+                            "An imported entry for trait '$traitId' is invalid: " +
+                                UniqueClaims.takenText(cxt, cxt.client, cxt.userId, shared.first(), null),
+                        )
+                    }
+                    discard(GIF.invalidEntry, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
                 val failures = if (union != null) validate(union, stored) else emptyList()
                 if (failures.isNotEmpty()) {
                     if (strippedFiles) {
@@ -1216,6 +1235,7 @@ class GedraDataService : ServiceInitializer {
                     continue
                 }
                 survivors.add(stored)
+                UniqueClaims.slotsOf(union, listOf(stored)).values.forEach { importedUnique.add(it.claimKind to it.key) }
             }
             if (survivors.isEmpty()) {
                 continue
@@ -1369,10 +1389,12 @@ class GedraDataService : ServiceInitializer {
             // falls back to now, which is harmless: the enabled-only update then matches nothing and the delete
             // reports nothing to do.
             val current = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, mapOf(GD.gedraId to row.gedraId.fullId))
+            var deleted: GedraDataRow? = null
             // The write guards (issue #857), under the same lock: deleting a gedra removes every trait it holds, so a
             // guard refusing a change to any of them -- a trait lock -- refuses the delete too. There is no override.
             current?.let { raw ->
                 val held = GedraDataRow.extract(gedraService, raw)
+                deleted = held
                 val guarded = GedraGuardedWrite(
                     held, held.entries.mapNotNull { it[GE.traitId].toOptStr() }.toSet(), null, deletesGedra = true,
                 ) {
@@ -1383,6 +1405,8 @@ class GedraDataService : ServiceInitializer {
             }
             SqlTopicUtil.prepForStdUpdate(cxt, table, data, current)
             changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+            // What the hooks let go of with it (issue #1851), in the delete's own transaction.
+            if (changed > 0) deleted?.let { held -> SchemaService.get(cxt).writeHooks().forEach { it.afterDelete(cxt, sqlCxt, held) } }
         }
         return changed > 0
     }

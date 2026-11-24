@@ -63,6 +63,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowFormFacts
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchTypeBuilder
@@ -1401,6 +1402,52 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val counterId = request[CTR.counter].toOptStr() ?: throw KdrException.mkInput("A '${CTR.counter}' is required.")
         val issued = CounterService.get(c).issue(c, c.client, counterId)
         mapOf(CTR.value to issued.value, CTR.token to issued.token)
+    }
+
+    type(GEP.uniqueCheckType) {
+        type = SCT.kObject
+        description = "Whether another of an owner's forms holds a unique field's value."
+        property(UNQ.taken, "Whether another of the owner's forms holds the value.", required = true) { type = SCT.boolean }
+        property(UNQ.message, "When taken: that it is, in words for the person who typed it.")
+        property(UNQ.heldAs, "When taken: the value as the other form holds it, which may differ in case or punctuation.")
+        property(GDF.gedraId, "When taken: the form that holds it.")
+    }
+
+    // Whether a unique field's value is taken (issue #1851), asked by a form as the field is left, so the person learns
+    // before saving. The save's own check is what holds the value.
+    generalEndpoint(
+        GEP.uniqueCheck,
+        "Says whether another form of the same owner already holds a value of a field whose values must be unique " +
+            "(`${SCH.unique}`), compared without regard to case or punctuation. The owner is the named form's, or you -- or, " +
+            "for an administrator or editor making a form for someone, the user named. A field that need not be unique is " +
+            "never taken.",
+        HttpMethod.GET,
+        outputRef = GEP.uniqueCheckType,
+        inputFields = {
+            field(UNQ.traitId, "The trait whose field it is.", required = true)
+            field(UNQ.field, "The field of the trait's data.", required = true)
+            field(UNQ.value, "The value, as it was typed.", required = true)
+            field(GDF.gedraId, "The form being edited, whose own value is not counted; omit for a new form.")
+            field(EI.user, GedraDataRow.createForUserHint)
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        fun asked(name: String) = request[name].toOptStr() ?: throw KdrException.mkInput("A '$name' is required.")
+        val gedraId = request[GDF.gedraId].toOptStr()
+        // A named form is read in the caller's own scope, so one out of reach answers 404; its owner is whose forms count.
+        val row = gedraId?.let { coreDetailsFormRow(c, it) }
+        val owner = row?.userId ?: createForUserCxt(c, request).userId ?: 0L
+        val slot = UniqueClaims.slotFor(c, c.client, formDoc, asked(UNQ.traitId), asked(UNQ.field), asked(UNQ.value))
+        val held = slot?.let { UniqueClaims.heldElsewhere(c, c.client, formDoc, owner, it, gedraId) }
+        buildMap {
+            put(UNQ.taken, held != null)
+            if (slot != null && held != null) {
+                put(UNQ.message, UniqueClaims.takenText(c, c.client, owner, slot, held.value))
+                put(UNQ.heldAs, held.value)
+                put(GDF.gedraId, held.gedraId)
+            }
+        }
     }
 
     // Saves the entries a workflow task collected, with the workflow's gate (issue #535). A refused save is a

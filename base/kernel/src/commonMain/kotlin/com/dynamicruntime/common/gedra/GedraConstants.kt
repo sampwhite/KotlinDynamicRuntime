@@ -140,6 +140,12 @@ object GEP {
      */
     const val counterIssue = "/gedra/counter/issue"
 
+    /** Whether a unique field's value is already held by another of an owner's forms (issue #1851). */
+    const val uniqueCheck = "/gedra/unique/check"
+
+    /** Response type of [uniqueCheck]: whether the value is taken, and what to say of it. */
+    const val uniqueCheckType = "UniqueCheck"
+
     /** Response type of [counterIssue]: the id and its token. */
     const val counterIdType = "IssuedCounterId"
 

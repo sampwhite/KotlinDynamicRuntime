@@ -6,6 +6,8 @@ import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.counter.counterPrefix
 import com.dynamicruntime.common.counter.counterValueText
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.UNQ
+import com.dynamicruntime.common.gedra.uniqueFieldsOf
 import com.dynamicruntime.common.startup.DefRepairContext
 import com.dynamicruntime.common.startup.repairTypeDef
 import com.dynamicruntime.common.util.toJsonMap
@@ -111,6 +113,23 @@ private fun schCounterTests() = stringSpec {
         val optional = parse { counter = "receipt" }
         formRequirementFailures(optional, layouts, mapOf("note" to "cash"), excused = setOf("number")).shouldBeEmpty()
         formRequirementFailures(optional, layouts, mapOf("note" to "cash")).map { it.path } shouldContainExactly listOf("number")
+    }
+
+    "a unique field is a plain string a person types, at the top of a type with no key (issue #1851)" {
+        uniqueFieldsOf(parse { unique = UNQ.owner }) shouldBe mapOf("number" to UNQ.owner)
+        refusal { unique = "everyone" } shouldContain SCH.unique
+        refusal { type = SCT.integer; unique = UNQ.owner } shouldContain "compares plain strings"
+        refusal { dayOnlyDate(); unique = UNQ.owner } shouldContain "compares plain strings"
+        refusal { counter = "receipt"; unique = UNQ.owner } shouldContain SCH.counter
+        refusal { derived = true; unique = UNQ.owner } shouldContain SCH.derived
+        refusal {
+            type = SCT.kObject
+            property("inner", "Nested.") { unique = UNQ.owner }
+        } shouldContain "nested object or a list"
+        refusal {
+            type = SCT.array
+            items { type = SCT.string; unique = UNQ.owner }
+        } shouldContain "nested object or a list"
     }
 
     "a counter is refused off a plain string, and beside a derivation or a list" {

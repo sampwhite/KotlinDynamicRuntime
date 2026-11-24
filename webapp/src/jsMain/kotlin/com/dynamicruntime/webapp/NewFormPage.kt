@@ -93,6 +93,11 @@ val NewFormPage = FC<Props> {
 
     useFocusOnFailure(focusRequest, failures)
 
+    // A unique field (issue #1851): asked about as it is left, for whoever the form is being made for.
+    val uniqueChecks = useUniqueChecks(userRef = pickedUser?.primaryId) { path ->
+        uniqueAskInEntries(values, path) { entryDataType(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, GDF.entries, it) }
+    }
+
     // A counter's field (issue #1849): given its id as its section is added -- unless its counter gives ids when the
     // form is saved (issue #1852), when the field is left to the server and not drawn.
     val counterIds = useCounterIds(
@@ -154,11 +159,12 @@ val NewFormPage = FC<Props> {
                         // The fields the page answers itself, not the form (issues #727, #762): the one list both
                         // create pages use; each defaults absent.
                         omit = formCreateOmittedFields
-                        this.failures = failures
+                        this.failures = withTaken(failures, uniqueChecks.failures)
                         onChange = { values = it }
                         // Clearing on edit rather than re-checking: a field being corrected must not keep showing the
                         // complaint about what it used to hold, and dropping the last failure returns to null (not an
                         // empty list), because empty draws the ✓ that an unchecked edit has not earned.
+                        onFieldCommit = { path -> uniqueChecks.left(path) }
                         onFieldEdit = { path ->
                             failures?.let { current ->
                                 failures = current.clearedAt(path).ifEmpty { null }

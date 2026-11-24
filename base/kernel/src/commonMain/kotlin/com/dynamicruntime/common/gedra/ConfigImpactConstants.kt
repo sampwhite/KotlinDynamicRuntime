@@ -94,6 +94,12 @@ enum class ImpactKind {
     dataInvalid,
 
     /**
+     * Forms of one owner that share a value a field made unique would let only one hold (issue #1851). They are kept as
+     * they are; each is refused that value only once it has changed to another and back.
+     */
+    valuesShared,
+
+    /**
      * A form created by, or taking part in, a workflow the client would no longer have -- one live now: deleting a
      * workflow already past its lifetime is a safe delete, and is not reported (issue #1354).
      */

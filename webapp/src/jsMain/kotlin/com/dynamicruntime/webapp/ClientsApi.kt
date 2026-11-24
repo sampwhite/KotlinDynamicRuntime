@@ -1789,6 +1789,9 @@ fun impactFindingText(f: ImpactFindingView): String {
         ImpactKind.dataInvalid.name ->
             "$forms ${verb("holds", "hold")} entries of trait ${f.traitId} that would no longer be valid, and could " +
                 "not be edited until they are fixed."
+        ImpactKind.valuesShared.name ->
+            "$forms ${verb("shares", "share")} a value of trait ${f.traitId} with another form of the same owner. " +
+                "${verb("It is", "They are")} kept as ${verb("it is", "they are")}; only a new use of the value is refused."
         ImpactKind.workflowGone.name ->
             "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which would no longer exist."
         ImpactKind.stateStranded.name ->

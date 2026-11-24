@@ -267,6 +267,12 @@ open class SchTypeBuilder(
     var counter: String? by SchAttr(data, SCH.counter)
 
     /**
+     * Custom `g-unique` keyword (issue #1851): the scope this plain string's value is unique within, `owner` for the
+     * forms of one owner. See [SCH.unique].
+     */
+    var unique: String? by SchAttr(data, SCH.unique)
+
+    /**
      * Declares the functions run on this type's data each time it is written (issue #1501), as `g-onWrite`: each a
      * usage object naming its kind in `fn` -- `computeValue(...)` in `base:common` builds one. Replaces any declared
      * before; on a trait's data type, they run after an edit is merged.

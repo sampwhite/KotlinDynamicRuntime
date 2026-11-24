@@ -87,7 +87,17 @@ object GedraConfigReload {
      */
     fun <T> underReloadLock(block: () -> T): T = synchronized(lock) { block() }
 
-    fun reloadClient(cxt: KdrCxt, client: String): ConfigReloadResult = synchronized(lock) {
+    fun reloadClient(cxt: KdrCxt, client: String): ConfigReloadResult {
+        val uniqueBefore = UniqueClaims.kindsFor(cxt, client)
+        val sandboxUniqueBefore = if (isSandboxClient(client)) emptySet() else UniqueClaims.kindsFor(cxt, sandboxOf(client))
+        val result = synchronized(lock) { reloadWithSandbox(cxt, client) }
+        // Outside the reload lock: a field just made unique (issue #1851) has the values forms already hold claimed.
+        UniqueClaims.fillNewlyUnique(cxt, client, uniqueBefore)
+        result.sandbox?.let { UniqueClaims.fillNewlyUnique(cxt, it.client, sandboxUniqueBefore) }
+        return result
+    }
+
+    private fun reloadWithSandbox(cxt: KdrCxt, client: String): ConfigReloadResult {
         val own = reloadOne(cxt, client)
         if (client == GID.globalClient || isSandboxClient(client)) return own
         // After the parent, since whether it has a sandbox is read from the definition it now runs. A sandbox it
@@ -96,7 +106,7 @@ object GedraConfigReload {
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("No schema collector to reload into.")
         val had = GedraConfigLoadService.get(cxt).loadedFor(sandbox).isNotEmpty()
         if (!had && !SandboxConfigs.hasSandbox(collector.gedraConfigs, client)) return own
-        ConfigReloadResult(own.client, own.loaded, own.evictedTypes, own.issues, own.marker, reloadOne(cxt, sandbox))
+        return ConfigReloadResult(own.client, own.loaded, own.evictedTypes, own.issues, own.marker, reloadOne(cxt, sandbox))
     }
 
     private fun reloadOne(cxt: KdrCxt, client: String): ConfigReloadResult {

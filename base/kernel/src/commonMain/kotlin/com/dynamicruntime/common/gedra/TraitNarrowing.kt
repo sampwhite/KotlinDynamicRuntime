@@ -5,6 +5,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
+import com.dynamicruntime.common.schema.sameSchemaValue
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -19,6 +20,7 @@ import com.dynamicruntime.common.util.toOptStr
  *    field the data requires cannot be hidden: a form could then never be saved.
  *  - **Require a field** -- in the data: added to the type's `required`, which narrowing rule 3 admits.
  *  - **Restrict its choices** -- in the data: a subset of the global choices, which closes an open list (rule 2).
+ *  - **Make a field unique** -- in the data: `g-unique` on a plain text field (issue #1851), which narrows what may be stored.
  *  - **Rename it, and introduce it** -- in the layout: the data type's `g-layout` `label`, which is the trait's name
  *    wherever it is shown ([traitNameOf], issue #1520), and its `description`, the introduction a workflow form shows
  *    above its fields. Not narrowing, but presentation the narrowing rules let a client change, in the same alteration
@@ -56,9 +58,12 @@ class TraitNarrowing(
      * above the trait's fields. Null keeps the platform's; empty shows none.
      */
     val introduction: String? = null,
+    /** The fields of plain text no two forms of one owner may share a value of (issue #1851), in the data. */
+    val unique: Set<String> = emptySet(),
 ) {
     /** Whether this narrows nothing: the client takes the trait as the platform declares it. */
-    val isEmpty: Boolean get() = hidden.isEmpty() && required.isEmpty() && choices.isEmpty() && name == null && introduction == null
+    val isEmpty: Boolean get() = hidden.isEmpty() && required.isEmpty() && choices.isEmpty() && unique.isEmpty() && name == null &&
+        introduction == null
 
     /** The narrowing on the wire, as [traitNarrowingFromInfo] reads it. */
     fun toInfo(): Map<String, Any?> = buildMap {
@@ -66,6 +71,7 @@ class TraitNarrowing(
         put(CIT.hidden, hidden.toList())
         put(CIT.required, required.toList())
         put(CIT.choices, choices)
+        put(CIT.unique, unique.toList())
         name?.let { put(CIT.label, it) }
         introduction?.let { put(CIT.description, it) }
     }
@@ -85,8 +91,10 @@ class TraitNarrowing(
         val baseProps = base[SCH.properties].toJsonMapOrEmpty()
         val restricted = LinkedHashMap<String, Any?>()
         for (field in baseOrder(base)) {
-            val kept = choices[field] ?: continue
-            restricted[field] = withChoices(baseProps[field].toJsonMapOrEmpty(), kept)
+            val kept = choices[field]
+            if (kept == null && field !in unique) continue
+            val prop = baseProps[field].toJsonMapOrEmpty()
+            restricted[field] = withUnique(kept?.let { withChoices(prop, it) } ?: prop, field in unique)
         }
         if (restricted.isNotEmpty()) {
             out[SCH.merge] = mapOf(SCH.properties to MCH.merge)
@@ -128,6 +136,7 @@ fun traitNarrowingFromInfo(raw: Map<String, Any?>): TraitNarrowing = TraitNarrow
     hidden = raw[CIT.hidden].toJsonListOfStrings().toSet(),
     required = raw[CIT.required].toJsonListOfStrings().toSet(),
     choices = raw[CIT.choices].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
+    unique = raw[CIT.unique].toJsonListOfStrings().toSet(),
     name = raw[CIT.label].toOptStr()?.trim()?.ifEmpty { null },
     introduction = raw[CIT.description].toOptStr()?.trim(),
 )
@@ -157,6 +166,19 @@ private fun withChoices(prop: Map<String, Any?>, kept: List<String>): Map<String
     return LinkedHashMap(prop).also { it[SCH.items] = narrowed(prop[SCH.items].toJsonMapOrEmpty()) }
 }
 
+/** [prop] made unique for its owner when [unique] (issue #1851), else as it is. */
+private fun withUnique(prop: Map<String, Any?>, unique: Boolean): Map<String, Any?> =
+    if (unique) prop + (SCH.unique to UNQ.owner) else prop
+
+/**
+ * Whether the global field [prop] may be made unique (issue #1851): a plain string a person types, and not one the
+ * platform already holds unique. What the parser refuses `g-unique` beside is left out here, so the editor never offers
+ * what the write would refuse.
+ */
+fun mayBeUnique(prop: Map<String, Any?>): Boolean =
+    prop[SCH.type] == SCT.string && prop[SCH.format] == null && prop[SCH.unique] == null &&
+        listOf(SCH.derived, SCH.counter, SCH.const, SCH.sensitive).none { prop[it] != null && prop[it] != false }
+
 /**
  * What is wrong with [narrowing] of the global type [base], in words, or nothing: each field one the type declares, no
  * field both hidden and required (by the type or by the client), and each restricted field one with choices, keeping
@@ -166,7 +188,7 @@ fun traitNarrowingProblems(narrowing: TraitNarrowing, base: Map<String, Any?>): 
     val out = mutableListOf<String>()
     val props = base[SCH.properties].toJsonMapOrEmpty()
     val baseRequired = base[SCH.required].toJsonListOfStrings().toSet()
-    for (field in narrowing.hidden + narrowing.required + narrowing.choices.keys) {
+    for (field in narrowing.hidden + narrowing.required + narrowing.choices.keys + narrowing.unique) {
         if (field !in props) out.add("The trait has no field '$field'.")
     }
     for (field in narrowing.hidden) {
@@ -180,6 +202,12 @@ fun traitNarrowingProblems(narrowing: TraitNarrowing, base: Map<String, Any?>): 
         }
         if (kept.isEmpty()) out.add("Field '$field' must keep at least one choice.")
         kept.filterNot { it in offered }.forEach { out.add("Field '$field' does not offer '$it'.") }
+    }
+    for (field in narrowing.unique) {
+        if (field in props && !mayBeUnique(props[field].toJsonMapOrEmpty())) {
+            out.add("Field '$field' is not plain text a person types, so it cannot be made unique.")
+        }
+        if (base[SCH.primaryKey] != null) out.add("A trait with several entries on a form cannot have a unique field.")
     }
     narrowing.name?.let { name ->
         if (name.isBlank()) out.add("A trait's name cannot be blank; leave it out to keep the platform's.")
@@ -204,6 +232,7 @@ fun traitNarrowingOf(traitId: String, base: Map<String, Any?>, alteration: Map<S
     if (alteration == null) return TraitNarrowingRead(TraitNarrowing(traitId), null)
     val props = base[SCH.properties].toJsonMapOrEmpty()
     val choices = LinkedHashMap<String, List<String>>()
+    val unique = LinkedHashSet<String>()
     if (alteration.containsKey(SCH.properties)) {
         if (alteration[SCH.merge].toJsonMapOrEmpty()[SCH.properties] != MCH.merge) {
             return no("Its alteration restates the trait's fields, which this editor does not do.")
@@ -212,10 +241,15 @@ fun traitNarrowingOf(traitId: String, base: Map<String, Any?>, alteration: Map<S
             val baseProp = props[field].toJsonMapOrEmpty()
             val prop = raw?.toJsonMapOrEmpty() ?: return no("Its alteration removes field '$field' from the data.")
             if (prop.isEmpty()) continue
+            val madeUnique = prop[SCH.unique] == UNQ.owner && baseProp[SCH.unique] == null
+            if (madeUnique) unique.add(field)
+            if (madeUnique && sameSchemaValue(prop - SCH.unique, baseProp)) continue
             val offered = baseChoicesOf(baseProp)?.map { it.first }
                 ?: return no("Its alteration changes field '$field' in a way this editor does not.")
             val kept = baseChoicesOf(prop)?.map { it.first }.orEmpty().filter { it in offered }
-            if (withChoices(baseProp, kept) != prop) return no("Its alteration changes field '$field' in a way this editor does not.")
+            if (!sameSchemaValue(withUnique(withChoices(baseProp, kept), madeUnique), prop)) {
+                return no("Its alteration changes field '$field' in a way this editor does not.")
+            }
             choices[field] = kept
         }
     }
@@ -236,5 +270,5 @@ fun traitNarrowingOf(traitId: String, base: Map<String, Any?>, alteration: Map<S
     if (name != null && ($$"${" in name || "%{" in name)) return no("Its name is a template, so it is edited by hand.")
     val introduction = layout[SL.description].toOptStr()
     if (introduction != null && "%{" in introduction) return no("Its introduction is a fragment pull, so it is edited by hand.")
-    return TraitNarrowingRead(TraitNarrowing(traitId, hidden, required, choices, name, introduction), null)
+    return TraitNarrowingRead(TraitNarrowing(traitId, hidden, required, choices, name, introduction, unique), null)
 }

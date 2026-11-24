@@ -180,6 +180,7 @@ class TraitDesignTest {
             SCH.derived to true,
             SCH.visibleWhen to "isAdmin",
             SCH.sensitive to true,
+            SCH.unique to UNQ.owner,
             SCH.errors to mapOf("required" to "Say what it is."),
             SCH.presentation to PRES.identifier,
         )

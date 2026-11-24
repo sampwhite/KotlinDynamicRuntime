@@ -2,6 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.counter.CTR
+import com.dynamicruntime.common.gedra.UNQ
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileKind
 import com.dynamicruntime.common.filekind.FKIND
@@ -133,6 +134,10 @@ fun primaryKeyProblem(type: SchType, where: String): String? {
     val key = SCH.primaryKey
     if (type.primaryKey.toSet().size != type.primaryKey.size) {
         return "$where lists a field twice in its '$key'."
+    }
+    type.properties.entries.firstOrNull { it.value.valueType.unique != null }?.let {
+        return "$where has both '$key' and the field '${it.key}' with '${SCH.unique}'. A unique field is one of a trait with a " +
+            "single entry on each form; a keyed one could hold its value twice on one form."
     }
     for (field in type.primaryKey) {
         val prop = type.properties[field]
@@ -489,6 +494,7 @@ fun parseNode(
         // map would be a field nobody reads that still has to be maintained.
         derived = map[SCH.derived].let { it == true || it is Map<*, *> },
         counter = parseCounter(where, map, jsonType, format),
+        unique = parseUnique(where, map, jsonType, format, state.path()),
         schemaDocument = map[SCH.schemaDocument] == true,
         variants = variants,
         condition = parseCondition(name, map),
@@ -643,6 +649,47 @@ fun parseCounter(where: String, map: Map<String, Any?>, jsonType: String?, forma
         )
     }
     return id
+}
+
+/**
+ * Reads the custom `g-unique` keyword (issue #1851): absent is null, and otherwise one of [UNQ.scopes]. Refused where two
+ * values could not be compared as text -- anything but a plain string -- and beside what leaves a person nothing to
+ * choose ([SCH.derived], [SCH.counter], [SCH.const]) or would put a secret in a message about it ([SCH.sensitive]).
+ */
+@KdrPrivate
+fun parseUnique(where: String, map: Map<String, Any?>, jsonType: String?, format: String?, path: String?): String? {
+    val raw = map[SCH.unique] ?: return null
+    val scope = (raw as? String)?.takeIf { it in UNQ.scopes }
+        ?: throw schemaFault(
+            SchemaError.badValue, "$where sets '${SCH.unique}' to '$raw'; it must be one of ${UNQ.scopes.joinToString { "'$it'" }}.",
+        )
+    if (jsonType != SCT.string || isNonTextFormat(format)) {
+        val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "$where has '${SCH.unique}', which compares plain strings, and this type is $actual.",
+        )
+    }
+    val clash = listOf(SCH.derived, SCH.counter, SCH.const, SCH.sensitive).firstOrNull { map[it] != null && map[it] != false }
+    if (clash != null) {
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "$where has both '${SCH.unique}' and '$clash'. A unique value is one a person chooses, which is named to them " +
+                "when it is taken.",
+        )
+    }
+    // Where it is: a field of the type's own, whose path has one `properties` in it and is no element of a list.
+    val at = path.orEmpty()
+    val nested = listOf(SCH.properties, SCH.items, SCH.additionalProperties)
+    val inside = at.substringBeforeLast(".${SCH.properties}.", "").let { before -> nested.any { ".$it." in "$before." } }
+    if (inside || nested.any { at.endsWith(".$it") }) {
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "$where has '${SCH.unique}' inside a nested object or a list, where it is not checked. A unique field is one of a " +
+                "trait's own data.",
+        )
+    }
+    return scope
 }
 
 /** Reads JSON Schema `uniqueItems` (issue #823): absent is false, and anything but true or false is refused. */
@@ -914,6 +961,7 @@ fun tableRowsProblem(field: SchType, where: String): String? {
             type.format == SFMT.dataFile || type.format == SFMT.binary -> "is a file"
             type.derived -> "is derived"
             type.counter != null -> "is numbered by a counter"
+            type.unique != null -> "is unique"
             prop.sensitive -> "is a secret"
             prop.visibleWhen != null -> "is shown only by a fact ('${SCH.visibleWhen}')"
             else -> null
