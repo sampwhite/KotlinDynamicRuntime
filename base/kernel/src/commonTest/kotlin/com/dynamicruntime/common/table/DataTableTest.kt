@@ -80,6 +80,9 @@ class DataTableTest {
         assertNull(typedCell("  ", col("amount")).problem)
         assertEquals(LocalDate(2026, 11, 2), typedCell("2026-11-02", col("day")).value)
         assertEquals("'11/2/2026' is not a day (yyyy-MM-dd).", typedCell("11/2/2026", col("day")).problem)
+        // A day with anything after it is not one.
+        assertEquals("'2026-11-03l' is not a day (yyyy-MM-dd).", typedCell("2026-11-03l", col("day")).problem)
+        assertEquals("'2026-11-3' is not a day (yyyy-MM-dd).", typedCell("2026-11-3", col("day")).problem)
         assertEquals(true, typedCell("yes", col("receipt")).value)
         assertEquals(false, typedCell("FALSE", col("receipt")).value)
         assertTrue(typedCell("maybe", col("receipt")).problem != null)

@@ -74,7 +74,7 @@ class DataGridModelTest {
     @Test
     fun anEditIsCommittedAsStoredAndChecked() {
         val g = grid().moveTo(GridCell(0, 1)).startEdit("Taxi")
-        assertEquals(GridEdit(GridCell(0, 1), "Taxi"), g.editing)
+        assertEquals(GridEdit(GridCell(0, 1), "Taxi", typed = true), g.editing)
         val done = g.commitEdit(dRow = 1)
         // A choice's label is stored as its value; the cursor moves down.
         assertEquals("taxi", done.text(GridCell(0, 1)))
@@ -228,5 +228,127 @@ class DataGridModelTest {
         assertEquals("", tableSummaryText(columns.getValue("amount"), null))
         assertEquals("1 row", tableRowCountText(1))
         assertEquals("3 rows", tableRowCountText(3))
+    }
+
+    @Test
+    fun theKeysMoveSelectAndEdit() {
+        val g = grid()
+        assertEquals(GridCell(1, 0), g.onGridKey("ArrowDown", shift = false, ctrl = false)?.active)
+        assertEquals(GridBlock(0, 0, 0, 1), g.onGridKey("ArrowRight", shift = true, ctrl = false)?.selection)
+        assertEquals(GridCell(0, 3), g.onGridKey("End", shift = false, ctrl = false)?.active)
+        assertEquals(GridCell(1, 3), g.onGridKey("End", shift = false, ctrl = true)?.active)
+        assertEquals(GridCell(1, 0), g.onGridKey("PageDown", shift = false, ctrl = false)?.active)
+        assertEquals(GridCell(0, 0), g.move(1, 2).onGridKey("Home", shift = false, ctrl = true)?.active)
+        assertEquals(GridEdit(GridCell(0, 0), "2026-11-02"), g.onGridKey("F2", shift = false, ctrl = false)?.editing)
+        // A character typed replaces the cell.
+        assertEquals("7", g.moveTo(GridCell(0, 2)).onGridKey("7", shift = false, ctrl = false)?.editing?.text)
+        assertEquals("", g.onGridKey("Delete", shift = false, ctrl = false)?.text(GridCell(0, 0)))
+        // Space turns a yes or no.
+        assertEquals("true", g.moveTo(GridCell(0, 3)).onGridKey(" ", shift = false, ctrl = false)?.text(GridCell(0, 3)))
+        assertEquals("false", g.moveTo(GridCell(0, 3)).toggleBoolean().toggleBoolean().text(GridCell(0, 3)))
+        // Tab, and a key with Ctrl, are left to the browser.
+        assertNull(g.onGridKey("Tab", shift = false, ctrl = false))
+        assertNull(g.onGridKey("c", shift = false, ctrl = true))
+    }
+
+    @Test
+    fun theEditorsKeysCommitMoveOrDrop() {
+        val g = grid().moveTo(GridCell(0, 2)).startEdit("5")
+        assertEquals(GridCell(1, 2), g.onEditorKey("Enter", shift = false)?.active)
+        assertEquals(GridCell(0, 3), g.onEditorKey("Tab", shift = false)?.active)
+        assertEquals(GridCell(0, 1), g.onEditorKey("Tab", shift = true)?.active)
+        assertEquals("12.50", g.onEditorKey("Escape", shift = false)?.text(GridCell(0, 2)))
+        assertEquals("5", g.onEditorKey("Enter", shift = false)?.text(GridCell(0, 2)))
+        assertNull(g.onEditorKey("a", shift = false))
+    }
+
+    @Test
+    fun aSaveRebasesTheGrid() {
+        val changed = grid().moveTo(GridCell(0, 2)).startEdit("5").commitEdit()
+        val saved = changed.savedAs("gd.df.c.9")
+        assertFalse(saved.dirty)
+        assertEquals("gd.df.c.9", saved.baseFileId)
+        val rebased = changed.rebasedOn("gd.df.c.9")
+        assertTrue(rebased.dirty)
+        assertEquals("gd.df.c.9", rebased.baseFileId)
+        assertEquals("Count", combineLabel(ReportCombine.count))
+        assertEquals("42.5", summaryValueText(42.5))
+        assertEquals("30", summaryValueText(30.0))
+        assertEquals("2 pasted rows did not fit: this field holds at most 5 rows.", pasteDroppedText(2, 5))
+        assertNull(pasteDroppedText(0, 5))
+        assertEquals("3 rows · at most 5", gridRowCountText(3, 5))
+    }
+
+    @Test
+    fun aClickElsewhereCommitsTheOpenEdit() {
+        val editing = grid().moveTo(GridCell(1, 2)).startEdit().editText("45")
+        val clicked = editing.clickCell(GridCell(0, 1), shift = false)
+        assertEquals("45", clicked.text(GridCell(1, 2)))
+        assertNull(clicked.editing)
+        assertEquals(GridCell(0, 1), clicked.active)
+        assertTrue(clicked.dirty)
+        // A double click elsewhere commits too, then edits there.
+        val opened = editing.openCell(GridCell(0, 0))
+        assertEquals("45", opened.text(GridCell(1, 2)))
+        assertEquals(GridEdit(GridCell(0, 0), "2026-11-02"), opened.editing)
+        assertEquals(GridBlock(0, 0, 1, 2), editing.clickCell(GridCell(0, 0), shift = true).selection)
+    }
+
+    @Test
+    fun anOpenEditThatChangedACellIsUnsaved() {
+        val g = grid()
+        assertFalse(g.unsaved)
+        assertFalse(g.startEdit().unsaved)
+        assertTrue(g.startEdit().editText("2026-11-09").unsaved)
+        assertTrue(g.startEdit("x").committed().dirty)
+        assertTrue(g.committed() === g)
+    }
+
+    @Test
+    fun aDayIsTypedOrPicked() {
+        // Opened by a key typed, a day is typed as text; opened any other way, it is picked from a calendar.
+        assertTrue(grid().onGridKey("2", shift = false, ctrl = false)?.editing?.typed == true)
+        assertFalse(grid().onGridKey("Enter", shift = false, ctrl = false)?.editing?.typed == true)
+        assertFalse(grid().openCell(GridCell(1, 0)).editing?.typed == true)
+        // A day picked is stored in the CSV's spelling, and one typed with anything after it is a problem.
+        assertEquals("2026-11-09", grid().startEdit().editText("2026-11-09").commitEdit().text(GridCell(0, 0)))
+        val bad = grid().startEdit("2026-11-03l").commitEdit()
+        assertEquals("2026-11-03l", bad.text(GridCell(0, 0)))
+        assertEquals("'2026-11-03l' is not a day (yyyy-MM-dd).", bad.rows[0].problems[0])
+        assertTrue(bad.problems().any { it.message.startsWith("Row 1, Day:") })
+    }
+
+    private fun sortable(): GridState = grid(
+        "day,category,amount\r\n2026-11-03,taxi,10\r\n2026-11-01,meal,9\r\n,,\r\n2026-11-02,taxi,100\r\n2026-11-04,meal,x\r\n",
+    )
+
+    private fun GridState.column(col: Int) = rows.map { it.cells[col] }
+
+    @Test
+    fun aSortOrdersRowsByTheirValues() {
+        val g = sortable()
+        // Numbers by value; the empty cell and the bad one last, whichever way.
+        assertEquals(listOf("9", "10", "100", "", "x"), g.sortBy(2, descending = false).column(2))
+        assertEquals(listOf("100", "10", "9", "", "x"), g.sortBy(2, descending = true).column(2))
+        // Days in time.
+        assertEquals(listOf("2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", ""), g.sortBy(0, descending = false).column(0))
+        // A choice by its label; equal ones keep their order, so a sort by day then by category groups by category.
+        val byDayThenCategory = g.sortBy(0, descending = false).sortBy(1, descending = false)
+        assertEquals(listOf("meal", "meal", "taxi", "taxi", ""), byDayThenCategory.column(1))
+        assertEquals(listOf("2026-11-01", "2026-11-04", "2026-11-02", "2026-11-03", ""), byDayThenCategory.column(0))
+    }
+
+    @Test
+    fun aSortIsAChangeOnlyWhenTheOrderMoves() {
+        val g = sortable()
+        assertTrue(g.sortBy(0, descending = false).dirty)
+        val ordered = grid("day,amount\r\n2026-11-01,1\r\n2026-11-02,2\r\n")
+        assertFalse(ordered.sortBy(0, descending = false).dirty)
+        assertTrue(ordered.sortBy(0, descending = true).dirty)
+        // An open edit is committed first.
+        assertEquals("5", g.moveTo(GridCell(0, 2)).startEdit("5").sortBy(2, descending = false).column(2).first())
+        assertEquals(GridSort(1, false), nextSort(null, 1))
+        assertEquals(GridSort(1, true), nextSort(GridSort(1, false), 1))
+        assertEquals(GridSort(2, false), nextSort(GridSort(1, true), 2))
     }
 }

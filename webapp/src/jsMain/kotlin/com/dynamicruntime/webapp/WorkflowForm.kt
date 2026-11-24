@@ -194,6 +194,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // closure captured at the click are stale by then if the user typed on meanwhile.
     val valuesState = useState(seeded)
     var valuesByTrait by valuesState
+    // The page's data grids (issue #1885), each in its trait's scope: saved with its task, their unsaved rows unsaved.
+    val drafts = useTableDrafts()
     val updateValues = valuesState.component2()
     // The ids a counter issued for this form (issue #1849), asked for while the form can be saved -- as a create opens,
     // or as an edit starts on a form whose counter field is empty -- so the person sees them before saving, and the
@@ -299,10 +301,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // Whether any task holds unsaved edits (issue #700): reported to the page when it changes, so the page can
     // arm the leave guard while there is something to lose and disarm it once saved or reverted.
-    val anyUnsaved = isEdit && wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+    val anyUnsaved = isEdit && (wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) } || drafts.anyDirty())
     useEffect(anyUnsaved) { props.onDirtyChange?.invoke(anyUnsaved) }
 
     fun valuesOf(traitId: String): Map<String, Any?> = valuesByTrait[traitId] ?: emptyMap()
+
+    /** Whether [task] holds edits not yet saved: its fields' values, or its traits' grids' rows (issue #1885). */
+    fun taskHasUnsaved(task: WfTaskView): Boolean =
+        taskUnsaved(task, valuesByTrait, stored) || drafts.anyDirty(task.traits.map { it.traitId }.toSet())
 
     // The per-field supplied-default descriptors for a trait's form (issue #710): each defaulted field's mode, an
     // `offer`'s value for its "Use it" link, whether a `filled` default is still a suggestion, and -- once the
@@ -321,8 +327,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     }
 
     /** [trait]'s values as they stand, checked as its save would be. */
-    fun checkTrait(trait: WfTraitView): InputCheck =
-        checkFormInput(trait.type, valuesOf(trait.traitId), wf.fieldLayouts, givenAtSave(trait))
+    fun checkTrait(trait: WfTraitView, values: Map<String, Any?> = valuesOf(trait.traitId)): InputCheck =
+        checkFormInput(trait.type, values, wf.fieldLayouts, givenAtSave(trait))
 
     fun prefillFor(traitId: String): Map<String, FieldPrefill> {
         if (traitId in resolvedTraits) return emptyMap()
@@ -367,14 +373,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // with no save of this kind (a normal workflow's approval step, say) has nothing to post.
     fun saveFor(task: WfTaskView): WfSaveView? = saveOfKind(task, isEdit)
 
-    fun onSave(task: WfTaskView) {
+    fun onSave(task: WfTaskView, byTrait: Map<String, Map<String, Any?>> = valuesByTrait) {
         // Client-side schema check per trait first; a failure keeps the save from leaving. A Save checks the
         // task's traits as a whole, so every failure shows from here on (issue #718), and a clean check clears
         // what an earlier one left.
         // A trait locked for this caller (issue #857) is not theirs to send: it stays as stored, and a save that
         // named it would be refused whole.
         val checks = task.traits.filterNot { it.traitId in wf.lockedTraits }
-            .associate { it.traitId to checkTrait(it) }
+            .associate { it.traitId to checkTrait(it, byTrait[it.traitId] ?: emptyMap()) }
         failuresByTrait = failuresByTrait + checks.mapValues { it.value.failures }
         wholeChecked = wholeChecked + checks.keys
         if (checks.values.any { it.failures.isNotEmpty() }) return
@@ -402,7 +408,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
         // What this save sends, by trait, as the working values held it at the click -- what "stored" becomes for them.
         val savedTraitIds = task.traits.map { it.traitId }.toSet()
-        var sent = valuesByTrait.filterKeys { it in savedTraitIds }
+        var sent = byTrait.filterKeys { it in savedTraitIds }
         savingTask = task.id
         runError = null
         refreshError = null
@@ -502,6 +508,44 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
     }
 
+    /**
+     * A task's Save (issue #1885): its traits' grids first -- each changed table saved as a new file and set in its
+     * field -- then the save, from the values with those files in them.
+     */
+    fun onSaveClicked(task: WfTaskView) {
+        if (savingTask != null || !drafts.beginSave()) return
+        val scopes = task.traits.map { it.traitId }.toSet()
+        val atClick = valuesByTrait
+        // Busy from the click, through the grids' uploads, so a second click cannot save twice. The save marks it again
+        // once it sends, and clears it however it ends.
+        savingTask = task.id
+        wfFormScope.launch {
+            val flushed = try {
+                drafts.flushAll(scopes)
+            } catch (e: Throwable) {
+                runError = userFacingError(e)
+                savingTask = null
+                return@launch
+            } finally {
+                drafts.endSave()
+            }
+            savingTask = null
+            val refusal = flushed.refusal
+            if (refusal != null) {
+                runError = DisplayError.expected(refusal)
+                return@launch
+            }
+            if (flushed.updates.isEmpty()) {
+                onSave(task, atClick)
+                return@launch
+            }
+            fun merged(byTrait: Map<String, Map<String, Any?>>) =
+                byTrait + scopes.associateWith { applyTableUpdates(byTrait[it] ?: emptyMap(), flushed.updates, it) }
+            updateValues { merged(it) }
+            onSave(task, merged(atClick))
+        }
+    }
+
     // A field committed (issue #718): remember it, and have its whole trait re-checked from the working values -- the
     // panel shows the committed fields' failures now and the rest once the trait is checked as a whole.
     // The check waits for the next render rather than running here: a choice, checkbox, date, or file emits its new
@@ -598,7 +642,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // each step reversed and not given again, saying who, when, and why. Facts rather than the workflow's copy, so drawn
     // under a display's text too, which says the approval in its own words (and so without the given lines).
     fun ChildrenBuilder.approvalRecord(task: WfTaskView, approval: WfApprovalView, withGiven: Boolean) {
-        val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+        val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) } || drafts.anyDirty()
         val busy = approvingTask != null || reversingKey != null
         approval.steps.filter { it.approved }.forEach { step ->
             if (withGiven) {
@@ -618,7 +662,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun ChildrenBuilder.approvalBlock(task: WfTaskView, approval: WfApprovalView) {
         // Approving reloads the view, which starts every task's working copy afresh -- so while any task holds edits
         // not yet saved, approving waits, rather than silently dropping them (and approving what they would change).
-        val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+        val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) } || drafts.anyDirty()
         val busy = approvingTask != null || reversingKey != null
         div {
             className = ClassName("wf-approval")
@@ -764,39 +808,45 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // Design View marks this trait's fields (issue #972); outside it the provider carries null.
             DesignViewContext.Provider {
                 value = designSession?.forTrait(trait, approvalTask)
-                SchemaForm {
-                    type = trait.type
-                    this.values = shownBy?.takeIf { it.shownTraits != null }?.shownValues?.get(trait.traitId) ?: valuesOf(trait.traitId)
-                    // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
-                    // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
-                    editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
-                    friendly = true
-                    // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
-                    // an expense report's total, computed by the backend -- rather than hiding them; the flag is
-                    // inert while editing, where a derived field has no control to draw. This form's root is
-                    // one trait's data type, so every derived-with-value field is content, not envelope.
-                    showDerivedValues = true
-                    derivedRootIsTraitData = true
-                    this.cfacts = wf.cfacts
-                    this.countersOnSave = wf.countersOnSave
-                    this.fieldLayouts = shownBy?.fieldLayouts ?: wf.fieldLayouts
-                    this.failures = shownFailures(
-                        failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
-                        trait.traitId in wholeChecked,
-                    )
-                    this.prefill = prefillFor(trait.traitId)
-                    onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
-                    onFieldEdit = { field ->
-                        if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
-                        // First touch of a suggested default makes it the user's (issue #710); a reset can
-                        // bring it back. A nested field's path never matches a root default's name, so only
-                        // the top-level default it belongs to is un-suggested.
-                        val suggested = suggestedByTrait[trait.traitId]
-                        if (suggested != null && field in suggested) {
-                            suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
+                TableDraftsContext.Provider {
+                    value = drafts
+                    TableDraftsScopeContext.Provider {
+                        value = trait.traitId
+                        SchemaForm {
+                            type = trait.type
+                            this.values = shownBy?.takeIf { it.shownTraits != null }?.shownValues?.get(trait.traitId) ?: valuesOf(trait.traitId)
+                            // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
+                            // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
+                            editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
+                            friendly = true
+                            // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
+                            // an expense report's total, computed by the backend -- rather than hiding them; the flag is
+                            // inert while editing, where a derived field has no control to draw. This form's root is
+                            // one trait's data type, so every derived-with-value field is content, not envelope.
+                            showDerivedValues = true
+                            derivedRootIsTraitData = true
+                            this.cfacts = wf.cfacts
+                            this.countersOnSave = wf.countersOnSave
+                            this.fieldLayouts = shownBy?.fieldLayouts ?: wf.fieldLayouts
+                            this.failures = shownFailures(
+                                failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
+                                trait.traitId in wholeChecked,
+                            )
+                            this.prefill = prefillFor(trait.traitId)
+                            onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
+                            onFieldEdit = { field ->
+                                if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
+                                // First touch of a suggested default makes it the user's (issue #710); a reset can
+                                // bring it back. A nested field's path never matches a root default's name, so only
+                                // the top-level default it belongs to is un-suggested.
+                                val suggested = suggestedByTrait[trait.traitId]
+                                if (suggested != null && field in suggested) {
+                                    suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
+                                }
+                            }
+                            onFieldCommit = { path -> onFieldCommit(trait, path) }
                         }
                     }
-                    onFieldCommit = { path -> onFieldCommit(trait, path) }
                 }
             }
         }
@@ -890,10 +940,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         Button {
                             type = "primary"
                             loading = savingTask == task.id
-                            // An id to be given at the save (issue #1852) is something to save, as an id shown is.
-                            disabled = (!taskUnsaved(task, valuesByTrait, stored) && task.traits.all { givenAtSave(it).isEmpty() }) ||
-                                savingTask != null
-                            onClick = { onSave(task) }
+                            // An id to be given at the save (issue #1852) is something to save, as an id shown is; so are a
+                            // task's grids' unsaved rows (issue #1885).
+                            disabled = (!taskHasUnsaved(task) && task.traits.all { givenAtSave(it).isEmpty() }) || savingTask != null
+                            onClick = { onSaveClicked(task) }
                             +save.label
                         }
                     }
@@ -909,7 +959,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // task, and the title / aria-label carry what the mark means -- a hover tooltip alone is not enough for
     // touch or a screen reader.
     fun ChildrenBuilder.railItem(task: WfTaskView, active: Boolean) {
-        val unsaved = taskUnsaved(task, valuesByTrait, stored)
+        val unsaved = taskHasUnsaved(task)
         val status = statusFor(task, unsaved)
         val mark = railMark(status)
         // Name a missing trait by its name (issue #1520), so the tooltip and the panel's heading agree.
@@ -1090,7 +1140,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // (issue #719) and opens on the trait heading.
                     val shown = shownTask ?: wf.tasks.first()
                     // A satisfied task says so and offers the next one (issue #1694), by the mark its rail entry draws.
-                    val shownUnsaved = taskUnsaved(shown, valuesByTrait, stored)
+                    val shownUnsaved = taskHasUnsaved(shown)
                     val shownMark = railMark(statusFor(shown, shownUnsaved))
                     taskPanel(
                         shown, showLabel = false, next = nextTaskAfter(wf.tasks, shown.id, shownMark),

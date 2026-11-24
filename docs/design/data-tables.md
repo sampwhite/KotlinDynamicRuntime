@@ -5,8 +5,8 @@ webapp as a grid, and checked when its form is saved. It is built on data files 
 file's id, and the table is that file's text.
 
 Built so far: the CSV codec and the `csv` kind (#1881), table fields (#1882), summaries of a column stored in the
-trait's derived fields (#1883), and the read-only table and the grid's model (#1884). Planned: the editable grid
-(#1885) and a sample trait (#1886).
+trait's derived fields (#1883), the read-only table and the grid's model (#1884), and the editable grid (#1885).
+Planned: a sample trait (#1886).
 
 Theme: #DTABL.
 
@@ -91,9 +91,9 @@ with its reads against the last few row types asked for, so a reload of a client
 bytes are gone from the store refuses the save as any unusable file does. `readFor` is what a
 computation on a form's data uses to read the table a field names.
 
-Until the grid (#1885), a table field is drawn as any file field is: a CSV file is picked and uploaded, and the save
-reads it. The picker cannot tell a table by its first bytes, so for a field taking `csv` it takes a file that carries no
-other kind's mark (`judgePick`), and leaves the rest to the server.
+Where a table field is a file field -- outside a page that can save a form, which edits it as a grid -- a CSV file is
+picked and uploaded, and the save reads it. The picker cannot tell a table by its first bytes, so for a field taking
+`csv` it takes a file that carries no other kind's mark (`judgePick`), and leaves the rest to the server.
 
 **Every save of an edited table is a new file**: data files are immutable, so the grid uploads its rows as a new file
 and the form names it; the old one is unlinked and swept after the grace. When two people edit the same form, the
@@ -162,4 +162,11 @@ spreadsheet's tab-separated cells (a header row skipped, rows added up to the fi
 said, columns past the grid dropped), add and remove rows, copy a block as tab-separated text, sum up each column, list the problems (a repeated
 key among them), and write the CSV a save stores.
 
-Until the grid (#1885), a table field is edited as any file field is, by uploading a CSV.
+**The grid** (`DataGrid.kt`) edits a table field in the form: typed into, keyed through as a spreadsheet is, pasted
+into from one, a choice picked from its list and a day from a calendar, its rows sorted by a column's header (the table
+itself reordered, as a spreadsheet's Sort does, and saved so; the read-only table sorts only what it shows), each column summed up in its footer by a function picked for it, and each problem marked on its cell and
+listed under it. **It is saved with the form**, never as it is typed: on Save the page flushes its grids (`TableDrafts`)
+-- a grid with a problem stops the save, with the cursor on the cell; each changed table is uploaded once as a new CSV
+file, and its id set in the field -- and then sends the form, whose save checks the table again and stores its
+summaries. An empty field gets its file this way, and a grid emptied of rows saves a header-only one. Reset reloads every
+grid from its field's file, and a grid's own Reset table reloads it alone. Outside a page that can save a form, a table field is a file field, a CSV uploaded whole.

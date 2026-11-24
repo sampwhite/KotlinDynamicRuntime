@@ -1206,6 +1206,8 @@ private fun ChildrenBuilder.renderField(
             choices = copy?.entry?.choices?.let { formChoiceList(vt, copy.entry, value) },
             zoneNoteId = fieldZoneNoteId(path),
             lines = copy?.entry?.lines,
+            path = path,
+            label = copy?.label ?: prop.title ?: vt.title,
             commit = { errors.noteCommit(path) },
         ) { newValue ->
             errors.noteEdit(path)

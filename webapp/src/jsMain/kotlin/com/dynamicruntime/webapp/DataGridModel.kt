@@ -1,6 +1,8 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.report.ReportCombine
+import com.dynamicruntime.common.gedra.report.ReportKind
+import com.dynamicruntime.common.gedra.report.compareReportValues
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.uniquenessKey
@@ -31,8 +33,12 @@ import com.dynamicruntime.common.table.writeTable
 /** A cell's place: its row, by index from 0 among the rows, and its column, by index among the columns. */
 data class GridCell(val row: Int, val col: Int)
 
-/** The cell being edited, [at], and the text in its editor, not yet committed. */
-data class GridEdit(val at: GridCell, val text: String)
+/**
+ * The cell being edited, [at], and the text in its editor, not yet committed. [typed] when the edit began with a key
+ * typed, which replaces the cell: a day is then typed as text, where an edit opened another way picks it from a
+ * calendar.
+ */
+data class GridEdit(val at: GridCell, val text: String, val typed: Boolean = false)
 
 /**
  * One row of the grid: a [id] that stays with it however rows move (a React key), its [cells]' text, its [problems] by
@@ -171,7 +177,7 @@ fun GridState.extendTo(cell: GridCell): GridState {
 /** Editing the active cell, its editor starting with [initial] -- a key typed, which replaces the cell -- or its text. */
 fun GridState.startEdit(initial: String? = null): GridState {
     val at = active ?: return this
-    return copy(editing = GridEdit(at, initial ?: text(at)), anchor = at)
+    return copy(editing = GridEdit(at, initial ?: text(at), typed = initial != null), anchor = at)
 }
 
 /** The editor's text changed to [text]. */
@@ -348,3 +354,130 @@ fun GridState.problems(limit: Int = 10): List<GridProblem> {
 
 /** The grid as its table's CSV, as a save stores it ([writeTable]): a header of the column names, then each row's cells. */
 fun GridState.csvText(): String = writeTable(rowType, rows.map { it.cells })
+
+/** The grid's keyboard numbers (issue #1885). Each name matches its value. */
+@Suppress("ConstPropertyName")
+object GRIDK {
+    /** How many rows Page Up and Page Down move. */
+    const val pageRows = 20
+}
+
+/** This grid, its field's table saved as [fileId]: the new base, with nothing unsaved. */
+fun GridState.savedAs(fileId: String): GridState =
+    GridState(rowType, columns, rows, active, anchor, null, false, fileId, maxRows, nextId)
+
+/** This grid on a new base file, [fileId], its unsaved rows kept: rows typed while the last save went up. */
+fun GridState.rebasedOn(fileId: String): GridState =
+    GridState(rowType, columns, rows, active, anchor, editing, dirty, fileId, maxRows, nextId)
+
+/** The active cell's yes or no turned the other way, when its column is a yes or no; an empty one becomes yes. */
+fun GridState.toggleBoolean(): GridState {
+    val at = active ?: return this
+    val column = columns.getOrNull(at.col) ?: return this
+    if (column.kind != ReportKind.boolean) return this
+    val now = typedCell(text(at), column).value as? Boolean
+    return setCells(mapOf(at to (now != true).toString()))
+}
+
+/**
+ * A key pressed on the grid while no cell is edited, as `KeyboardEvent.key` names it, or null when the grid does not
+ * take it -- a Tab among them, which leaves the grid, its one stop in the page's order:
+ *
+ * - the arrows move the cursor, and with Shift stretch the selection;
+ * - Home and End go to the row's first and last cell, and with Ctrl (or ⌘) to the grid's; Page Up and Page Down move
+ *   [GRIDK.pageRows] rows;
+ * - Enter and F2 edit the cell, and a character typed starts an edit with it, replacing what was there;
+ * - Delete and Backspace empty the selection; Space turns a yes or no the other way.
+ */
+fun GridState.onGridKey(key: String, shift: Boolean, ctrl: Boolean): GridState? {
+    val at = active ?: return null
+    fun go(cell: GridCell) = if (shift) extendTo(cell) else moveTo(cell)
+    return when (key) {
+        "ArrowUp" -> if (shift) extend(-1, 0) else move(-1, 0)
+        "ArrowDown" -> if (shift) extend(1, 0) else move(1, 0)
+        "ArrowLeft" -> if (shift) extend(0, -1) else move(0, -1)
+        "ArrowRight" -> if (shift) extend(0, 1) else move(0, 1)
+        "Home" -> go(if (ctrl) GridCell(0, 0) else GridCell(at.row, 0))
+        "End" -> go(if (ctrl) GridCell(rows.size - 1, columns.size - 1) else GridCell(at.row, columns.size - 1))
+        "PageUp" -> go(GridCell(at.row - GRIDK.pageRows, at.col))
+        "PageDown" -> go(GridCell(at.row + GRIDK.pageRows, at.col))
+        "Enter", "F2" -> startEdit()
+        "Delete", "Backspace" -> clear()
+        " " -> if (columns.getOrNull(at.col)?.kind == ReportKind.boolean) toggleBoolean() else startEdit(key)
+        else -> if (key.length == 1 && !ctrl) startEdit(key) else null
+    }
+}
+
+/**
+ * A key pressed in a cell's editor, or null when the editor keeps it (a character, an arrow within the text): Enter
+ * commits and moves down -- adding a row on the last, while the grid may hold one -- and Shift+Enter up; Tab commits and
+ * moves right, Shift+Tab left; Escape drops the edit.
+ */
+fun GridState.onEditorKey(key: String, shift: Boolean): GridState? = when (key) {
+    "Enter" -> if (shift) commitEdit(dRow = -1) else commitEdit(dRow = 1, addRowAtEnd = true)
+    "Tab" -> commitEdit(dCol = if (shift) -1 else 1)
+    "Escape" -> cancelEdit()
+    else -> null
+}
+
+/** The grid with its open edit committed where it is, or as it is when nothing is edited. */
+fun GridState.committed(): GridState = if (editing != null) commitEdit() else this
+
+/**
+ * A click on [cell], with Shift held or not: an open edit is committed first -- clicking another cell is how a spreadsheet
+ * finishes one -- then the cursor put there, or the selection stretched to it.
+ */
+fun GridState.clickCell(cell: GridCell, shift: Boolean): GridState =
+    committed().let { if (shift) it.extendTo(cell) else it.moveTo(cell) }
+
+/** A double click on [cell]: an open edit committed, then [cell] edited. */
+fun GridState.openCell(cell: GridCell): GridState = committed().moveTo(cell).startEdit()
+
+/**
+ * Whether the grid holds what is not saved: a change committed ([GridState.dirty]), or an edit still open whose text is
+ * not its cell's -- so Save is on before the click that commits it, which a disabled button would not take.
+ */
+val GridState.unsaved: Boolean get() = dirty || editing?.let { it.text != text(it.at) } == true
+
+/** The sort a grid's header shows: the column sorted by, and whether from greatest to least. */
+data class GridSort(val col: Int, val descending: Boolean)
+
+/** The sort a click on column [col]'s header asks for, after [current]: ascending first, then the other way. */
+fun nextSort(current: GridSort?, col: Int): GridSort =
+    if (current?.col == col) GridSort(col, !current.descending) else GridSort(col, false)
+
+/**
+ * What a row sorts by in [column]: its typed value -- a choice by its label, so the order is the one a person reads --
+ * or null when the cell is empty or has a problem.
+ */
+private fun sortKey(row: GridRow, column: TableColumn): Any? {
+    val value = row.typed[column.name] ?: return null
+    val options = column.type.options ?: return value
+    return options.firstOrNull { it.value == value }?.label ?: value
+}
+
+/**
+ * The rows sorted by column [col] (issue #1885), as a spreadsheet's Sort does: the table itself reordered, which the
+ * form then saves, so a change of order is unsaved (Reset table undoes it). Values compare by their kind, as a report's
+ * do ([compareReportValues]) -- numbers by value, days in time, a choice by its label, text without regard to case, no
+ * before yes -- and an empty cell, or one with a problem, goes last whichever way. Rows that compare equal keep their
+ * order, so sorting by one column and then another groups by the second, ordered by the first. An open edit is
+ * committed first; the cursor and the selection keep their places.
+ */
+fun GridState.sortBy(col: Int, descending: Boolean): GridState {
+    val column = columns.getOrNull(col) ?: return this
+    val g = committed()
+    val sorted = g.rows.sortedWith { a, b ->
+        val ka = sortKey(a, column)
+        val kb = sortKey(b, column)
+        when {
+            ka == null && kb == null -> 0
+            ka == null -> 1
+            kb == null -> -1
+            descending -> compareReportValues(kb, ka)
+            else -> compareReportValues(ka, kb)
+        }
+    }
+    val moved = sorted.zip(g.rows).any { (a, b) -> a !== b }
+    return if (moved) g.copy(rows = sorted, dirty = true) else g
+}

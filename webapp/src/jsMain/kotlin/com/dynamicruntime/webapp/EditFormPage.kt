@@ -95,6 +95,8 @@ val EditFormPage = FC<Props> {
     var locks by useState<List<TraitLock>>(emptyList())
     // The whole form kept to its owner from this caller (issue #1433): drawn read-only, with the reason said once.
     var keptToOwner by useState(false)
+    // The page's data grids (issue #1885): saved before the patch, their unsaved rows an unsaved change.
+    val drafts = useTableDrafts()
     var overriding by useState(false)
     var overrideReason by useState("")
     var lockError by useState<String?>(null)
@@ -215,7 +217,7 @@ val EditFormPage = FC<Props> {
     // tab gets the browser's own prompt. Dirty is the working values differing from the last seeded snapshot;
     // it clears the moment a save re-seeds, so a clean page never nags. "Still here" is this page AND this form:
     // another form's editor is a keyed reload that would drop the edits, so it counts as a leave.
-    val dirty = values != seeded
+    val dirty = values != seeded || drafts.anyDirty()
     useEffect(dirty, gedraId) {
         if (dirty) {
             val form = gedraId
@@ -318,32 +320,125 @@ val EditFormPage = FC<Props> {
                     }
                 }
 
-                SchemaForm {
-                    type = targetType
-                    this.values = values
-                    // Nothing to change on a form kept from this caller (issue #1433); with no change, Save stays off.
-                    editable = !keptToOwner
-                    friendly = true
-                    // Promote a keyed trait's primary key out of `data`, up beside the trait choice (issue #642).
-                    promoteKeys = true
-                    // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
-                    // not see is hidden here. The backend enforces the condition regardless of what is drawn.
-                    cfacts = cat.cfacts
-                    // The per-type layouts (issue #586), joined by type name inside the form -- the same copy the
-                    // create form shows, since both render the same trait data types.
-                    fieldLayouts = cat.fieldLayouts
-                    // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
-                    omit = listOf(GDF.gedraId)
-                    // A locked section says so on itself (issue #857), where the person editing it is looking.
-                    elementNote = { _, element -> lockNoteFor(shownLocks, element[GE.traitId].toOptStr()) }
-                    // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
-                    this.openTraitEntry = openTraitEntry
-                    this.failures = failures
-                    onChange = { values = it; saved = false; editedSinceSave.current = true }
-                    onFieldEdit = { path ->
-                        failures?.let { current ->
-                            failures = current.clearedAt(path).ifEmpty { null }
-                            revalidate = true
+                TableDraftsContext.Provider {
+                    value = drafts
+                    SchemaForm {
+                        type = targetType
+                        this.values = values
+                        // Nothing to change on a form kept from this caller (issue #1433); with no change, Save stays off.
+                        editable = !keptToOwner
+                        friendly = true
+                        // Promote a keyed trait's primary key out of `data`, up beside the trait choice (issue #642).
+                        promoteKeys = true
+                        // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
+                        // not see is hidden here. The backend enforces the condition regardless of what is drawn.
+                        cfacts = cat.cfacts
+                        // The per-type layouts (issue #586), joined by type name inside the form -- the same copy the
+                        // create form shows, since both render the same trait data types.
+                        fieldLayouts = cat.fieldLayouts
+                        // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
+                        omit = listOf(GDF.gedraId)
+                        // A locked section says so on itself (issue #857), where the person editing it is looking.
+                        elementNote = { _, element -> lockNoteFor(shownLocks, element[GE.traitId].toOptStr()) }
+                        // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
+                        this.openTraitEntry = openTraitEntry
+                        this.failures = failures
+                        onChange = { values = it; saved = false; editedSinceSave.current = true }
+                        onFieldEdit = { path ->
+                            failures?.let { current ->
+                                failures = current.clearedAt(path).ifEmpty { null }
+                                revalidate = true
+                            }
+                        }
+                    }
+                }
+
+                // The save itself, from [sending]: the form's values with any grid's new file in its field.
+                fun saveWith(sending: Map<String, Any?>) {
+                    val check = checkInput(targetType, sending)
+                    // An addOrReplace must carry complete data; checkInput does not demand it (the edit's
+                    // data is an optionalContents fragment), so surface that completeness inline rather
+                    // than as the server's form-level "carries no data" (issue #662).
+                    val completeness = editDataCompletenessFailures(targetType, sending)
+                    val allFailures = check.failures + completeness
+                    failures = allFailures.ifEmpty { null }
+                    revalidate = false
+                    val checked = if (completeness.isEmpty()) check.payload else null
+                    // Locked sections (issue #857): an untouched one is left out -- the backend would pass it
+                    // unchanged anyway, but there is no reason to send it -- and a changed one goes only as an
+                    // override, by someone every such lock allows, with a reason, so a refusal is said here.
+                    val split = checked?.let { splitLockedEdits(it, seeded, locks.map { l -> l.traitId }.toSet()) }
+                    val reason = overrideReason.trim().ifBlank { null }
+                    val changedLocks = locks.filter { it.traitId in split?.changedLocked.orEmpty() }
+                    // A local, not the state: a state set in this click still reads as its old value here.
+                    val lockProblem = when {
+                        changedLocks.isEmpty() -> null
+                        // The server's wording (`TraitLockCopy`), so a refusal reads the same whichever side catches it.
+                        !overriding -> TraitLockCopy.changeRefused(changedLocks.map { it.names }) + " Reset to drop the change" +
+                            (if (changedLocks.all { it.canOverride }) ", or override the lock." else ".")
+                        reason == null -> "Give a reason for overriding the lock."
+                        !changedLocks.all { it.canOverride } ->
+                            TraitLockCopy.overrideRefused(changedLocks.filterNot { it.canOverride }.map { it.names })
+                        else -> null
+                    }
+                    lockError = lockProblem
+                    val payload = split?.target?.takeIf { lockProblem == null }
+                    val sendReason = reason?.takeIf { changedLocks.isNotEmpty() }
+                    if (lockProblem != null) {
+                        // Nothing to focus: the notice above the form says what to do.
+                        running = false
+                    } else if (payload == null) {
+                        focusRequest += 1
+                        running = false
+                    } else {
+                        running = true
+                        runError = null
+                        editedSinceSave.current = false
+                        editScope.launch {
+                            try {
+                                // A free-form trait the client's union does not know needs the escape
+                                // hatch, or the backend refuses it (issue #667); sent only when one was
+                                // entered on the cross-client admin surface.
+                                val allowAdditional = openTraitEntry && patchNamesUnknownTrait(targetType, payload)
+                                SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload, allowAdditional, sendReason))
+                                // An override is one write's: the next change asks again.
+                                if (sendReason != null) {
+                                    overriding = false
+                                    overrideReason = ""
+                                }
+                                // Save stays on the page (issue #726), as the core details editor's does, so
+                                // several saves in a row work without re-entering: re-read the form and
+                                // re-seed the edits from what is now stored -- the patch answers with
+                                // per-edit outcomes, not the document -- and note the save beside Done.
+                                // Done is the way back to the listing, where the form flashes.
+                                getEndpoint?.let { getEp ->
+                                    val item = SchemaCatalogApi.invoke(getEp, mapOf(GDF.gedraId to id))[EP.item].toJsonMapOrEmpty()
+                                    if (item.isNotEmpty()) {
+                                        val stored = mapOf(GDF.gedraId to id, GPF.edits to seededEdits(item))
+                                        // What is now stored is the new clean point either way; the fields
+                                        // follow it only if the user has not typed since the save went out
+                                        // -- their newer keystrokes are not overwritten (issue #726 review),
+                                        // and they read as unsaved against the re-seeded snapshot.
+                                        seeded = stored
+                                        if (editedSinceSave.current != true) values = stored
+                                    }
+                                }
+                                // "Saved." only beside a form that still shows what was saved.
+                                if (editedSinceSave.current != true) saved = true
+                            } catch (e: Throwable) {
+                                runError = userFacingError(e)
+                            } finally {
+                                // The page stays either way now, so the button re-enables here.
+                                running = false
+                                // The locks may have moved with the save, or beside it -- a review finished,
+                                // a form engaged (issue #857 review) -- so they are asked again, never awaited.
+                                editScope.launch {
+                                    apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull()?.let { answer ->
+                                        locks = answer.traits
+                                        keptToOwner = answer.keptToOwner
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -358,87 +453,29 @@ val EditFormPage = FC<Props> {
                         // Nor on a form kept to its owner (issue #1433), whose answer may land after typing began.
                         disabled = !dirty || keptToOwner
                         onClick = {
-                            val check = checkInput(targetType, values)
-                            // An addOrReplace must carry complete data; checkInput does not demand it (the edit's
-                            // data is an optionalContents fragment), so surface that completeness inline rather
-                            // than as the server's form-level "carries no data" (issue #662).
-                            val completeness = editDataCompletenessFailures(targetType, values)
-                            val allFailures = check.failures + completeness
-                            failures = allFailures.ifEmpty { null }
-                            revalidate = false
-                            val checked = if (completeness.isEmpty()) check.payload else null
-                            // Locked sections (issue #857): an untouched one is left out -- the backend would pass it
-                            // unchanged anyway, but there is no reason to send it -- and a changed one goes only as an
-                            // override, by someone every such lock allows, with a reason, so a refusal is said here.
-                            val split = checked?.let { splitLockedEdits(it, seeded, locks.map { l -> l.traitId }.toSet()) }
-                            val reason = overrideReason.trim().ifBlank { null }
-                            val changedLocks = locks.filter { it.traitId in split?.changedLocked.orEmpty() }
-                            // A local, not the state: a state set in this click still reads as its old value here.
-                            val lockProblem = when {
-                                changedLocks.isEmpty() -> null
-                                // The server's wording (`TraitLockCopy`), so a refusal reads the same whichever side catches it.
-                                !overriding -> TraitLockCopy.changeRefused(changedLocks.map { it.names }) + " Reset to drop the change" +
-                                    (if (changedLocks.all { it.canOverride }) ", or override the lock." else ".")
-                                reason == null -> "Give a reason for overriding the lock."
-                                !changedLocks.all { it.canOverride } ->
-                                    TraitLockCopy.overrideRefused(changedLocks.filterNot { it.canOverride }.map { it.names })
-                                else -> null
-                            }
-                            lockError = lockProblem
-                            val payload = split?.target?.takeIf { lockProblem == null }
-                            val sendReason = reason?.takeIf { changedLocks.isNotEmpty() }
-                            if (lockProblem != null) {
-                                // Nothing to focus: the notice above the form says what to do.
-                            } else if (payload == null) {
-                                focusRequest += 1
-                            } else {
+                            // A grid's unsaved rows first (issue #1885): each saved as its new file, set in its field.
+                            // Busy from the click, through the grids' uploads, so a second click cannot save twice.
+                            if (!running && drafts.beginSave()) {
                                 running = true
                                 runError = null
-                                editedSinceSave.current = false
                                 editScope.launch {
-                                    try {
-                                        // A free-form trait the client's union does not know needs the escape
-                                        // hatch, or the backend refuses it (issue #667); sent only when one was
-                                        // entered on the cross-client admin surface.
-                                        val allowAdditional = openTraitEntry && patchNamesUnknownTrait(targetType, payload)
-                                        SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload, allowAdditional, sendReason))
-                                        // An override is one write's: the next change asks again.
-                                        if (sendReason != null) {
-                                            overriding = false
-                                            overrideReason = ""
-                                        }
-                                        // Save stays on the page (issue #726), as the core details editor's does, so
-                                        // several saves in a row work without re-entering: re-read the form and
-                                        // re-seed the edits from what is now stored -- the patch answers with
-                                        // per-edit outcomes, not the document -- and note the save beside Done.
-                                        // Done is the way back to the listing, where the form flashes.
-                                        getEndpoint?.let { getEp ->
-                                            val item = SchemaCatalogApi.invoke(getEp, mapOf(GDF.gedraId to id))[EP.item].toJsonMapOrEmpty()
-                                            if (item.isNotEmpty()) {
-                                                val stored = mapOf(GDF.gedraId to id, GPF.edits to seededEdits(item))
-                                                // What is now stored is the new clean point either way; the fields
-                                                // follow it only if the user has not typed since the save went out
-                                                // -- their newer keystrokes are not overwritten (issue #726 review),
-                                                // and they read as unsaved against the re-seeded snapshot.
-                                                seeded = stored
-                                                if (editedSinceSave.current != true) values = stored
-                                            }
-                                        }
-                                        // "Saved." only beside a form that still shows what was saved.
-                                        if (editedSinceSave.current != true) saved = true
+                                    val flushed = try {
+                                        drafts.flushAll()
                                     } catch (e: Throwable) {
                                         runError = userFacingError(e)
-                                    } finally {
-                                        // The page stays either way now, so the button re-enables here.
                                         running = false
-                                        // The locks may have moved with the save, or beside it -- a review finished,
-                                        // a form engaged (issue #857 review) -- so they are asked again, never awaited.
-                                        editScope.launch {
-                                            apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull()?.let { answer ->
-                                                locks = answer.traits
-                                                keptToOwner = answer.keptToOwner
-                                            }
-                                        }
+                                        return@launch
+                                    } finally {
+                                        drafts.endSave()
+                                    }
+                                    val refusal = flushed.refusal
+                                    if (refusal != null) {
+                                        runError = DisplayError.expected(refusal)
+                                        running = false
+                                    } else {
+                                        val current = applyTableUpdates(values, flushed.updates)
+                                        if (flushed.updates.isNotEmpty()) values = current
+                                        saveWith(current)
                                     }
                                 }
                             }
@@ -453,6 +490,7 @@ val EditFormPage = FC<Props> {
                         disabled = !dirty || running
                         onClick = {
                             values = seeded
+                            drafts.resetAll()
                             failures = null
                             revalidate = false
                             runError = null
