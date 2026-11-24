@@ -23,9 +23,10 @@ file store browser (`file-store-page.md`), which shows a bucket's objects and kn
   **Preview**, which draws the thing itself under the row, from the row's own record. One row's forms and one row's
   preview open at a time.
 - **A CSV table is never opened as it is stored** (#1881): its name is a link-styled button that saves a copy made
-  safe for a spreadsheet (`fileSavedAsSpreadsheetCopy`, `FilesApi.spreadsheetCopy` over the kernel's
-  `Csv.spreadsheetCopy`), every cell a spreadsheet would read as a formula given a leading apostrophe and numbers left
-  alone, saved through `saveTextFile` under its name ending `.csv` (`spreadsheetCopyName`). Its cells are whatever
+  safe for a spreadsheet (`fileSavedAsSpreadsheetCopy`, `SpreadsheetCopyLink` over `DataTableApi.spreadsheetCopy` and the
+  kernel's `Csv.spreadsheetCopy`), every cell a spreadsheet would read as a formula given a leading apostrophe and
+  numbers left alone, saved through `saveTextFile` under its name ending `.csv` (`spreadsheetCopyName`). The same link
+  is every page's way to a CSV file's content: a form's file field and its read-only table use it too. Its cells are whatever
   somebody typed, and the stored file stays as written, so the guard is applied to the copy, here.
 - **Remove only where it can succeed** (`fileRemovable`): a file no form uses, behind `confirmedRemove`, whose
   question names where it acts (`deleteTargetText`); for an upload under way it reads "Abort this upload?". A file a

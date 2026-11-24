@@ -272,7 +272,10 @@ private fun react.ChildrenBuilder.dataFileShown(fileId: String, state: DataFileS
         else -> div {
             className = ClassName("data-file-shown")
             div {
-                if (view.readable) {
+                if (fileSavedAsSpreadsheetCopy(view)) {
+                    // Never the stored text: a spreadsheet would run a formula a cell begins with (issue #1881).
+                    SpreadsheetCopyLink { this.view = view }
+                } else if (view.readable) {
                     a {
                         href = DataFileApi.contentUrl(view.fileId)
                         asDynamic()["target"] = "_blank"

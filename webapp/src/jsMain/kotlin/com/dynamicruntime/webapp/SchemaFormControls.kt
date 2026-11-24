@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.defaultLongTextLines
 import com.dynamicruntime.common.schema.hideGatedFields
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDataFile
+import com.dynamicruntime.common.schema.isDataTable
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
@@ -65,6 +66,12 @@ enum class ControlKind {
     /** A file in a form's data (`format: "gedra-file"`, issue #1840) — the [DataFileField]: uploaded, then its id held. */
     DataFile,
 
+    /**
+     * A table field (issue #1884): a file holding a CSV table. Read-only it is drawn as its table ([DataTableValue]); until
+     * the grid edits it (#1885), edited as a file is, by uploading a CSV.
+     */
+    DataTable,
+
     /** A free-form object with no declared properties — the `JsonObjectField` map editor (issue #251). */
     JsonMap,
 
@@ -94,6 +101,7 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind 
     vt.jsonType == SCT.string && isDateFormat(vt.format) ->
         if (vt.format == SFMT.date) ControlKind.Date else ControlKind.DateTime
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> ControlKind.File
+    vt.jsonType == SCT.string && vt.isDataTable() -> ControlKind.DataTable
     vt.jsonType == SCT.string && vt.isDataFile() -> ControlKind.DataFile
     vt.jsonType == SCT.kObject -> ControlKind.JsonMap
     // Long text is the layout's word on plain text (issue #1118); on anything else the boot check refuses it.
@@ -245,7 +253,8 @@ internal fun ChildrenBuilder.widget(
             markInvalid(asDynamic(), describedBy)
         }
         // A file in a form's data (issue #1840): uploaded by the field itself, which emits the file's id once it is ready.
-        ControlKind.DataFile -> DataFileField {
+        // A table field is uploaded the same way until the grid edits it (#1885).
+        ControlKind.DataFile, ControlKind.DataTable -> DataFileField {
             type = vt
             this.value = value?.toString()?.ifEmpty { null }
             this.describedBy = describedBy

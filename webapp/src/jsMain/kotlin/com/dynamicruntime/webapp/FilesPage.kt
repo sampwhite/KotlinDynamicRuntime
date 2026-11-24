@@ -3,8 +3,6 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.filekind.FKFAM
-import com.dynamicruntime.common.filekind.FileKinds
-import com.dynamicruntime.common.table.Csv
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.byteSizeText
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -52,12 +50,6 @@ object FilesApi {
     suspend fun usedBy(fileId: String): FileUses =
         fileUsesFrom(Http.getApi(DFILE.usedByPath + queryString(mapOf(DFILE.fileId to fileId)))[EP.item].toJsonMapOrEmpty())
 
-    /** A CSV table's copy for a spreadsheet ([Csv.spreadsheetCopy]); its stored text when that cannot be read as CSV. */
-    suspend fun spreadsheetCopy(fileId: String): String {
-        val text = Http.getApiText(DFILE.contentPath + queryString(mapOf(DFILE.fileId to fileId)))
-        return Csv.spreadsheetCopy(text) ?: throw IllegalStateException("The file is not CSV that can be read.")
-    }
-
     suspend fun remove(fileId: String) {
         Http.deleteApi(DFILE.deletePath, mapOf(DFILE.fileId to fileId))
     }
@@ -76,7 +68,6 @@ val FilesPage = FC<Props> {
     // The row whose forms, or whose preview, is open: one at a time, as a row's confirmation is.
     var openUses by useState<String?>(null)
     var openPreview by useState<String?>(null)
-    var saveError by useState<DisplayError?>(null)
     val rows = useRowActions()
     // Which read is the latest: an answer to an earlier one -- a filter changed again before it came back -- is dropped,
     // so a listing never shows rows of a filter it no longer names.
@@ -149,7 +140,6 @@ val FilesPage = FC<Props> {
             }
         }
         loadError?.let { errorText("Couldn't read the files.", it) }
-        saveError?.let { errorText("Couldn't download the file.", it) }
         val loaded = page
         when {
             loaded == null && loadError == null -> p { className = ClassName("subtitle"); +"Loading…" }
@@ -171,17 +161,6 @@ val FilesPage = FC<Props> {
                     tbody {
                         for (row in loaded.rows) {
                             fileRow(row, showOwner, now, rows, openUses == row.fileId, openPreview == row.fileId,
-                                saveCopy = {
-                                    saveError = null
-                                    filesScope.launch {
-                                        try {
-                                            val copy = FilesApi.spreadsheetCopy(row.fileId)
-                                            saveTextFile(spreadsheetCopyName(row.view), FileKinds.csv.mimeType + ";charset=utf-8", copy)
-                                        } catch (e: Throwable) {
-                                            saveError = userFacingError(e)
-                                        }
-                                    }
-                                },
                                 toggleUses = { openUses = if (openUses == row.fileId) null else row.fileId },
                                 togglePreview = { openPreview = if (openPreview == row.fileId) null else row.fileId },
                                 remove = {
@@ -220,7 +199,6 @@ private fun ChildrenBuilder.fileRow(
     rows: RowActions,
     usesOpen: Boolean,
     previewOpen: Boolean,
-    saveCopy: () -> Unit,
     toggleUses: () -> Unit,
     togglePreview: () -> Unit,
     remove: () -> Unit,
@@ -232,15 +210,7 @@ private fun ChildrenBuilder.fileRow(
         td {
             if (fileSavedAsSpreadsheetCopy(view)) {
                 // Never the stored text: a spreadsheet would run a formula a cell begins with.
-                span {
-                    className = ClassName("files-copy-link")
-                    Button {
-                        type = "link"
-                        size = "small"
-                        onClick = { saveCopy() }
-                        +view.title
-                    }
-                }
+                SpreadsheetCopyLink { this.view = view }
             } else if (view.readable) {
                 a {
                     href = DataFileApi.contentUrl(view.fileId)
