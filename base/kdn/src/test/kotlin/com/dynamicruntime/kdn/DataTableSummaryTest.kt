@@ -35,6 +35,12 @@ import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.datafile.DataFileLinks
+import com.dynamicruntime.common.gedra.GDL
+import com.dynamicruntime.common.gedra.GDT
+import com.dynamicruntime.common.gedra.gedraDataTopic
+import com.dynamicruntime.common.sql.SqlStmtUtil
+import com.dynamicruntime.common.sql.SqlTopicService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -162,6 +168,24 @@ class DataTableSummaryTest : StringSpec({
     "a header-only table counts no rows and has no total" {
         val formId = create(upload("empty.csv", "day,amount\r\n"))
         summaries(formId) shouldBe mapOf("lineCount" to 0L)
+    }
+
+    "the recompute clears a summary of a file no live form links, and finds it current after" {
+        val formId = create(upload("recompute.csv", "day,amount\r\n2026-11-09,9\r\n"))
+        summaries(formId) shouldBe mapOf("lineCount" to 1L, "totalAmount" to 9L, "lastSpentOn" to "2026-11-09")
+        // As for a value stored before its field held tables, which no save ever checked or linked.
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val unlink = SqlStmtUtil.prepareSql(
+            sqlCxt, "dTestFileLinksOfHolder", DataFileLinks.linkTable(cxt).columns,
+            "delete from t:${GDT.gedraFileLinks} where c:${GDL.holderId} = :${GDL.holderId}",
+        )
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, unlink, mapOf(GDL.holderId to formId)) }
+
+        val service = GedraDataService.get(cxt)
+        service.computedDataCurrent(cxt, row(formId)) shouldBe false
+        service.recomputeDerivedState(cxt, row(formId))
+        summaries(formId) shouldBe emptyMap()
+        service.computedDataCurrent(cxt, row(formId)) shouldBe true
     }
 
     "a system recompute reads only a file some live form links" {

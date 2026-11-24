@@ -8,6 +8,7 @@ import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.LogGedra
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.isDataTable
 import com.dynamicruntime.common.schema.tableRowLimit
@@ -16,6 +17,7 @@ import com.dynamicruntime.common.table.CsvLimits
 import com.dynamicruntime.common.table.CsvParsed
 import com.dynamicruntime.common.table.TableRead
 import com.dynamicruntime.common.table.readTable
+import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -96,10 +98,50 @@ object DataTables {
 
     /**
      * The table of [fileId] as [field]'s, when [fileId] is a live, ready CSV file of [client]; null when it is not one --
-     * no such file, another client's, still uploading, another kind -- or its bytes are gone. For a computation on a
-     * form's data (its summaries), which reads what a field names rather than checking it.
+     * no such file, another client's, still uploading, another kind -- or its bytes cannot be read. Whom it is read for
+     * is the caller's to judge; a form's summary asks [summaryRead].
      */
     fun readFor(cxt: KdrCxt, fileId: String, field: SchType, client: String): TableRead? {
+        val file = tableFileOf(cxt, fileId, field, client) ?: return null
+        return readOrNull(cxt, file, field)
+    }
+
+    /**
+     * The table of [fileId] as table field [field]'s, read for a summary of a form a write in [cxt] is for (issue #1883),
+     * or null when there is none to sum up: [readFor]'s, in [cxt]'s client -- a write runs in its form's -- and only a
+     * file the writer may read. **The system** reads only a file some live form links ([DataFileLinks.linkState]): it acts
+     * on nobody's behalf, and a value stored before its field held tables was never checked. **A person** reads one their
+     * read scope admits, or one some live form links -- a file another user put on a form they may edit -- never one they
+     * could not have named.
+     *
+     * The answer is kept on [cxt] for the next call with the same file, field, and writer, so a trait's several summaries
+     * of one table look it up once. One answer only, in [KdrCxt.session], which no sub-context inherits: a recompute's
+     * context for one form, or a request's, holds no more than its last table.
+     */
+    fun summaryRead(cxt: KdrCxt, fileId: String, field: SchType): TableRead? {
+        val system = cxt.userProfile.authId == null
+        val last = cxt.session[summaryMemoKey] as? SummaryMemo
+        if (last != null && last.fileId == fileId && last.field === field && last.system == system && last.client == cxt.client) {
+            return last.read
+        }
+        val read = tableFileOf(cxt, fileId, field, cxt.client)?.let { file ->
+            val usable = if (system) {
+                DataFileLinks.linkState(cxt, fileId).live
+            } else {
+                GedraDataService.get(cxt).admitsGedra(ReadScopeRules.forCaller(cxt), file) || DataFileLinks.linkState(cxt, fileId).live
+            }
+            if (usable) readOrNull(cxt, file, field) else null
+        }
+        cxt.session[summaryMemoKey] = SummaryMemo(fileId, field, system, cxt.client, read)
+        return read
+    }
+
+    private const val summaryMemoKey = "dataTables.summaryRead"
+
+    private class SummaryMemo(val fileId: String, val field: SchType, val system: Boolean, val client: String?, val read: TableRead?)
+
+    /** The live, ready CSV data file [fileId] of [client], for table field [field]; null when it is not one. */
+    private fun tableFileOf(cxt: KdrCxt, fileId: String, field: SchType, client: String): GedraDataRow? {
         if (!field.isDataTable()) return null
         val file = try {
             GedraDataService.get(cxt).queryGedra(cxt, fileId, GedraDataType.dataFile, ReadScope.unrestricted)
@@ -108,10 +150,20 @@ object DataTables {
         } ?: return null
         val record = DataFileService.fileOf(file)
         if (file.client != client || record[DFILE.status] != DFSTAT.ready || record[DFILE.kind] != FKIND.csv) return null
-        return try {
-            read(cxt, file, field)
-        } catch (_: KdrException) {
-            null
+        return file
+    }
+
+    /**
+     * [file] read as [field]'s table, or null when its bytes cannot be read -- whatever the store threw, since a value
+     * computed from a table is cleared, never the write failed, for a fault in reading it. A fault beyond bytes simply
+     * gone from the store is logged.
+     */
+    private fun readOrNull(cxt: KdrCxt, file: GedraDataRow, field: SchType): TableRead? = try {
+        read(cxt, file, field)
+    } catch (e: Exception) {
+        if (e !is KdrException || e.code != EXC.notFound) {
+            LogGedra.warn(cxt) { "Could not read the table in '${file.gedraId.fullId}'; computing without it: ${e.message}" }
         }
+        null
     }
 }

@@ -103,6 +103,8 @@ object ConfigImpact {
         val scope = ReadScope.ofClient(client)
         // The moment what is live is judged at: now, by the instance clock the workflows run on.
         val at = cxt.instanceNow()
+        // The forms' write functions run as a write of them would: in their client, whose files they may read (#1883).
+        val formsCxt = if (cxt.client == client) cxt else cxt.mkSubContext("impactForms", client)
         for ((kind, ids) in idsByKind) {
             for (batch in ids.chunked(readBatch)) {
                 val rows = data.readGedras(cxt, kind, batch, scope)
@@ -110,7 +112,7 @@ object ConfigImpact {
                 for (id in batch) {
                     val row = rows[id] ?: continue
                     report.scanned++
-                    judgeEntries(cxt, report, row, now.union(kind), next.union(kind))
+                    judgeEntries(formsCxt, report, row, now.union(kind), next.union(kind))
                     judgeStates(cxt, report, row, states[id].orEmpty(), now.workflows, next.workflows, at)
                 }
             }

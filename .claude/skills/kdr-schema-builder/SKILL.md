@@ -458,7 +458,9 @@ type("ExpenseData") {
   the column's kind allows, and the target derived, ungated, and of a type that holds the result -- a number for a
   sum or an average (an integer only for a count, or a sum or the least or greatest of whole numbers), a day for a
   day's least or greatest, a plain string for text's. No table, a table that does not fit its columns, or bytes it
-  cannot read clear the target. A system recompute reads only a file some live form links. <!-- Theme: #DTABL -->
+  cannot read clear the target; it reads only a file the writer may (`DataTables.summaryRead`: a linked one for the
+  system), in the form's client. A total of decimals is rounded to its cells' places. The target checks are shared
+  with `computeValue` (`derivedTargetProblem`). <!-- Theme: #DTABL -->
 - **Published typed**: each kind's settings type and the `kdr.fn.WriteFunction` union over them are in the catalog, and
   the meta-schema types `g-onWrite`'s items with it; workflow function lists are typed the same way
   (`kdr.fn.WorkflowFunction`, `kdr.fn.WorkflowTaskFunction`).

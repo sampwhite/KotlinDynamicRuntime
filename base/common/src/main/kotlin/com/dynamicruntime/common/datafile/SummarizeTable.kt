@@ -14,11 +14,12 @@ import com.dynamicruntime.common.schema.SchEventType
 import com.dynamicruntime.common.schema.SchFunction
 import com.dynamicruntime.common.schema.SchFunctionCreation
 import com.dynamicruntime.common.schema.SchFunctionUsage
+import com.dynamicruntime.common.schema.SchInitTypeCache
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchWriteFunction
 import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.schema.derivedTargetProblem
 import com.dynamicruntime.common.schema.isDataTable
-import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.schema.validatedFunctionSettings
 import com.dynamicruntime.common.table.TableColumn
@@ -72,9 +73,8 @@ fun summarizeTable(target: String, table: String, combine: ReportCombine, column
  *
  * **It clears the target rather than failing the write** when there is no value: no table named yet, a table that does
  * not fit its columns -- whose save the link hook then refuses anyway, rolling this back with it, since the write
- * functions run first in the same transaction -- or one whose bytes cannot be read. A system recompute reads only a file
- * some live form links: a value stored before its field held tables was never checked, and a recompute does not read
- * on a person's behalf.
+ * functions run first in the same transaction -- or one whose bytes cannot be read, or one it may not read
+ * ([DataTables.summaryRead]: a file some live form links, or, for a person, one their read scope admits).
  *
  * Theme: #DTABL.
  */
@@ -93,9 +93,7 @@ class SummarizeTableFn(
 
     override fun onWrite(cxt: KdrCxt, data: Map<String, Any?>): Map<String, Any?> {
         val fileId = data[table].toOptStr()?.trim()?.takeIf { it.isNotEmpty() } ?: return data - target
-        val system = cxt.userProfile.authId == null
-        if (system && !DataFileLinks.linkState(cxt, fileId).live) return data - target
-        val read = DataTables.readFor(cxt, fileId, field, cxt.client) ?: return data - target
+        val read = DataTables.summaryRead(cxt, fileId, field) ?: return data - target
         if (!read.ok) return data - target
         val value = TableSummary.summarize(read.rows, column, combine) ?: return data - target
         val coerced = coerceAndValidate(targetType, value)
@@ -142,7 +140,7 @@ object SummarizeTableCreation : SchFunctionCreation {
     }
 
     override fun create(cxt: KdrCxt, usage: SchFunctionUsage, dataType: SchType): SchFunction {
-        val m = validatedFunctionSettings(initDataType(cxt), usage, STF.fn)
+        val m = validatedFunctionSettings(initType.get(cxt), usage, STF.fn)
         val target = m[STF.target].toOptStr().orEmpty()
         val table = m[STF.table].toOptStr().orEmpty()
         val columnName = m[STF.column].toOptStr()
@@ -161,13 +159,8 @@ object SummarizeTableCreation : SchFunctionCreation {
                 else "a '${combine.name}' does not sum up the ${column.kind.name} column '${column.name}'.",
             )
         }
-        val prop = dataType.properties[target] ?: refuse("the type declares no property '$target' to store the summary in.")
-        if (!prop.valueType.derived) {
-            refuse("'$target' is not '${SCH.derived}', so a caller could supply it and this would overwrite what they sent.")
-        }
-        if (prop.visibleWhen != null) {
-            refuse("'$target' is gated by '${SCH.visibleWhen}', which decides who may change it; this changes it for everyone.")
-        }
+        derivedTargetProblem(dataType, target, "summary")?.let { refuse(it) }
+        val prop = dataType.properties.getValue(target)
         targetProblem(prop.valueType, column, combine)?.let { refuse("'$target' $it") }
         return SummarizeTableFn(usage.priority, target, table, field, column, combine, prop.valueType)
     }
@@ -192,10 +185,5 @@ object SummarizeTableCreation : SchFunctionCreation {
         return "cannot hold a '${combine.name}'${column?.let { " of '${it.name}'" }.orEmpty()}, which needs $needs."
     }
 
-    // Parsed once and kept, as `computeValue` keeps its own.
-    @Volatile
-    private var parsed: SchType? = null
-
-    private fun initDataType(cxt: KdrCxt): SchType =
-        parsed ?: parseSchemaTypes(initDataDefs(cxt)).getValue(initDataTypeName).also { parsed = it }
+    private val initType = SchInitTypeCache(this)
 }

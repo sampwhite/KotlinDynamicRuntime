@@ -71,6 +71,20 @@ class TableSummaryTest {
     }
 
     @Test
+    fun decimalsAreRoundedToTheirPlaces() {
+        val amount = col("amount")
+        fun sum(vararg values: Double) = TableSummary.summarize(values.map { mapOf("amount" to it) }, amount, ReportCombine.sum)
+        assertEquals(0.3, sum(0.1, 0.2))
+        assertEquals(12.75, sum(12.5, 0.25))
+        // Whole after rounding is whole.
+        assertEquals(1L, sum(0.7, 0.3))
+        // An average keeps its own places, without the noise.
+        assertEquals(0.3333333333, TableSummary.summarize(listOf(mapOf("amount" to 1L), mapOf("amount" to 0L), mapOf("amount" to 0L)), amount, ReportCombine.avg))
+        // An exponent says nothing of places: left as computed.
+        assertEquals(1e-20 + 1.5, sum(1e-20, 1.5))
+    }
+
+    @Test
     fun nothingToCombineIsNoValue() {
         assertNull(TableSummary.summarize(emptyList(), col("amount"), ReportCombine.sum))
         assertNull(TableSummary.summarize(listOf(mapOf("note" to "x")), col("amount"), ReportCombine.max))
@@ -102,7 +116,9 @@ class TableSummaryTest {
         ).getValue("ns.L")
         val read = readTable(line, "amount\r\n1.10\r\n2.20\r\n\r\n")
         assertTrue(read.ok, read.problems.toString())
-        assertEquals(3.3000000000000003, TableSummary.summarize(read.rows, tableColumns(line).single(), ReportCombine.sum))
+        // Rounded to the cells' most decimal places, so the noise of binary floating point is not stored.
+        assertEquals(3.3, TableSummary.summarize(read.rows, tableColumns(line).single(), ReportCombine.sum))
+        assertEquals(1.65, TableSummary.summarize(read.rows, tableColumns(line).single(), ReportCombine.avg))
         assertEquals(3L, TableSummary.summarize(read.rows, null, ReportCombine.count))
     }
 }
