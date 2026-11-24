@@ -601,7 +601,8 @@ class GedraConfigBuilder(
 
     /**
      * Declares a counter (issue #1849) -- see [GedraConfig.counters]: ids [prefix] (a template over the day) and then a
-     * count padded to [digits], the count starting again at 1 each day when [reset] is `daily`.
+     * count padded to [digits], the count starting again at 1 each day when [reset] is `daily`. [issue] is when a page
+     * asks for an id: as a form opens, or -- `onSave` -- left to the server when the form is saved (issue #1852).
      */
     fun counter(
         counterId: String,
@@ -609,8 +610,13 @@ class GedraConfigBuilder(
         digits: Int = CTR.defaultDigits,
         reset: String = CTR.resetNever,
         description: String? = null,
+        issue: String = CTR.issueOnOpen,
     ) {
-        counters.add(CounterDef(counterId, prefix, digits, reset, description = description, configName = stampName, stored = isStored))
+        counters.add(
+            CounterDef(
+                counterId, prefix, digits, reset, description = description, issue = issue, configName = stampName, stored = isStored,
+            ),
+        )
     }
 
     /** A counter from its stored entry, stamped with this config's name and origin; see [CounterDef.fromEntry]. */

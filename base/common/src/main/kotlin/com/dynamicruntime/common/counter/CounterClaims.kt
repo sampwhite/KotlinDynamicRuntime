@@ -28,12 +28,21 @@ import com.dynamicruntime.common.util.toOptStr
 object CounterTokens {
     /** What a write's [CTR.counterTokens] field is, on every endpoint that takes it. */
     const val hint = "The tokens of the ids a counter issued that this write stores for the first time, each as it was " +
-        "issued. A field a counter fills holds only an id issued to you, sent with its token."
+        "issued. A field a counter fills holds only an id issued to you, sent with its token -- or, on a create, is left " +
+        "out, and the server gives it the counter's next id."
 
     /** Puts the [CTR.counterTokens] [raw] holds -- a list of sealed tokens -- on [cxt], for the write it is about to make. */
     fun bind(cxt: KdrCxt, raw: Any?) {
-        val tokens = raw.toJsonListOfStrings().filter { it.isNotBlank() }
-        if (tokens.isNotEmpty()) cxt.locals[CTR.counterTokens] = tokens
+        add(cxt, raw.toJsonListOfStrings())
+    }
+
+    /**
+     * Adds [tokens] to those on [cxt]: a create's, for the ids the server issued for the fields it left out (issue #1852),
+     * beside any the request sent.
+     */
+    fun add(cxt: KdrCxt, tokens: List<String>) {
+        val kept = tokens.filter { it.isNotBlank() }
+        if (kept.isNotEmpty()) cxt.locals[CTR.counterTokens] = of(cxt) + kept
     }
 
     /** The sealed tokens bound to [cxt]; none when its write sent none. */

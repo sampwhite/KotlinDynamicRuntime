@@ -51,11 +51,17 @@ fun checkInput(type: SchType, values: Map<String, Any?>): InputCheck {
  * [checkInput], then the **form requirements** of a workflow's form (issue #1022) under its field [layouts]: a field
  * its layout requires, a choice it does not offer. Judged over the coerced values, as the backend judges what it
  * receives, by the same kernel rule ([formRequirementFailures]) the workflow's save and task status run -- so a page
- * never sends what its form would refuse, nor refuses what the backend would accept.
+ * never sends what its form would refuse, nor refuses what the backend would accept. [given] are the fields a counter
+ * gives an id when the form is saved (issue #1852), which the form asks nothing for.
  */
-fun checkFormInput(type: SchType, values: Map<String, Any?>, layouts: Map<String, SchLayout>): InputCheck {
+fun checkFormInput(
+    type: SchType,
+    values: Map<String, Any?>,
+    layouts: Map<String, SchLayout>,
+    given: Set<String> = emptySet(),
+): InputCheck {
     val check = checkInput(type, values)
-    val form = formRequirementFailures(type, layouts, check.coerced as? Map<*, *> ?: values)
+    val form = formRequirementFailures(type, layouts, check.coerced as? Map<*, *> ?: values, excused = given)
     return if (form.isEmpty()) check else InputCheck(check.failures + form, check.coerced)
 }
 

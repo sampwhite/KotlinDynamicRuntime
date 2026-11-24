@@ -1524,3 +1524,25 @@ so the reading finds nothing to do.
 
   Where the fingerprint lives -- a sibling key in the entry's data, which would need a place in the schema, or the
   gedra row's own metadata -- is the question to settle then.
+
+## When a customer needs gapless numbering
+
+A counter (issue #1849) leaves a gap wherever an issued id is never stored. One that issues at save (`issue: onSave`,
+issue #1852) leaves fewer -- none for a page opened and left, or a create its check refuses -- but still one where a
+create is refused inside its write, or the node stops mid-write. Invoices are the likely asker: some jurisdictions
+require their numbers to run without a gap.
+
+- **A third `issue` value that issues inside the write** *(#1852, deferred here 2026-11-24).* The count's row is then
+  locked until the form is stored, so every create using the counter waits for the one before it (why `onSave` issues
+  before the transaction). Acceptable for a low-volume counter; say so where it is chosen.
+- **No deleting a form that holds such an id** *(#1852).* Today's delete (`GedraDataService.deleteGedra`) keeps the row
+  but disables it, which every read treats as absent, so the id still looks like a gap to an auditor. A write guard
+  (#857, `deletesGedra = true`) refuses the delete, as a trait lock refuses one today.
+- **A form is voided instead, by a platform trait** *(#1852).* `void`, global as `kdr:name` is, so the delete guard,
+  the forms listing, and workflows all recognize it: a required reason, who voided it, and when. A voided form stays
+  readable and listed, marked voided, and is closed to further edits for good (not a trait lock, which is a running
+  workflow's temporary hold). Voided by an administrator.
+- **"Void", not "reversed."** A reversal (a credit note, for an invoice) is a new numbered document that cancels the
+  original, which stays as it was, and some jurisdictions allow only that for an issued invoice. It is a later
+  workflow on top of the trait: create the credit note, link it to the original, and void the original where the
+  rules allow.

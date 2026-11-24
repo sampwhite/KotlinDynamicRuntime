@@ -35,8 +35,8 @@ class ReportMeasure(val key: String, val label: String, val additive: Boolean)
 /**
  * The measures a report offers: the count of forms first, then each rolled-up column whose result is a number -- a
  * count of anything, or a numeric column's sum, average, minimum or maximum -- and that the run does not group by. A
- * rolled-up date (the latest audit, say) is a moment, not a length, so it is not offered. The rule a report's declared
- * chart is held to when it binds (issue #1771).
+ * rolled-up date (the latest audit, say) is a moment, not a length, so it is not offered, and nor is a list of numbers,
+ * which is no one value (issue #1894). The rule a report's declared chart is held to when it binds (issue #1771).
  */
 fun reportMeasures(columns: List<ReportColumnInfo>, groupBy: List<String>): List<ReportMeasure> = buildList {
     add(ReportMeasure(RRUN.count, reportCountLabel, additive = true))
@@ -44,6 +44,7 @@ fun reportMeasures(columns: List<ReportColumnInfo>, groupBy: List<String>): List
         val rollup = c.rollup ?: continue
         if (c.columnId in groupBy) continue
         val combine = ReportCombine.entries.firstOrNull { it.name == rollup }
+        if (combine?.yieldsList == true) continue
         val counted = combine == ReportCombine.count
         if (!counted && c.kind != ReportKind.number.name) continue
         // Adding up is the kernel's rule (issue #1771), the one a report's pie is held to.

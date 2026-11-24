@@ -12,6 +12,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.HttpUtil
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MAIL
@@ -30,6 +31,7 @@ import com.dynamicruntime.common.user.GoogleCodeExchange
 import com.dynamicruntime.common.user.JwtKeySource
 import com.dynamicruntime.common.user.LSRC
 import com.dynamicruntime.common.user.PTD
+import com.dynamicruntime.common.user.REGC
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.base64Encode
 import com.dynamicruntime.common.util.jsonMap
@@ -158,6 +160,20 @@ class EnvGateTest : StringSpec({
         user.primaryId shouldBe "ada@$domain"
         // The web app is now served rather than sent to Google.
         client.sendGetRequestRaw("/wa/reports").rptResponseHeaders["location"].shouldBeNull()
+    }
+
+    "with a registration client, the sign-in makes its user there, with the auto-admin roles" {
+        // Issue #1867: a deployment beside a public website keeps its own people and its visitors in one client.
+        val cxt = Startup.mkTestBootCxt(
+            "gateRegClient", "envGateRegClient",
+            gateSettings(mapOf(REGC.client to RegistrationClientComponent.clientId, REGC.role to "lead")),
+            additionalComponents = listOf(RegistrationClientComponent()),
+        )
+        val email = "staff@$domain"
+        signIn(TestHttpClient(cxt.instanceConfig), email)
+        val user = UserService.get(cxt).queryByPrimaryId(cxt, email).shouldNotBeNull()
+        user.client shouldBe RegistrationClientComponent.clientId
+        user.roles.toSet() shouldBe setOf(ROLE.user, ROLE.admin, ROLE.allClients)
     }
 
     "a request other than a web app visit is refused with the 401 the web app follows, and health still answers" {

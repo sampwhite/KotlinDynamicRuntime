@@ -31,6 +31,7 @@ A **counter** gives out ids in order: a prefix, then a count padded with zeroes.
 | `digits` | How many digits the count is padded to with zeroes, from 2 to 8. A count that outgrows them takes more, so after `T-999` comes `T-1000`. |
 | `reset` | When the count starts again at 1: `never`, or `daily`, on each of the client's days. A daily counter needs the day in its prefix, or its ids would repeat: `R${compactDay}-` gives `R20261117-0001` one day and `R20261118-0001` the next. |
 | `description` | What the counter numbers. |
+| `issue` | When a form is given its id. Left out, as the demo's is, it is `onOpen`: the form asks for the id as it opens, so the person sees it before saving. With `onSave` the id is given when the form is saved instead, so a form opened and never saved uses none up, and the form shows the field only once it holds the id. |
 
 The demo's counter goes on for the whole call for talks, so its ids read `T-001`, `T-002`, and so on, and they are short
 enough for a phone's screen.
@@ -70,12 +71,13 @@ this is never typed. When a form opens, it asks the counter for the next id and 
 id before saving it.
 
 **An id is fixed once it is saved.** It cannot be changed afterward, and no other talk can be given it. A form that is
-opened and never saved leaves its id unused, so the count can skip a number.
+opened and never saved leaves its id unused, so the count can skip a number. A counter whose `issue` is `onSave` skips
+fewer, at the cost of the preview.
 
 **The creation workflow collects the trait.** Its task lists `submission` after the title, as
 [Creating a talk](create-talk.md#task) shows, with `required: false`. The form always fills it, so it need not be
-required, and a program creating a talk through the API does not have to ask the counter for an id first. A talk created
-that way has no id.
+required. A program creating a talk through the API does not have to ask the counter for an id first either: when it
+sends the trait with `talkId` left out, the talk is given the next id. A talk created without the trait has no id.
 
 **The forms list and the roster show it.** The forms list has a **Talk id** column, narrow, since an id needs far less
 room than a talk's title ([Talk core details](talk-core-details.md#columns-in-the-forms-list)). The **Submissions by

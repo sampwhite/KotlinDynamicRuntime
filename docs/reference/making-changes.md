@@ -78,6 +78,12 @@ them out its own way in a `types` of its own. Naming none, it shows the nearest 
 collects traits, or the tasks its `showTasks` names, never both lists.
 [The committee review](../demo-client/committee-review.md) is a whole example.
 
+**A workflow that starts with someone else's step highlights its Start.** When a workflow's first step is
+not the form owner's to take, such as a review or an approval, its definition sets
+`highlightStart` to `true`. A form that is eligible for it, and not yet in it, then shows in the
+forms list as the turn of whoever could take that step. Without it, a reviewer is not told of the form until
+someone has started the review. It never decides who may start it.
+
 | Change | Where a person makes it | Endpoint | Assistant tool | Dry run |
 |---|---|---|---|---|
 | A workflow made from a template, the starter New form and core details among them: made, renamed, or its tasks' traits changed | Clients page, **Forms and data**, **Workflows** | `POST /clientAdmin/client/workflows/save` | `save_template_workflow` | Yes |

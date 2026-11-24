@@ -145,6 +145,12 @@ class FormOpts(
      */
     val elementNote: (path: String, element: Map<String, Any?>) -> String? = { _, _ -> null },
     /**
+     * The counters that give their ids when a form is saved (issue #1852): an empty field one of them fills is not
+     * drawn on an editable form, since nobody enters it and it has no value to show until the form is stored. Empty for
+     * a form whose surface says none, which then draws every counter's field read-only as before.
+     */
+    val countersOnSave: Set<String> = emptySet(),
+    /**
      * Design View (issue #972): the session that marks this form's fields and draws the ones it hides as ghosts, or
      * null -- no Design View, and the form draws exactly as it otherwise would. Set from [DesignViewContext], which
      * only the workflow form provides, so no other surface is ever marked.
@@ -400,6 +406,12 @@ external interface SchemaFormProps : Props {
      */
     var fieldLayouts: Map<String, SchLayout>?
     /**
+     * The counters that give their ids when a form is saved (issue #1852), from the surface's delivery
+     * ([Catalog.countersOnSave] / [WorkflowView.countersOnSave]): an empty field one of them fills is not drawn while
+     * the form is edited. Absent means none.
+     */
+    var countersOnSave: Set<String>?
+    /**
      * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
      * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
      *
@@ -599,6 +611,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         derivedRootIsTraitData = props.derivedRootIsTraitData == true,
         traitDataField = props.traitDataField,
         elementNote = props.elementNote ?: { _, _ -> null },
+        countersOnSave = props.countersOnSave ?: emptySet(),
         design = use(DesignViewContext),
         entryLabel = useShellFacts().entryLabel,
     )
@@ -872,6 +885,10 @@ fun fieldHiddenReason(
     // too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown, it carries its own "not
     // allowed" message and can be emptied.
     name in forbidden && isBlankValue(values[name]) -> FieldHidden.forbidden
+    // A field a counter fills when the form is saved (issue #1852): nobody enters it, and until the form is stored it
+    // has nothing to show, so an editable form leaves it off. Once it holds its id it is drawn read-only, as any is.
+    // Last, so a field with another reason to be left off has that one, and is given no id ([fieldsGivenAtSave]).
+    editable && prop.valueType.counter in opts.countersOnSave && isBlankValue(values[name]) -> FieldHidden.givenAtSave
     else -> null
 }
 

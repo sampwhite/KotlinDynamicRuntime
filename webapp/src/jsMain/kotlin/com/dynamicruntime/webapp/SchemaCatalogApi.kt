@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.schema.SCH
@@ -190,6 +191,8 @@ fun parseCatalog(results: Map<String, Any?>): Catalog = Catalog(
     // typeName -> layout (issue #585), read by the same strict kernel parser the boot ran. Absent -> empty ->
     // every type renders from its schema alone, which is what a node that sends no layouts means.
     fieldLayouts = parseDeliveredLayouts(results[EI.fieldLayouts]),
+    // counterId -> when it issues (issue #1852); absent on a client with no counters, when every field asks as it opens.
+    countersOnSave = countersOnSaveOf(results[CTR.counters]),
 )
 
 private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(

@@ -741,6 +741,9 @@ class ReportHistoryTest {
         assertEquals(12.5, measureValue(row(2024, 3, 12.5), metrics[1]))
         assertEquals(3.0, measureValue(row(2024, 3, 12.5), metrics[0]))
         assertNull(measureValue(row(2024, 3), metrics[1]))
+        // Nor a list of numbers, which is no one value per group (issue #1894).
+        val listed = columns + column("scores", ReportKind.number, ReportCombine.list)
+        assertEquals(metrics.map { it.key }, reportMeasures(listed, listOf("year")).map { it.key })
     }
 
     @Test

@@ -1,22 +1,31 @@
 package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.sample.SampleTestInstances
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GIF
 import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.prepForSaveData
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.serverTimeZone
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -27,6 +36,7 @@ import com.dynamicruntime.sample.SampleComponent
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -65,6 +75,32 @@ class GedraPrepForSaveTest : StringSpec({
         val user = TestUser.create(cxt, "prep-ok@acme.test", userClient = SC.acme)
         val item = user.postItem(acmeCreate, mapOf(GDF.entries to listOf(expense(currentYear))))
         item[GDF.gedraId].toOptStr()!!.startsWith("gd.fd.${SC.acme}.") shouldBe true
+    }
+
+    "a create a save-time function refuses uses up no counter's id (issue #1852)" {
+        val client = "prepcount1852"
+        val setup = cxt.mkSubContext("prep", client).also { it.userId = 18520L }
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), includedTraits = listOf(ST.expenseReport),
+                ),
+            )
+            counter("order", "ORD-", digits = 2)
+            trait("OrderEntry", "order", setOf(GedraDataType.formDoc), "An order.") {
+                property("orderNo", "The order's id.") { counter = "order" }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(setup, config)
+        GedraConfigReload.reloadClient(cxt, client)
+        val user = TestUser.create(cxt, "prep-count@$client.test", userClient = client)
+        val order = mapOf(GE.traitId to "order", GE.data to emptyMap<String, Any?>())
+        val path = clientPath(GEP.formDocCreate, client)
+        user.expectError(EXC.badInput, path, data = mapOf(GDF.entries to listOf(order, expense(currentYear + 5))))[EP.errorMessage]
+            .toString() shouldContain "cannot be in the future"
+        val item = user.postItem(path, mapOf(GDF.entries to listOf(order, expense(currentYear))))
+        item[GDF.entries].toJsonListOfMaps().first()[GE.data].toJsonMapOrEmpty()["orderNo"] shouldBe "ORD-01"
     }
 
     "a patch that moves the reporting year into the future is refused" {
