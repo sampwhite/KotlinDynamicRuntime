@@ -268,7 +268,9 @@ class ConfigImpactTest : StringSpec({
         provisionImpactDemo(cxt, "t").clients shouldContainExactly listOf(client, sandboxOf(client))
         val byKind = demoReport().findings.associateBy { it.kind }
         byKind.getValue(ImpactKind.traitGone).let { it.traitId shouldBe ImpactDemo.visit; it.rows.size shouldBe 2 }
-        byKind.getValue(ImpactKind.dataInvalid).let { it.traitId shouldBe ImpactDemo.note; it.rows.size shouldBe 2 }
+        byKind.getValue(ImpactKind.dataInvalid).let { it.traitId shouldBe ImpactDemo.note; it.rows.size shouldBe 3 }
+        // Two notes that say the same thing, whatever their spelling (issue #1851).
+        byKind.getValue(ImpactKind.valuesShared).let { it.traitId shouldBe ImpactDemo.note; it.rows.size shouldBe 2 }
 
         // A rerun publishes the harmless traits over the draft, adds its forms again, and leaves the draft anew.
         provisionImpactDemo(cxt, "t")

@@ -17,7 +17,6 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.SchemaService
-import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -237,8 +236,7 @@ object UniqueClaims {
      * the other form holds it, if known.
      */
     fun takenText(cxt: KdrCxt, client: String, owner: Long?, slot: UniqueSlot, heldAs: String?): String {
-        val type = traitDataTypeIn(GedraDataService.get(cxt).entryUnion(cxt, client, GedraDataType.formDoc), slot.traitId)
-        val label = type?.properties?.get(slot.field)?.valueType?.title ?: humanizeFieldName(slot.field)
+        val label = formFieldLabel(cxt, client, slot.traitId, slot.field)
         val typed = slot.value.trim()
         val spelled = heldAs?.trim()?.takeIf { it != typed }?.let { ", as '$it'" }.orEmpty()
         val whose = if (owner == cxt.userProfile.userId) "another of your forms" else "another of their forms"
