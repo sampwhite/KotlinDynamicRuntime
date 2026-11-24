@@ -99,7 +99,6 @@ class RequestHandler : WebRequest {
      * direct by accident.
      */
     var peerAddress: String? = null
-    var isFromLoadBalancer: Boolean = false
 
     var queryParams: MutableMap<String, Any?> = LinkedHashMap()
     var postData: MutableMap<String, Any?>? = null
@@ -292,7 +291,6 @@ class RequestHandler : WebRequest {
     /** Decodes the request *body* (for JSON, into [postData]); the query is already parsed ([parseQueryParams]). */
     fun decodeRequestData() {
         userAgent = getRequestHeader("User-Agent")
-        isFromLoadBalancer = userAgent?.contains("ELB-Health") == true
 
         if (contentType.startsWith("application/json") && postData == null) {
             val body = readBoundedBody("JSON")
