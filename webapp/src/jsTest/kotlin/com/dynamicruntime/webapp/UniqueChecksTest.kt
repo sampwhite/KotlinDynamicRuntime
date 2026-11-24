@@ -55,6 +55,21 @@ class UniqueChecksTest {
     }
 
     @Test
+    fun anAnswerIsShownOnlyForTheOwnerAndTheValueItWasAbout() {
+        val answers = mapOf(
+            UniqueAsked("mine", "title", "Q3") to "Taken.",
+            UniqueAsked("mine", "note", "n") to null,
+            UniqueAsked("theirs", "title", "Q4") to "Theirs.",
+        )
+        fun shown(owner: String, title: String) =
+            takenFailures(answers, owner) { if (it == "title") UniqueAsk("budget", it, title) else null }.map { it.message }
+        assertEquals(listOf("Taken."), shown("mine", "Q3"))
+        assertEquals(emptyList(), shown("mine", "Q4"))
+        assertEquals(emptyList(), shown("theirs", "Q3"))
+        assertEquals(listOf("Theirs."), shown("theirs", "Q4"))
+    }
+
+    @Test
     fun aTakenValueIsShownBesideWhatTheFormHasFound() {
         val taken = listOf(SchFailure("title", SchFailCode.badValue, "Taken."))
         val missing = listOf(SchFailure("note", SchFailCode.missingRequired, "Missing."))

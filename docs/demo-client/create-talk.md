@@ -117,7 +117,7 @@ See [Field layouts](reference.md#field-layouts) for the rest of what a layout ca
 JSON Schema (see the [schema dialect reference](../reference/schema-dialect.md)). No two forms of one owner may have the
 same value in it, and an owner is the person a form belongs to, which here is the speaker. Two speakers may use the same
 title. Titles are compared without regard to case or punctuation, so "Kotlin for Two" and "kotlin for two!" are the same
-title.
+title. A title needs at least one letter or digit, since one made only of punctuation would have nothing to compare.
 
 A client may only make one of the platform's types stricter, so it may add `g-unique` to a field, and never take one away.
 The `g-merge` key says that the field listed under `properties` replaces the platform's field of the same name, and that

@@ -14,6 +14,10 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.narrowConfigName
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
@@ -31,6 +35,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -76,6 +81,17 @@ class ClientBaseRulesTest : StringSpec({
         operator.postData(ADEP.clientCreate, platformBody("pubkid1567", ExtensionTemplateComponent.publicTemplate))
         creation("pubkid1567") shouldBe ExtensionTemplateComponent.creationWorkflow
         coreDetails("pubkid1567").shouldNotBeNull()
+    }
+
+    "a client whose base adapts the name trait keeps the base's, where another starts with its names unique (issue #1851)" {
+        fun narrowed(client: String) = GedraConfigService.get(cxt).readLatest(
+            cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, narrowConfigName(GT.name)),
+        )
+        operator.postData(ADEP.clientCreate, platformBody("namedkid1851", ExtensionTemplateComponent.namedTemplate))
+        coreDetails("namedkid1851").shouldNotBeNull()
+        narrowed("namedkid1851").shouldBeNull()
+        operator.postData(ADEP.clientCreate, platformBody("pubkid1851", ExtensionTemplateComponent.publicTemplate))
+        narrowed("pubkid1851").shouldNotBeNull()
     }
 
     "a customer's administrator builds only on a base marked for public use" {

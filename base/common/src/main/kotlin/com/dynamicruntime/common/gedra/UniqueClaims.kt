@@ -8,6 +8,7 @@ import com.dynamicruntime.common.job.JobProfile
 import com.dynamicruntime.common.job.JobRunCxt
 import com.dynamicruntime.common.job.JobSchedule
 import com.dynamicruntime.common.job.JobTaskResult
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
@@ -20,6 +21,7 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import java.text.Normalizer
 
 /** A unique field's value on one gedra (issue #1851): where it is, and the key it is compared by. */
 class UniqueSlot(val traitId: String, val field: String, val value: String, val key: String) {
@@ -60,8 +62,8 @@ object UniqueClaims {
     private fun scopeOf(row: GedraDataRow): String = row.userId.toString()
 
     /**
-     * The unique values of [entries], by claim kind, read by [union]'s types: none for a field left empty, or holding
-     * nothing to compare. A type with a key has no unique field (the parser refuses it), so a trait is met once.
+     * The unique values of [entries], by claim kind, read by [union]'s types: none for a field left empty, or stored
+     * before it was unique with nothing to compare. A type with a key has no unique field (the parser refuses it), so a trait is met once.
      */
     fun slotsOf(union: SchType?, entries: List<Map<String, Any?>>): Map<String, UniqueSlot> {
         val out = LinkedHashMap<String, UniqueSlot>()
@@ -79,8 +81,12 @@ object UniqueClaims {
         return out
     }
 
-    /** The key [value] is compared by, or null when it normalizes to nothing and so claims nothing. */
-    fun keyOf(value: String): String? = normalizeUnique(value).ifEmpty { null }?.toByteArray(Charsets.UTF_8)?.sha256Hex()
+    /**
+     * The key [value] is compared by, or null when it normalizes to nothing and so claims nothing. Accents are composed
+     * first, so an é written as one character and as two is one letter.
+     */
+    fun keyOf(value: String): String? = normalizeUnique(Normalizer.normalize(value, Normalizer.Form.NFC))
+        .ifEmpty { null }?.toByteArray(Charsets.UTF_8)?.sha256Hex()
 
     /** The claim kinds [union]'s traits have: every unique field of every trait it carries. */
     fun kindsOf(union: SchType?): Set<String> = union?.variants?.byValue.orEmpty().keys.flatMap { traitId ->
@@ -105,11 +111,11 @@ object UniqueClaims {
         // In one order, so two writes of the same values take the keys in turn.
         val changed = (before.keys + after.keys).filter { before[it]?.key != after[it]?.key }.sorted()
         for (kind in changed) {
-            if (kind in before) release(cxt, sqlCxt, row.gedraId.fullId, kind)
+            if (kind in before) releaseKind(cxt, sqlCxt, row.gedraId.fullId, kind)
         }
         for (kind in changed) {
             val slot = after[kind] ?: continue
-            holderOf(cxt, sqlCxt, row.client, row.kind, scopeOf(row), slot, row.gedraId.fullId)?.let { held ->
+            holderOf(cxt, sqlCxt, row.client, scopeOf(row), slot, row.gedraId.fullId)?.let { held ->
                 throw taken(cxt, row, slot, held)
             }
             claim(cxt, sqlCxt, row, slot, slot.key)
@@ -126,13 +132,25 @@ object UniqueClaims {
         sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(VCL.gedraId to gedraId))
     }
 
-    private fun release(cxt: KdrCxt, sqlCxt: SqlCxt, gedraId: String, kind: String) {
+    /** Releases whatever [gedraId] claims of [kind]: for a write of that gedra, which holds its lock. */
+    private fun releaseKind(cxt: KdrCxt, sqlCxt: SqlCxt, gedraId: String, kind: String) {
         val table = ValueClaims.table(cxt)
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "dUniqueClaim", table.columns,
             "delete from t:${VCL.gedraValueClaims} where c:${VCL.gedraId} = :${VCL.gedraId} and c:${VCL.claimKind} = :${VCL.claimKind}",
         )
         sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(VCL.gedraId to gedraId, VCL.claimKind to kind))
+    }
+
+    /** Deletes the one claim [row], read from the table, if it is still the same gedra's. */
+    private fun releaseRow(cxt: KdrCxt, sqlCxt: SqlCxt, row: Map<String, Any?>) {
+        val table = ValueClaims.table(cxt)
+        val key = listOf(PF.client, VCL.claimKind, VCL.scopeKey, VCL.valueKey, VCL.gedraId)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "dUniqueClaimRow", table.columns,
+            "delete from t:${VCL.gedraValueClaims} where ${key.joinToString(" and ") { "c:$it = :$it" }}",
+        )
+        sqlCxt.sqlDb.executeStatement(cxt, stmt, key.associateWith { row[it] })
     }
 
     private fun claim(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow, slot: UniqueSlot, valueKey: String) {
@@ -147,13 +165,13 @@ object UniqueClaims {
 
     /**
      * The gedra of [scope]'s owner other than [except] that holds [slot]'s value, read in [sqlCxt]'s session; null when
-     * none does. A claim naming one that no longer holds it is stale, and dropped when a transaction is open.
+     * none does. A claim naming one that no longer holds it is stale, and dropped when a transaction is open: that claim
+     * alone, since the gedra is not locked here, and may have just claimed the value it holds now.
      */
     private fun holderOf(
         cxt: KdrCxt,
         sqlCxt: SqlCxt,
         client: String,
-        kind: GedraDataType,
         scope: String,
         slot: UniqueSlot,
         except: String?,
@@ -174,9 +192,9 @@ object UniqueClaims {
         )
         for (held in rows) {
             val id = held[VCL.gedraId].toOptStr()?.takeIf { it != except } ?: continue
-            val value = heldValue(cxt, sqlCxt, client, kind, scope, slot, id)
+            val value = heldValue(cxt, sqlCxt, client, scope, slot, id)
             if (value != null) return Holder(id, value)
-            if (SqlSession.get(cxt)?.inTran == true) release(cxt, sqlCxt, id, slot.claimKind)
+            if (SqlSession.get(cxt)?.inTran == true) releaseRow(cxt, sqlCxt, held)
         }
         return null
     }
@@ -186,7 +204,6 @@ object UniqueClaims {
         cxt: KdrCxt,
         sqlCxt: SqlCxt,
         client: String,
-        kind: GedraDataType,
         scope: String,
         slot: UniqueSlot,
         gedraId: String,
@@ -196,20 +213,20 @@ object UniqueClaims {
             ?: return null
         val row = GedraDataRow.extract(GedraService.get(cxt), raw)
         if (row.client != client || scopeOf(row) != scope) return null
-        val union = GedraDataService.get(cxt).entryUnion(cxt, client, kind)
+        val union = GedraDataService.get(cxt).entryUnion(cxt, client, row.kind)
         return slotsOf(union, row.entries)[slot.claimKind]?.takeIf { it.key == slot.key }?.value
     }
 
     // --- asking ----------------------------------------------------------------------------------------------------
 
     /**
-     * Another of [userId]'s gedras of [kind] in [client] that holds [slot]'s value, other than [except]; null when none
+     * Another of [userId]'s gedras in [client] that holds [slot]'s value, other than [except]; null when none
      * does. For a form asking as a value is typed, and an import asking before it writes; the write's own check decides.
      */
-    fun heldElsewhere(cxt: KdrCxt, client: String, kind: GedraDataType, userId: Long, slot: UniqueSlot, except: String? = null): Holder? {
+    fun heldElsewhere(cxt: KdrCxt, client: String, userId: Long, slot: UniqueSlot, except: String? = null): Holder? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         var out: Holder? = null
-        sqlCxt.sqlDb.withSession(cxt) { out = holderOf(cxt, sqlCxt, client, kind, userId.toString(), slot, except) }
+        sqlCxt.sqlDb.withSession(cxt) { out = holderOf(cxt, sqlCxt, client, userId.toString(), slot, except) }
         return out
     }
 
@@ -297,16 +314,29 @@ object UniqueClaims {
             if (raw != null) {
                 val row = GedraDataRow.extract(GedraService.get(txCxt), raw)
                 val union = GedraDataService.get(txCxt).entryUnion(txCxt, row.client, kind)
+                val claimed = claimsOf(txCxt, sqlCxt, gedraId.fullId)
                 for (slot in slotsOf(union, row.entries).values) {
+                    // One it has claimed stays as it is, so the first made keeps the value's own key.
+                    if (slot.claimKind to slot.key in claimed) continue
                     // Whatever this form claimed of the field before -- a value it changed while the field was not unique.
-                    release(txCxt, sqlCxt, gedraId.fullId, slot.claimKind)
-                    val shared = holderOf(txCxt, sqlCxt, row.client, kind, scopeOf(row), slot, gedraId.fullId) != null
+                    releaseKind(txCxt, sqlCxt, gedraId.fullId, slot.claimKind)
+                    val shared = holderOf(txCxt, sqlCxt, row.client, scopeOf(row), slot, gedraId.fullId) != null
                     claim(txCxt, sqlCxt, row, slot, if (shared) sharedKey(slot.key, gedraId.fullId) else slot.key)
                     wrote = true
                 }
             }
         }
         return wrote
+    }
+
+    /** The unique values the gedra [gedraId] has claims of, as (claim kind, key), read in [sqlCxt]'s transaction. */
+    private fun claimsOf(cxt: KdrCxt, sqlCxt: SqlCxt, gedraId: String): Set<Pair<String, String>> {
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qUniqueClaimsOfGedra", ValueClaims.table(cxt).columns,
+            "select * from t:${VCL.gedraValueClaims} where c:${VCL.gedraId} = :${VCL.gedraId} and c:${VCL.claimKind} like '$kindPrefix%'",
+        )
+        return sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(VCL.gedraId to gedraId))
+            .map { it[VCL.claimKind].toOptStr().orEmpty() to it[VCL.valueKey].toOptStr().orEmpty().substringBefore(sharedMark) }.toSet()
     }
 
     /** The unique values [client]'s gedras have claims of, as (gedra, claim kind, key). */
@@ -329,11 +359,11 @@ object UniqueClaims {
      * fails the reload, which has happened: what it could not do, the nightly run does.
      */
     fun fillNewlyUnique(cxt: KdrCxt, client: String, before: Set<String>) {
-        if ((kindsFor(cxt, client) - before).isEmpty()) return
         try {
+            if ((kindsFor(cxt, client) - before).isEmpty()) return
             val filled = fill(cxt, client)
             if (filled > 0) LogGedra.info(cxt) { "Claimed the unique values of $filled existing form(s) of client '$client'." }
-        } catch (e: KdrException) {
+        } catch (e: Exception) {
             LogGedra.error(cxt, "Could not claim the unique values of client '$client'; the nightly run will.", e)
         }
     }
@@ -357,6 +387,40 @@ object UniqueClaimHook : GedraWriteHook {
         UniqueClaims.releaseAll(cxt, sqlCxt, row.gedraId.fullId)
     }
 }
+
+/**
+ * Where a unique field is out of place (issue #1851), as `(type name, message)` pairs for those of [names] in [types]: one
+ * a trait's data reaches through a `$ref`, nested in its data or in a list, where no claim is made. The parser refuses one
+ * written inline there, and a type of its own may be any trait's data, so this is judged once every type is known.
+ */
+fun nestedUniqueProblems(types: Map<String, SchType>, names: Set<String>): List<Pair<String, String>> {
+    val out = mutableListOf<Pair<String, String>>()
+    val dataTypes = GU.entryKinds.flatMap { kind ->
+        types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]?.variants?.branches.orEmpty()
+            .mapNotNull { it.properties[GE.data]?.valueType }
+    }.toSet()
+    for (dataType in dataTypes) {
+        val seen = HashSet<SchType>()
+        fun nestedIn(type: SchType): List<SchType> = type.properties.values.map { it.valueType } +
+            listOfNotNull(type.itemType, type.additionalValueType) + type.variants?.branches.orEmpty()
+        fun walk(type: SchType) {
+            if (!seen.add(type)) return
+            uniqueFieldsOf(type).keys.forEach { field ->
+                val owner = listOfNotNull(dataType.name, type.name).firstOrNull { it in names } ?: return@forEach
+                out.add(
+                    owner to "Type '${dataType.name}' holds type '${type.name}' inside it, whose field '$field' has " +
+                        "'${SCH.unique}'. A unique field is one of a trait's own data; its values are not compared there.",
+                )
+            }
+            nestedIn(type).forEach(::walk)
+        }
+        nestedIn(dataType).forEach(::walk)
+    }
+    return out.distinct()
+}
+
+/** What a misplaced unique field's config problem says the node does instead. */
+const val misplacedUnique = "Keeping the field; its values are not held unique."
 
 /** The names of the job that fills in unique claims (issue #1851). */
 @Suppress("ConstPropertyName")

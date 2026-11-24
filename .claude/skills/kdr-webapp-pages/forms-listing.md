@@ -341,7 +341,8 @@ nor an editor cannot list other people's forms, so their reviews do not show her
 A field that must be unique for its owner (`g-unique`) is asked about when it is left (`useUniqueChecks`,
 `/gedra/unique/check`): on the workflow form, the trait picker, the create for another user, and the raw editor. The answer
 shows under the field for as long as the field holds the value asked about, so it needs no clearing. It is asked for the
-form's owner when editing, and for the user a form is being made for, whose change asks afresh. An answer never blocks
+form's owner when editing, and for the user a form is being made for, whose change asks again about the fields already
+left; an answer about the one before is not shown (`takenFailures`). An answer never blocks
 Save, and an ask that fails says nothing: the save's refusal is what holds the value.
 
 ## A counter's id is shown before the form is saved (issue #1849)

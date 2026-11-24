@@ -28,7 +28,7 @@ on a list only how many items it has. A parameter in parentheses is offered only
 |---|---|---|---|
 | `missingRequired` | A field the data requires, or this form asks for, was not supplied. | `required` | `${field}` |
 | `wrongType` | The value is not of the field's type, such as text where a number belongs. | `type` | `${field}`, `${value}` |
-| `badValue` | The value was read and found wrong: text that is not a date, a number, or a yes or no where one is expected, a character that does not show, or spaces at the ends of text that refuses them. | `type`, `format`, `g-visibleOnly`, `g-outerWhitespace`, `g-schemaDocument` | `${field}`, `${value}` |
+| `badValue` | The value was read and found wrong: text that is not a date, a number, or a yes or no where one is expected, a character that does not show, spaces at the ends of text that refuses them, or a unique value with no letter or digit. | `type`, `format`, `g-visibleOnly`, `g-outerWhitespace`, `g-unique`, `g-schemaDocument` | `${field}`, `${value}` |
 | `invalidOption` | The value is not one of the field's choices. | `g-options` | `${field}`, `${value}`, `${options}` |
 | `additionalProperty` | The data holds a field its type does not declare. | `additionalProperties` | `${field}` |
 | `notAllowed` | The field is declared, but a rule about another field says it may not be supplied now. | `if` | `${field}`, `${value}` |

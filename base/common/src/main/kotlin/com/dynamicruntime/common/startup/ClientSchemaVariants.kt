@@ -14,6 +14,8 @@ import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.issue
+import com.dynamicruntime.common.gedra.misplacedUnique
+import com.dynamicruntime.common.gedra.nestedUniqueProblems
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.naming.OWNR
@@ -171,6 +173,9 @@ fun buildClientVariants(
         val creations = collected.schemaFunctions.associateBy { it.fn }
         for ((name, message) in writeFunctionProblems(cxt, creations, types, authored.keys)) {
             reportConfigProblem(cxt, alterationIssue(collected, client, name, message, skippedWriteFunction), issues)
+        }
+        for ((name, message) in nestedUniqueProblems(types, authored.keys)) {
+            reportConfigProblem(cxt, alterationIssue(collected, client, name, message, misplacedUnique), issues)
         }
         if (defs === global.defs) {
             continue

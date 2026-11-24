@@ -39,15 +39,36 @@ object UNQ {
 /**
  * [value] as a unique field compares it (issue #1851), so `Q3 Budget` and `q3-budget ` are one value: lowercase, each run
  * of characters that are not letters or digits one space, and trimmed. Letters and digits are Unicode's, so `Café` keeps
- * its é. Empty for a value with neither (`!!!`), which claims nothing.
+ * its é, and a mark on a letter -- a vowel sign of Hindi or Thai, a combining accent -- is part of it. A character outside
+ * the basic plane counts as a letter, whichever it is: Kotlin has no category for one in common code, and most are letters
+ * of some script. Format characters, which do not show, are dropped. Empty for a value with no letter or digit (`!!!`),
+ * which a unique field refuses ([lacksUniqueText]).
  */
 fun normalizeUnique(value: String): String {
     val out = StringBuilder()
     for (c in value.lowercase()) {
-        if (c.isLetterOrDigit()) out.append(c) else if (out.isNotEmpty() && out.last() != ' ') out.append(' ')
+        when {
+            c.isLetterOrDigit() || c.isSurrogate() -> out.append(c)
+            c.category == CharCategory.FORMAT || c in variationSelectors -> {}
+            c.category in markCategories && out.isNotEmpty() && out.last() != ' ' -> out.append(c)
+            out.isNotEmpty() && out.last() != ' ' -> out.append(' ')
+        }
     }
     return out.toString().trim()
 }
+
+/** Marks written on the letter before them. */
+private val markCategories: Set<CharCategory> =
+    setOf(CharCategory.NON_SPACING_MARK, CharCategory.COMBINING_SPACING_MARK, CharCategory.ENCLOSING_MARK)
+
+/** Marks that choose how the character before them is drawn, and show nothing themselves. */
+private val variationSelectors: CharRange = '\uFE00'..'\uFE0F'
+
+/**
+ * Whether [value] is text a unique field cannot hold (issue #1851): something was entered, and it has no letter or digit to
+ * be compared by, so any number of forms could share it. Blank text is no answer, which is `required`'s to judge.
+ */
+fun lacksUniqueText(value: String): Boolean = value.isNotBlank() && normalizeUnique(value).isEmpty()
 
 /**
  * The fields of [type] whose value must be unique, by field name to scope (issue #1851): its own properties declaring

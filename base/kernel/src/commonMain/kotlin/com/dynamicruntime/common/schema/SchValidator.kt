@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.lacksUniqueText
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.fmtD
@@ -49,8 +50,9 @@ enum class SchFailCode(val meaning: String, val raisedBy: List<String>) {
      *  not a recognizable date, boolean, number, or JSON structure. */
     badValue(
         "The value was read and found wrong: text that is not a date, a number, or a yes or no where one is " +
-            "expected, a character that does not show, or spaces at the ends of text that refuses them.",
-        listOf(SCH.type, SCH.format, SCH.visibleOnly, SCH.outerWhitespace, SCH.schemaDocument),
+            "expected, a character that does not show, spaces at the ends of text that refuses them, or a unique value " +
+            "with no letter or digit.",
+        listOf(SCH.type, SCH.format, SCH.visibleOnly, SCH.outerWhitespace, SCH.unique, SCH.schemaDocument),
     ),
 
     invalidOption("The value is not one of the field's choices.", listOf(SCH.options)),
@@ -577,6 +579,7 @@ fun validateValue(
     // letting the list vouch for it. `pattern` is one of them (issue #823), for the same reason.
     checkVisible(type, effective, path, failures)
     checkPattern(type, effective, path, failures)
+    checkUniqueText(type, effective, path, failures)
 
     // `const`: the type admits one value. Checked before options, and separately from them, because it is a
     // statement about the shape rather than a choice being offered -- most often a union branch saying which
@@ -1418,6 +1421,17 @@ fun checkPattern(type: SchType, value: Any?, path: String, failures: MutableList
     failures.add(
         type.failure(path, SchFailCode.patternMismatch, "This must match the pattern '${pattern.source}'.", value = value),
     )
+}
+
+/**
+ * What of `g-unique` one value can be judged by (issue #1851): a [SchFailCode.badValue] for a string with no letter or
+ * digit, which has nothing to be compared by ([lacksUniqueText]). Whether another form holds the value spans rows, and is
+ * the write's to judge.
+ */
+@KdrPrivate
+fun checkUniqueText(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
+    if (type.unique == null || value !is String || !lacksUniqueText(value)) return
+    failures.add(type.failure(path, SchFailCode.badValue, "Value must have at least one letter or digit.", value = value))
 }
 
 /**

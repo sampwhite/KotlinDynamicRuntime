@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.gedra.UNQ
+import com.dynamicruntime.common.gedra.lacksUniqueText
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileKind
 import com.dynamicruntime.common.filekind.FKIND
@@ -676,6 +677,14 @@ fun parseUnique(where: String, map: Map<String, Any?>, jsonType: String?, format
             SchemaError.notApplicable,
             "$where has both '${SCH.unique}' and '$clash'. A unique value is one a person chooses, which is named to them " +
                 "when it is taken.",
+        )
+    }
+    // A choice or a default a write would always refuse, since it has nothing to be compared by.
+    val given = (map[SCH.options] as? List<*>).orEmpty().map { (it as? Map<*, *>)?.get(SCH.value) ?: it } + map[SCH.default]
+    given.firstOrNull { it is String && lacksUniqueText(it) }?.let {
+        throw schemaFault(
+            SchemaError.badValue,
+            "$where has '${SCH.unique}' and the choice or default '$it', which has no letter or digit to compare it by.",
         )
     }
     // Where it is: a field of the type's own, whose path has one `properties` in it and is no element of a list.

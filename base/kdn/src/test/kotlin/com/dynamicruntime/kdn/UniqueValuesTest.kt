@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
@@ -30,11 +31,24 @@ import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.ImpactKind
 import com.dynamicruntime.common.gedra.TraitNarrowing
 import com.dynamicruntime.common.gedra.UNQ
+import com.dynamicruntime.common.gedra.UCJ
 import com.dynamicruntime.common.gedra.UniqueClaims
+import com.dynamicruntime.common.gedra.VCL
+import com.dynamicruntime.common.gedra.ValueClaim
+import com.dynamicruntime.common.gedra.ValueClaims
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
+import com.dynamicruntime.common.gedra.gedraDataTopic
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.job.JobLaunchOutcome
+import com.dynamicruntime.common.job.JobRunMode
+import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlStmtUtil
+import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -54,8 +68,8 @@ class UniqueValuesTest : StringSpec({
     val cxt = TestInstances.default("unique1851")
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("unique", client).also { it.userId = 18510L }
 
-    /** Writes [client]'s configuration, its budget's title unique for each owner or not, and makes it live. */
-    fun setUnique(client: String, unique: Boolean) {
+    /** Writes [client]'s configuration, its budget's title unique for each owner or not. */
+    fun storeUnique(client: String, unique: Boolean) {
         val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
@@ -69,8 +83,16 @@ class UniqueValuesTest : StringSpec({
             }
         }
         GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+    }
+
+    /** As [storeUnique], and makes it live. */
+    fun setUnique(client: String, unique: Boolean) {
+        storeUnique(client, unique)
         GedraConfigReload.reloadClient(cxt, client)
     }
+
+    fun latestOf(client: String) =
+        GedraConfigService.get(cxt).readLatest(asClient(client), GedraId.of(GedraConfigType.configDoc, client, "main"))!!
 
     fun owner(client: String, name: String = "owner"): TestUser = TestUser.create(cxt, "$name@$client.test", userClient = client)
     fun budget(title: String?) = mapOf(GE.traitId to "budget", GE.data to buildMap { title?.let { put("title", it) } })
@@ -98,11 +120,16 @@ class UniqueValuesTest : StringSpec({
         mine.refused("q3-budget ") shouldContain "Title 'q3-budget' is already used by another of your forms, as 'Q3 Budget'"
         mine.expectError(EXC.badInput, GEP.formDocCreate, body("Q3 budget"))[EP.extraData].toString() shouldContain held
         owner(client, "other").make("Q3 Budget")
-        // Accents are letters, so these differ; a value with nothing to compare claims nothing, and neither does none.
-        mine.make("Café")
+        // Accents are letters, so these differ, however the accent is written; no value claims nothing.
+        mine.make("Caf\u00e9")
         mine.make("Cafe")
-        repeat(2) { mine.make("!!!") }
+        mine.refused("Cafe\u0301") shouldContain "already used"
         repeat(2) { mine.make(null) }
+        repeat(2) { mine.make(" ") }
+        // Text with no letter or digit has nothing to be compared by, so it is refused on every write.
+        for (title in listOf("!!!", " - ", "\u2764\uFE0F")) mine.refused(title) shouldContain "at least one letter or digit"
+        mine.expectError(EXC.badInput, GEP.patch, patchBody(held, mapOf("title" to "?")))[EP.errorMessage].toString() shouldContain
+            "at least one letter or digit"
     }
 
     "a form made for someone is checked against theirs" {
@@ -168,25 +195,8 @@ class UniqueValuesTest : StringSpec({
         owner(client, "other").make("Alone")
 
         // The impact report of the change names the two.
-        val latest = GedraConfigService.get(cxt).run {
-            writeConfig(
-                asClient(client),
-                gedraConfig(cxt, "main", clientNamespace(client), client) {
-                    defineClient(
-                        ClientDef(
-                            clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
-                            enabledEnvironments = setOf(ENV.unit, ENV.local),
-                        ),
-                    )
-                    trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), "A budget.") {
-                        property("title", "What it is called.") { unique = UNQ.owner }
-                        property("note", "A note.")
-                    }
-                },
-            )
-            readLatest(asClient(client), GedraId.of(GedraConfigType.configDoc, client, "main"))!!
-        }
-        val finding = ConfigImpact.reportFor(cxt, client, listOf(latest), anyTier = true).findings
+        storeUnique(client, true)
+        val finding = ConfigImpact.reportFor(cxt, client, listOf(latestOf(client)), anyTier = true).findings
             .single { it.kind == ImpactKind.valuesShared }
         finding.traitId shouldBe "budget"
         finding.rows shouldBe setOf(first, second)
@@ -221,14 +231,161 @@ class UniqueValuesTest : StringSpec({
         mine.refused("four")
     }
 
-    "the fill finds nothing to do twice, and a dry run writes nothing" {
-        val client = "unq1851g"
+    "a value with nothing to compare, stored before its field was unique, is reported, and kept until its form is edited" {
+        val client = "unq1851l"
         setUnique(client, false)
         val mine = owner(client)
-        mine.make("Early")
+        val bare = mine.make("!!!")
+        storeUnique(client, true)
+        ConfigImpact.reportFor(cxt, client, listOf(latestOf(client)), anyTier = true).findings
+            .single { it.kind == ImpactKind.dataInvalid }.rows shouldBe setOf(bare)
+        GedraConfigReload.reloadClient(cxt, client)
+        mine.expectError(EXC.badInput, GEP.patch, patchBody(bare, mapOf("note" to "n")))
+        mine.rename(bare, "Named")
+        mine.refused("named")
+    }
+
+    /** Deletes [client]'s claims, as though its forms were made by a node on which the field was not unique. */
+    fun dropClaims(client: String) {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "dTestUniqueClaims", cxt.getGlobalSchema().tables.getValue(VCL.gedraValueClaims).columns,
+            "delete from t:${VCL.gedraValueClaims} where c:${PF.client} = :${PF.client}",
+        )
+        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, mapOf(PF.client to client)) }
+    }
+
+    "the nightly job claims what has no claim, a dry run only counting, and leaves the rest as it is" {
+        val client = "unq1851g"
         setUnique(client, true)
+        val mine = owner(client)
+        val first = mine.make("Early")
+        mine.make("Late")
         UniqueClaims.fill(cxt, client) shouldBe 0
+        dropClaims(client)
+        UniqueClaims.fill(cxt, client, dryRun = true) shouldBe 2
+        // Counted, and not claimed.
+        mine.make("early")
+        dropClaims(client)
+        fun run(name: String, dryRun: Boolean) = JobService.get(cxt)
+            .launch(cxt, UCJ.jobType, name, mode = JobRunMode.pooledOnCaller, clients = listOf(client), dryRun = dryRun).outcome
+        run("unq1851dry", true) shouldBe JobLaunchOutcome.completed
+        UniqueClaims.fill(cxt, client, dryRun = true) shouldBe 3
+        run("unq1851wet", false) shouldBe JobLaunchOutcome.completed
         UniqueClaims.fill(cxt, client, dryRun = true) shouldBe 0
+        mine.refused("late")
+        // The two that shared a value when the job ran: taken until both let it go.
+        mine.rename(first, "Own")
+        mine.refused("EARLY")
+    }
+
+    "a claim left over is dropped alone, and the form keeps the one of the value it holds" {
+        val client = "unq1851m"
+        setUnique(client, true)
+        val mine = owner(client)
+        val form = mine.make("Now")
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val stale = ValueClaim(
+            client, UniqueClaims.kindOf("budget", "title"), mine.userId.toString(), UniqueClaims.keyOf("Before")!!, "Before", form,
+            "budget", "title",
+        )
+        sqlCxt.sqlDb.withSession(cxt) { ValueClaims.claim(cxt, sqlCxt, listOf(stale)) { _, _ -> "taken" } }
+        mine.make("Before")
+        mine.refused("now") shouldContain "already used"
+    }
+
+    "filling in one field's claims leaves another's as they were" {
+        val client = "unq1851n"
+        fun store(codeUnique: Boolean) {
+            val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), "A budget.") {
+                    property("title", "What it is called.") { unique = UNQ.owner }
+                    property("code", "Its code.") { if (codeUnique) unique = UNQ.owner }
+                }
+            }
+            GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+            GedraConfigReload.reloadClient(cxt, client)
+        }
+        store(false)
+        val mine = owner(client)
+        fun entry(title: String, code: String) =
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to "budget", GE.data to mapOf("title" to title, "code" to code))))
+        val form = mine.postItem(GEP.formDocCreate, entry("T1", "C1"))[GDF.gedraId].toOptStr()!!
+        fun titleKey(): String {
+            val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+            val stmt = SqlStmtUtil.prepareSql(
+                sqlCxt, "qTestUniqueClaims", cxt.getGlobalSchema().tables.getValue(VCL.gedraValueClaims).columns,
+                "select * from t:${VCL.gedraValueClaims} where c:${VCL.gedraId} = :${VCL.gedraId} and c:${VCL.fieldName} = 'title'",
+            )
+            var key = ""
+            sqlCxt.sqlDb.withSession(cxt) {
+                key = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(VCL.gedraId to form)).single().let {
+                    "${it[VCL.valueKey]} ${it[PF.createdAt]}"
+                }
+            }
+            return key
+        }
+        val before = titleKey()
+        store(true)
+        titleKey() shouldBe before
+        mine.expectError(EXC.badInput, GEP.formDocCreate, entry("T2", "c1"))
+    }
+
+    "a sandbox's claims are its own" {
+        val client = "unq1851o"
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.production, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                ),
+            )
+            trait("BudgetEntry", "budget", setOf(GedraDataType.formDoc), "A budget.") {
+                property("title", "What it is called.") { unique = UNQ.owner }
+            }
+        }
+        GedraConfigService.get(cxt).run {
+            writeConfig(asClient(client), config)
+            publish(asClient(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
+        }
+        GedraConfigReload.reloadClient(cxt, client)
+        owner(client).run { make("Same"); refused("same") }
+        owner(sandboxOf(client)).run { make("Same"); refused("same") }
+    }
+
+    "a field hidden from the caller is not answered for" {
+        val client = "unq1851p"
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("CaseEntry", "case", setOf(GedraDataType.formDoc), "A case.") {
+                property("code", "Its code.") { unique = UNQ.owner; visibleWhen = CFACTS.hasAdminLevel }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+        GedraConfigReload.reloadClient(cxt, client)
+        val mine = owner(client)
+        val chief = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        chief.postItem(
+            GEP.formDocCreate,
+            mapOf(
+                GDF.entries to listOf(mapOf(GE.traitId to "case", GE.data to mapOf("code" to "K1"))),
+                EI.user to mine.userId.toString(),
+            ),
+        )
+        val ask = mapOf(UNQ.traitId to "case", UNQ.field to "code", UNQ.value to "k1")
+        chief.getData(GEP.uniqueCheck, ask + (EI.user to mine.userId.toString()))[UNQ.taken] shouldBe true
+        mine.getData(GEP.uniqueCheck, ask)[UNQ.taken] shouldBe false
     }
 
     "an import's value already held is an invalid entry: the import refused, or the entry forgiven and counted" {
@@ -316,5 +473,13 @@ class UniqueValuesTest : StringSpec({
                 }
             },
         ).toString() shouldContain "single entry"
+        // A type of its own that another trait's data holds, which the parser cannot see.
+        chief.expectError(
+            EXC.badInput, CFEP.bundleWrite,
+            write {
+                type("Place") { type = SCT.kObject; property("code", "Its code.") { unique = UNQ.owner } }
+                trait("SiteEntry", "site", setOf(GedraDataType.formDoc), "A site.") { property("place", "Where.") { ref("Place") } }
+            },
+        ).toString() shouldContain "not compared there"
     }
 })

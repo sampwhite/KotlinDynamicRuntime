@@ -275,8 +275,8 @@ object SCH {
     /**
      * That a plain string field's value is one no two gedras in a scope may share (issue #1851), compared after
      * normalizing, so a change of case or punctuation is no difference. `owner` is the one scope: the forms of one
-     * owner. A rule about stored data that spans rows, so validating one value says nothing of it; the write that
-     * stores the value is what holds it.
+     * owner. A rule about stored data that spans rows, so the write that stores a value is what holds it; validating
+     * one value says only that it has a letter or digit to be compared by.
      *
      * On a field of a single-entry trait's data. Refused on anything but a plain string, on a type with a [primaryKey],
      * and with [derived], [counter], or [sensitive].

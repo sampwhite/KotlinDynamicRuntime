@@ -1438,8 +1438,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // A named form is read in the caller's own scope, so one out of reach answers 404; its owner is whose forms count.
         val row = gedraId?.let { coreDetailsFormRow(c, it) }
         val owner = row?.userId ?: createForUserCxt(c, request).userId ?: 0L
+        // A field a gate hides from the caller says nothing of what another form holds.
         val slot = UniqueClaims.slotFor(c, c.client, formDoc, asked(UNQ.traitId), asked(UNQ.field), asked(UNQ.value))
-        val held = slot?.let { UniqueClaims.heldElsewhere(c, c.client, formDoc, owner, it, gedraId) }
+            ?.takeIf { GedraDataService.get(c).offersField(c, formDoc, it.traitId, it.field) }
+        val held = slot?.let { UniqueClaims.heldElsewhere(c, c.client, owner, it, gedraId) }
         buildMap {
             put(UNQ.taken, held != null)
             if (slot != null && held != null) {

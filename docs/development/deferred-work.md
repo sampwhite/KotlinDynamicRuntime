@@ -1608,6 +1608,7 @@ A field marked `g-unique: "owner"` (issue #1851) is held for the forms of one ow
   question to settle then.
 - **A keyed trait's entries** *(#1851).* An entry of a keyed trait could hold a value another entry of the same form
   holds, so a claim would name the entry as well as the form.
-- **Two spellings of one letter** *(#1851).* An accented letter written as one character and as a letter with a
-  combining mark compare as different, as do letters outside the basic plane, which are dropped. Trigger: a person
-  reports two names that look the same.
+- **Symbols told apart** *(#1851).* A character outside the basic plane counts as a letter, so "Budget 🎉" and "Budget" are
+  two values, while a symbol in it, such as ★, is punctuation and makes none. Telling them alike needs Unicode's categories
+  for every character, which Kotlin's common code lacks. Trigger: a person reports two names that look the same, or a name
+  of symbols they cannot use.

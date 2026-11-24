@@ -117,6 +117,12 @@ private fun schCounterTests() = stringSpec {
 
     "a unique field is a plain string a person types, at the top of a type with no key (issue #1851)" {
         uniqueFieldsOf(parse { unique = UNQ.owner }) shouldBe mapOf("number" to UNQ.owner)
+        // A value with nothing to compare is refused, and blank text is no answer; so is a choice or default that has nothing.
+        val held = parse { unique = UNQ.owner }
+        validate(held, mapOf("number" to "!!!")).map { it.path to it.code } shouldContainExactly listOf("number" to SchFailCode.badValue)
+        for (fine in listOf("A!", "", "  ")) validate(held, mapOf("number" to fine)).shouldBeEmpty()
+        refusal { option("-"); unique = UNQ.owner } shouldContain "no letter or digit"
+        refusal { default = "?"; unique = UNQ.owner } shouldContain "no letter or digit"
         refusal { unique = "everyone" } shouldContain SCH.unique
         refusal { type = SCT.integer; unique = UNQ.owner } shouldContain "compares plain strings"
         refusal { dayOnlyDate(); unique = UNQ.owner } shouldContain "compares plain strings"

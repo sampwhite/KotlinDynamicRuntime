@@ -333,7 +333,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // trait locked here is not this caller's to change, so it is not asked about.
     val uniqueChecks = useUniqueChecks(props.client, gedraId.takeIf { isEdit }, pickedUser?.primaryId.takeIf { !isEdit }) { key ->
         val traitId = key.substringBefore(uniqueKeyMark)
-        wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId } }
+        wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId && traitId !in wf.lockedTraits } }
             ?.let { uniqueAskOf(traitId, it.type, key.substringAfter(uniqueKeyMark), valuesOf(traitId)) }
     }
 

@@ -1201,23 +1201,6 @@ class GedraDataService : ServiceInitializer {
                     cxt.mkUniqueId()
                 }
                 val stored = slim.asStoredEntry(entryId = entryId, source = GSRC.user, createdAt = now, createdBy = actor)
-                // A value one of the owner's forms already holds (issue #1851), or an earlier document of this import does, is an
-                // invalid entry like any other. The write's own check decides a race.
-                val shared = UniqueClaims.slotsOf(union, listOf(stored)).values.filter { slot ->
-                    (slot.claimKind to slot.key) in importedUnique ||
-                        UniqueClaims.heldElsewhere(cxt, cxt.client, kind, cxt.userId ?: 0L, slot) != null
-                }
-                if (shared.isNotEmpty()) {
-                    if (!opts.forgiveInvalidEntries) {
-                        throw KdrException.mkInput(
-                            "An imported entry for trait '$traitId' is invalid: " +
-                                UniqueClaims.takenText(cxt, cxt.client, cxt.userId, shared.first(), null),
-                        )
-                    }
-                    discard(GIF.invalidEntry, traitId)
-                    excluded.add(traitId)
-                    continue
-                }
                 val failures = if (union != null) validate(union, stored) else emptyList()
                 if (failures.isNotEmpty()) {
                     if (strippedFiles) {
@@ -1228,6 +1211,23 @@ class GedraDataService : ServiceInitializer {
                         throw KdrException.mkInput(
                             "An imported entry for trait '$traitId' is invalid: " +
                                 failures.joinToString("; ") { "${it.path}: ${it.message}" },
+                        )
+                    }
+                    discard(GIF.invalidEntry, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
+                // A value one of the owner's forms already holds (issue #1851), or an earlier document of this import does, is an
+                // invalid entry like any other. The write's own check decides a race.
+                val shared = UniqueClaims.slotsOf(union, listOf(stored)).values.filter { slot ->
+                    (slot.claimKind to slot.key) in importedUnique ||
+                        UniqueClaims.heldElsewhere(cxt, cxt.client, cxt.userId ?: 0L, slot) != null
+                }
+                if (shared.isNotEmpty()) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw KdrException.mkInput(
+                            "An imported entry for trait '$traitId' is invalid: " +
+                                UniqueClaims.takenText(cxt, cxt.client, cxt.userId, shared.first(), null),
                         )
                     }
                     discard(GIF.invalidEntry, traitId)
@@ -1908,6 +1908,15 @@ class GedraDataService : ServiceInitializer {
                 }
             }
         }
+    }
+
+    /**
+     * Whether [cxt]'s caller is offered [field] of [traitId]'s data: it has no `g-visibleWhen` gate, or the caller passes
+     * it. For a read that answers about one field by name.
+     */
+    fun offersField(cxt: KdrCxt, kind: GedraDataType, traitId: String, field: String): Boolean {
+        val gate = traitDataTypeIn(clientUnion(cxt, kind), traitId)?.properties?.get(field)?.visibleWhen ?: return true
+        return gatedWrite(cxt, kind).offers(gate)
     }
 
     /**

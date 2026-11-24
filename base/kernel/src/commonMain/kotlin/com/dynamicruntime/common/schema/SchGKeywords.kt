@@ -86,7 +86,7 @@ object SchGKeywords {
         SCH.counter to "The client's counter that numbers this plain string: a form shows the next id before it is " +
             "saved, and it does not change once stored.",
         SCH.unique to "That no two forms in a scope may share this plain string's value, compared without regard to case " +
-            "or punctuation: '${UNQ.owner}' for the forms of one owner.",
+            "or punctuation: '${UNQ.owner}' for the forms of one owner. A value needs at least one letter or digit.",
         SCH.onWrite to "The functions run on the object's data each time it is written, such as one computing a " +
             "derived property from the others. Each names its kind in 'fn'. Always a list, even of one.",
         SCH.schemaDocument to "Marks a property whose value is itself a schema, checked by parsing it.",
