@@ -14,9 +14,12 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
@@ -169,6 +172,27 @@ class TrialHarnessTest : StringSpec({
         // Through a task of its own that only lists them: shown, but by a step that asks nothing of anyone.
         outcome(emptyMap(), answersTask = true) shouldBe OutcomeKind.varied
         outcome(emptyMap()) shouldBe OutcomeKind.notMet
+    }
+
+    "a Home card is held to opening the New form, by a button that is drawn or a link" {
+        fun outcome(vararg cards: Map<String, Any?>): OutcomeKind {
+            val block = mapOf(CCT.blockId to HCARD.block, CCT.content to mapOf(HCARD.cards to cards.toList()))
+            val bundle = mapOf(CFEP.slots to mapOf(CCT.uiBlockDef to listOf(block)))
+            val now = Clock.System.now()
+            return Checks.homeCardStartsForm(
+                TrialResult(smoke, smoke.variants.single(), "c", null, emptyList(), mapOf("b" to bundle), emptyList(), now, now),
+            ).kind
+        }
+        fun card(vararg keys: Pair<String, Any?>) = mapOf("id" to "start", HCARD.title to "Start", *keys)
+        outcome(card(UIB.action to HMENU.pageNewForm, HCARD.actionLabel to "Start")) shouldBe OutcomeKind.met
+        outcome(card(HCARD.links to listOf(mapOf(HCARD.linkLabel to "Start", UIB.action to HMENU.pageNewForm)))) shouldBe OutcomeKind.met
+        outcome(card(HCARD.text to "[Start](/wa/forms/new) here.")) shouldBe OutcomeKind.met
+        outcome(card(UIB.action to HMENU.pageForms, HCARD.actionLabel to "Forms")) shouldBe OutcomeKind.varied
+        // What every run wrote before the guide said how: an address, which opens Home, and no words, so no button either.
+        outcome(card(UIB.action to "/forms/new")) shouldBe OutcomeKind.notMet
+        outcome(card(UIB.action to "/forms/new", HCARD.actionLabel to "Start")) shouldBe OutcomeKind.notMet
+        outcome(card(UIB.action to HMENU.pageNewForm)) shouldBe OutcomeKind.notMet
+        outcome() shouldBe OutcomeKind.notMet
     }
 
     "a review that starts with someone else's step is held to highlighting its Start" {

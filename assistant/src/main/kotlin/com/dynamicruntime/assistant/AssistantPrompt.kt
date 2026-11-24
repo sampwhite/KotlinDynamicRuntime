@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
@@ -196,7 +197,9 @@ object AssistantPrompt {
             |The menu and Home:
             |- A menu change changes what is offered, not who may reach a page: a page still refuses whoever may not use
             |  it. Never hide an item to keep someone out.
-            |- Home's cards, and how Home's page is laid out, are described in read_doc '${HDOC.menuAndHomeCards}'.
+            |- Home's cards, and how Home's page is laid out, are described in read_doc '${HDOC.menuAndHomeCards}'. A card's
+            |  'action' is the name of a page that guide lists ('${HMENU.pageNewForm}' starts a form), never an address, and
+            |  its button needs an 'actionLabel'.
             |  Home's page is the '${HFRAG.home}' file's '${HFRAG.pageNs}.${HFRAG.pageHome}' key, which has no 'where': to
             |  rearrange Home, change that key whole, its fences and all.
             |

@@ -207,11 +207,11 @@ misspelled cfact in any branch is found like any other, at the cost *Checked at 
 A menu item does something when chosen, through its `action`:
 
 ```json
-"action": "/forms/123"
+"action": "forms"
 "action": ["setEnvDebug", "true"]
 ```
 
-A string is a route to a frontend page. An array is a call: its first element names a frontend function, and the
+A string is a route: it names a frontend page, never its address. An array is a call: its first element names a frontend function, and the
 rest are that function's parameters. The JSON **type** tells the two apart, so nothing needs a sigil, and there is
 no delimiter for a parameter to collide with. A union told apart by type needs no declared discriminator: that
 rule is for object variants, where nothing in the JSON says which branch an object is, while here a validator

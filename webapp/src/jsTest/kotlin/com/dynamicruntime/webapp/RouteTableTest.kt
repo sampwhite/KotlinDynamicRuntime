@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.home.ClientPages
 import com.dynamicruntime.common.home.HMENU
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,6 +70,15 @@ class RouteTableTest {
         assertRoute("/test/simulations", HP.page to HMENU.pageSimulations)
         assertRoute("/debug", HP.page to HMENU.pageDebug)
         assertRoute("/debug/state", HP.page to HMENU.pageDebug, debugToolParam to debugToolState)
+    }
+
+    /** The pages the menu and home cards guide lists, by the names and paths it gives (issue #1869). */
+    @Test
+    fun thePagesAClientMayNameAreAtTheirAddresses() {
+        for (page in ClientPages.all.filter { it.page != HMENU.pageHome }) assertRoute("/${page.path}", HP.page to page.page)
+        // Home named as a page is written as no page. What names no page -- an address given as a name -- is put on Home's.
+        assertEquals("/", routeHref(listOf(HP.page to HMENU.pageHome)))
+        assertEquals("/", routeHref(listOf(HP.page to "/forms/new")).substringBefore('?'))
     }
 
     @Test

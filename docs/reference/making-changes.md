@@ -116,7 +116,7 @@ someone has started the review. It never decides who may start it.
 | A piece of wording put back to the platform's | Clients page, **Copy** | `POST /clientAdmin/client/copy/reset` | `reset_copy` | No |
 | A menu item renamed, hidden, or shown | Clients page, **Menu** | `POST /clientAdmin/client/menu/set` | `set_menu_item` | No |
 | A menu item put back as shipped | Clients page, **Menu** | `POST /clientAdmin/client/menu/reset` | `reset_menu_item` | No |
-| A card on Home hidden or reworded | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
+| A card on Home added, hidden, or reworded | Clients page, **Sandbox and publishing**, then **Open every bundle** | `POST /clientAdmin/config/bundle/patch` | `patch_config` | Yes |
 | Home's page: what it shows, and in what order | Clients page, **Copy**, the `home` file's own listing: its `page.home` key, written whole, fences and all | `POST /clientAdmin/client/copy/set` | `set_copy` | No |
 
 ## Images

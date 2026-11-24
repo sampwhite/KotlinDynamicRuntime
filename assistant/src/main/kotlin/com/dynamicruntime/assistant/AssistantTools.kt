@@ -85,7 +85,7 @@ object TOOL {
     val docs = listOf(
         HDOC.whatAClientIs, HDOC.makingChanges, HDOC.clientConfiguration, HDOC.schemaDialect, HDOC.validationMessages,
         HDOC.expressions, HDOC.facts, HDOC.copy, HDOC.reportPaths, HDOC.formLayouts, HDOC.menuAndHomeCards,
-        HDOC.rolesAndAccess,
+        HDOC.pageWidgets, HDOC.rolesAndAccess,
         // The design notes that open with a guide (issues #1809, #1810).
         HDOC.sandboxes, HDOC.reporting, HDOC.configFileRefs, HDOC.uiBlock, HDOC.clientDefinition,
     )
@@ -275,8 +275,9 @@ object AssistantTools {
                             "is written in, its roles, and the fragment file format), '${HDOC.reportPaths}' (how a report column's path is " +
                             "written, and every attribute it can end in), '${HDOC.formLayouts}' (what a type's g-layout may hold, and " +
                             "how a client's layout changes the shared one), '${HDOC.menuAndHomeCards}' (how the menu and Home's cards " +
-                            "are changed, and every item the platform ships), '${HDOC.rolesAndAccess}' (what each role grants, and who " +
-                            "may call what), a page of the demo client's " +
+                            "are changed, the pages they may open, and every item the platform ships), '${HDOC.pageWidgets}' (how a page " +
+                            "written as copy, such as Home or one of the client's own, is laid out), '${HDOC.rolesAndAccess}' (what each " +
+                            "role grants, and who may call what), a page of the demo client's " +
                             "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through, " +
                             "or a page of the grants demo's ('${GrantsDemo.docIdPrefix}README' lists them), which rewords every piece " +
                             "of copy a client is likely to, theme by theme.",

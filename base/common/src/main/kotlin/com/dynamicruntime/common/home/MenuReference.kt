@@ -81,7 +81,7 @@ block and, in its content, each item it changes. The menu's block is `$${HMENU.b
 | `$${HFLD.id}` | Which item. Required, and never changed: it is how every layer finds the item. |
 | `$${HFLD.label}` | The words shown. |
 | `$${UIB.cfactExpression}` | Who is offered it, as a test written in [facts](facts.md). |
-| `$${UIB.action}` | What choosing it does: a string opens that page, and an array calls a function, then its arguments. `["$${HACT.openPage.name}", "<key>"]` opens a [page of the client's own](page-widgets.md#pages-of-your-own), which the client must have. |
+| `$${UIB.action}` | What choosing it does: a string opens the page it names, one of [the pages an action opens](#the-pages-an-action-opens), and an array calls a function, then its arguments. `["$${HACT.openPage.name}", "<key>"]` opens a [page of the client's own](page-widgets.md#pages-of-your-own), which the client must have. |
 | `$${UIB.parentId}` | The item it sits under, for one level of nesting. A parent is drawn as a group header and has no action of its own. |
 | `$${UIB.displayOrder}` | Where it sorts. The platform's items are spaced $${UIB.orderStep} apart, so an item can land between two. |
 
@@ -123,6 +123,17 @@ An overlay is checked when its configuration is written, and refused for a block
 declared, a call to a function the application does not have, or nesting that is not one level under a header with no
 action. In a client with a sandbox, the write is made from the sandbox, and is a draft until it is published.
 
+## The pages an action opens
+
+An action's string is a page's **name**, from this table, and never its address: `"$${HMENU.pageNewForm}"` opens the New form,
+where `"/forms/new"` names no page, and opens Home. A link written in Markdown, as in a card's words or a page's, is the
+other way around: it gives the page's address, `[Start a form](/wa/forms/new)`, which works wherever the app is served.
+
+$${pageTable()}
+
+A page decides for itself who may use it, so an item that opens one belongs under a condition its readers meet. A
+component's pages and the deployment's own are not in the table.
+
 ## Changing an item with the menu editor
 
 The client's **Menu** panel changes one item at a time without any JSON, and the endpoints behind it do the same:
@@ -141,6 +152,40 @@ $${audienceTable()}
 Home's cards are the block `$${HCARD.block}`, their items under `$${HCARD.cards}`, and change the way the menu's items do:
 named by id, hidden with `$${CFACT.neverName}`, reworded with a new `$${HCARD.title}` or `$${HCARD.text}`. They have no editor, so a
 change is an overlay in the client's configuration.
+
+**Adding one.** This is a whole overlay, adding a card with a button that starts a form, for anyone signed in:
+
+```json
+{
+  "$${CCT.blockId}": "$${HCARD.block}",
+  "$${CCT.content}": {
+    "$${HCARD.cards}": [
+      {
+        "$${HFLD.id}": "startForm",
+        "$${HCARD.title}": "Start a form",
+        "$${HCARD.text}": "Begin a new one here. The ones you have made are under [your forms](/wa/forms).",
+        "$${UIB.action}": "$${HMENU.pageNewForm}",
+        "$${HCARD.actionLabel}": "Start a form",
+        "$${UIB.cfactExpression}": "kdr:loggedIn,kdr:app",
+        "$${UIB.displayOrder}": 50
+      }
+    ]
+  }
+}
+```
+
+| Key | What it means |
+|---|---|
+| `$${HFLD.id}` | Which card. Required, and never changed. |
+| `$${HCARD.title}` | The card's heading. |
+| `$${HCARD.text}` | The card's words, in Markdown. |
+| `$${UIB.action}` | The page its button opens, by [its name](#the-pages-an-action-opens). Always a page: a card's action never calls a function, so a page of the client's own is linked from the card's words instead, at its address. |
+| `$${HCARD.actionLabel}` | The words on the button. **A card without them has no button**, whatever its action. |
+| `$${HCARD.links}` | Links drawn under its words, each a `$${HCARD.linkLabel}` and an `$${UIB.action}` naming a page. An overlay that gives them replaces them all. |
+| `$${HCARD.actionFirst}` | `true` for the page's call to action: its button is drawn before its words. |
+| `$${HCARD.jumpLabel}` | The words of a link to the card, in the row of links under Home's title. |
+| `$${UIB.cfactExpression}` | Who is shown it, as a test written in [facts](facts.md). Left out, everyone is. |
+| `$${UIB.displayOrder}` | Where it sorts. A card added by an overlay needs one: 50 puts it ahead of the platform's shortcuts for administrators and editors, and after what waits on the reader. |
 
 **Where a card is drawn** is a page's to say, not the card's. Home is a page written as copy (the
 `$${HFRAG.home}` file's `$${HFRAG.pageNs}.$${HFRAG.pageHome}` key), and each `cardsBlock` fence in it draws the cards it names, or every
@@ -211,6 +256,13 @@ private fun menuTable(menu: List<Map<String, Any?>>, labels: Map<String?, String
         }
         appendLine("| ${code(id)} | ${cell(item[HFLD.label].toOptStr())} | $under | $does | ${shownTo(item)} |")
     }
+}.trimEnd()
+
+/** One row per page a client's people may be sent to: its name, its address, and what it is. */
+private fun pageTable(): String = buildString {
+    appendLine("| Name | Address in Markdown | What it is |")
+    appendLine("|---|---|---|")
+    for (page in ClientPages.all) appendLine("| ${code(page.page)} | ${code(ClientPages.address(page))} | ${cell(page.about)} |")
 }.trimEnd()
 
 /** One row per core home card: its id, its title, and who it is shown to. */

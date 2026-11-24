@@ -8,9 +8,12 @@ import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.home.ClientPages
 import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HDOC
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -195,6 +198,37 @@ object Checks {
             )
             else -> Outcome.notMet("It shows none of ${own.joinToString()}.")
         }
+    }
+
+    /**
+     * A card on Home that opens the New form (issue #1869): by its button, which takes an action naming the page **and** an
+     * action label, by one of its links, or by a link in its words. Varied when a card opens some other page. A card whose
+     * action is an address, or has no words for its button, opens nothing: until the guide said how, every run wrote one
+     * such, and a check that asked only for a card passed it.
+     */
+    fun homeCardStartsForm(r: TrialResult): Outcome {
+        val cards = r.view.homeCards.filter { it[HCARD.title] != null }
+        if (cards.isEmpty()) {
+            return Outcome.notMet("No card added or reworded on Home." + r.view.homeCards.takeIf { it.isNotEmpty() }
+                ?.let { " Its overlay: ${it.joinToString { c -> cardSummary(c) }}." }.orEmpty())
+        }
+        val summary = cards.joinToString("; ") { cardSummary(it) }
+        val opened = cards.flatMap { cardOpens(it) }
+        return when {
+            HMENU.pageNewForm in opened -> Outcome.met(summary)
+            opened.isNotEmpty() -> Outcome.varied("Opens ${opened.joinToString()}, not the New form: $summary")
+            else -> Outcome.notMet("Opens no page: $summary")
+        }
+    }
+
+    /** The pages [card] opens, by name: its button's, its links', and those its words link. */
+    private fun cardOpens(card: Map<String, Any?>): List<String> {
+        fun named(item: Map<String, Any?>, label: String): String? =
+            (item[UIB.action] as? String)?.takeIf { !item[label].toOptStr().isNullOrBlank() && ClientPages.forName(it) != null }
+        val text = card[HCARD.text].toOptStr().orEmpty()
+        return listOfNotNull(named(card, HCARD.actionLabel)) +
+            card[HCARD.links].toJsonListOfMaps().mapNotNull { named(it, HCARD.linkLabel) } +
+            ClientPages.all.filter { "](${ClientPages.address(it)})" in text }.map { it.page }
     }
 
     /**

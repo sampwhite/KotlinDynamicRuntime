@@ -39,7 +39,7 @@ block and, in its content, each item it changes. The menu's block is `homeMenu` 
 | `id` | Which item. Required, and never changed: it is how every layer finds the item. |
 | `label` | The words shown. |
 | `cfactExpression` | Who is offered it, as a test written in [facts](facts.md). |
-| `action` | What choosing it does: a string opens that page, and an array calls a function, then its arguments. `["openPage", "<key>"]` opens a [page of the client's own](page-widgets.md#pages-of-your-own), which the client must have. |
+| `action` | What choosing it does: a string opens the page it names, one of [the pages an action opens](#the-pages-an-action-opens), and an array calls a function, then its arguments. `["openPage", "<key>"]` opens a [page of the client's own](page-widgets.md#pages-of-your-own), which the client must have. |
 | `parentId` | The item it sits under, for one level of nesting. A parent is drawn as a group header and has no action of its own. |
 | `displayOrder` | Where it sorts. The platform's items are spaced 100 apart, so an item can land between two. |
 
@@ -81,6 +81,35 @@ An overlay is checked when its configuration is written, and refused for a block
 declared, a call to a function the application does not have, or nesting that is not one level under a header with no
 action. In a client with a sandbox, the write is made from the sandbox, and is a draft until it is published.
 
+## The pages an action opens
+
+An action's string is a page's **name**, from this table, and never its address: `"newForm"` opens the New form,
+where `"/forms/new"` names no page, and opens Home. A link written in Markdown, as in a card's words or a page's, is the
+other way around: it gives the page's address, `[Start a form](/wa/forms/new)`, which works wherever the app is served.
+
+| Name | Address in Markdown | What it is |
+|---|---|---|
+| `home` | `/wa/` | Home. |
+| `newForm` | `/wa/forms/new` | The New form: starts a form, with the client's creation workflow. For anyone signed in. |
+| `forms` | `/wa/forms` | The forms list: a person's own, or every form for an administrator or an editor. |
+| `workflows` | `/wa/workflows` | The client's workflows, with how many forms are in each. |
+| `files` | `/wa/files` | The files forms hold. |
+| `profile` | `/wa/profile` | The person's own account. |
+| `docs` | `/wa/docs` | The documents the deployment lists. |
+| `login` | `/wa/login` | Logging in. |
+| `register` | `/wa/register` | Registering. |
+| `claim` | `/wa/claim` | Claiming an account an administrator created. |
+| `reports` | `/wa/reports` | Reports. For an administrator. |
+| `users` | `/wa/users` | The client's users. For an administrator or an editor. |
+| `clients` | `/wa/clients` | The client's own page: its configuration. For an administrator. |
+| `customers` | `/wa/customers` | The customer's page. For an administrator of its root client. |
+| `apiKeys` | `/wa/api-keys` | API keys. For an administrator. |
+| `catalog` | `/wa/catalog` | The endpoint catalog. |
+| `cfacts` | `/wa/operator/cfacts` | The client's facts. For an operator or an administrator. |
+
+A page decides for itself who may use it, so an item that opens one belongs under a condition its readers meet. A
+component's pages and the deployment's own are not in the table.
+
 ## Changing an item with the menu editor
 
 The client's **Menu** panel changes one item at a time without any JSON, and the endpoints behind it do the same:
@@ -107,6 +136,40 @@ it offers, and an item may also be put back to the one it shipped with:
 Home's cards are the block `homeCards`, their items under `cards`, and change the way the menu's items do:
 named by id, hidden with `#never`, reworded with a new `title` or `text`. They have no editor, so a
 change is an overlay in the client's configuration.
+
+**Adding one.** This is a whole overlay, adding a card with a button that starts a form, for anyone signed in:
+
+```json
+{
+  "blockId": "homeCards",
+  "content": {
+    "cards": [
+      {
+        "id": "startForm",
+        "title": "Start a form",
+        "text": "Begin a new one here. The ones you have made are under [your forms](/wa/forms).",
+        "action": "newForm",
+        "actionLabel": "Start a form",
+        "cfactExpression": "kdr:loggedIn,kdr:app",
+        "displayOrder": 50
+      }
+    ]
+  }
+}
+```
+
+| Key | What it means |
+|---|---|
+| `id` | Which card. Required, and never changed. |
+| `title` | The card's heading. |
+| `text` | The card's words, in Markdown. |
+| `action` | The page its button opens, by [its name](#the-pages-an-action-opens). Always a page: a card's action never calls a function, so a page of the client's own is linked from the card's words instead, at its address. |
+| `actionLabel` | The words on the button. **A card without them has no button**, whatever its action. |
+| `links` | Links drawn under its words, each a `label` and an `action` naming a page. An overlay that gives them replaces them all. |
+| `actionFirst` | `true` for the page's call to action: its button is drawn before its words. |
+| `jumpLabel` | The words of a link to the card, in the row of links under Home's title. |
+| `cfactExpression` | Who is shown it, as a test written in [facts](facts.md). Left out, everyone is. |
+| `displayOrder` | Where it sorts. A card added by an overlay needs one: 50 puts it ahead of the platform's shortcuts for administrators and editors, and after what waits on the reader. |
 
 **Where a card is drawn** is a page's to say, not the card's. Home is a page written as copy (the
 `home` file's `page.home` key), and each `cardsBlock` fence in it draws the cards it names, or every
