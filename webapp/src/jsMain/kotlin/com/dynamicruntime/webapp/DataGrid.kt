@@ -3,7 +3,9 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.parseExactBool
 import com.dynamicruntime.common.schema.tableRowLimit
 import com.dynamicruntime.common.table.TableColumn
 import com.dynamicruntime.common.table.TableSummary
@@ -529,35 +531,24 @@ private val GridRowView = memo(
 )
 
 /**
- * The editor of the cell being edited: a choice's list; a day's calendar, unless the edit began with a key typed; or a
- * box of text for anything else.
+ * The editor of the cell being edited: a choice's list; a yes or no's list of the two, as a form's yes-or-no field
+ * offers them; a day's calendar; or a box of text for anything else. A yes or no and a day begin with a box of text
+ * instead when the edit began with a key typed, so `y` or a day typed goes where it is typed.
  */
 private fun ChildrenBuilder.cellEditor(column: TableColumn, edit: GridEdit, handlers: GridHandlers) {
     if (column.kind == ReportKind.date && !edit.typed) {
         dayEditor(edit, handlers)
         return
     }
+    if (column.kind == ReportKind.boolean && !edit.typed) {
+        val now = parseExactBool(edit.text.trim())?.toString()
+        choiceEditor(friendlyBooleanOptions, now, column.required, handlers)
+        return
+    }
     val options = column.type.options
     if (options != null && column.closedChoices) {
-        Select {
-            size = "small"
-            value = options.firstOrNull { it.value == edit.text || it.label.equals(edit.text, ignoreCase = true) }?.value
-            this.options = optionsToJs(options)
-            asDynamic()["autoFocus"] = true
-            asDynamic()["defaultOpen"] = true
-            virtual = false
-            showSearch = true
-            style = js("({ width: '100%' })")
-            onChange = { v -> handlers.choose(v.toString()) }
-            asDynamic()["onKeyDown"] = { e: dynamic ->
-                val key = e.key as String
-                if ((key == "Escape" || key == "Tab") && handlers.editorKey(key, e.shiftKey == true)) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                }
-            }
-            asDynamic()["onBlur"] = { handlers.commit() }
-        }
+        val now = options.firstOrNull { it.value == edit.text || it.label.equals(edit.text, ignoreCase = true) }?.value
+        choiceEditor(options, now, column.required, handlers)
         return
     }
     input {
@@ -572,6 +563,34 @@ private fun ChildrenBuilder.cellEditor(column: TableColumn, edit: GridEdit, hand
             }
         }
         onBlur = { handlers.commit() }
+    }
+}
+
+/**
+ * A list's editor, open on the cell's value ([selected]): one of [options] picked commits it; an optional column's
+ * value may be cleared, as a form's choice may. Tab and Escape are the grid's, as in every editor.
+ */
+private fun ChildrenBuilder.choiceEditor(options: List<SchOption>, selected: String?, required: Boolean, handlers: GridHandlers) {
+    Select {
+        size = "small"
+        value = selected
+        this.options = optionsToJs(options)
+        asDynamic()["autoFocus"] = true
+        asDynamic()["defaultOpen"] = true
+        virtual = false
+        showSearch = true
+        allowClear = !required
+        style = js("({ width: '100%' })")
+        // Cleared, the value is undefined: the cell is emptied.
+        onChange = { v -> handlers.choose((v as Any?)?.toString().orEmpty()) }
+        asDynamic()["onKeyDown"] = { e: dynamic ->
+            val key = e.key as String
+            if ((key == "Escape" || key == "Tab") && handlers.editorKey(key, e.shiftKey == true)) {
+                e.preventDefault()
+                e.stopPropagation()
+            }
+        }
+        asDynamic()["onBlur"] = { handlers.commit() }
     }
 }
 

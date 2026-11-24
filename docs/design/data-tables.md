@@ -169,11 +169,13 @@ spreadsheet's tab-separated cells (a header row skipped, rows added up to the fi
 said, columns past the grid dropped), add and remove rows, copy a block as tab-separated text, sum up each column, list the problems (a repeated
 key among them), and write the CSV a save stores.
 
-**The grid** (`DataGrid.kt`) edits a table field in the form: typed into, keyed through as a spreadsheet is, pasted
-into from one, a choice picked from its list and a day from a calendar, its rows sorted by a column's header (the table
-itself reordered, as a spreadsheet's Sort does, and saved so; the read-only table sorts only what it shows), each column summed up in its footer by a function picked for it, and each problem marked on its cell and
+**The grid** (`DataGrid.kt`) edits a table field in the form: typed into, keyed through as a spreadsheet is, pasted into
+from one, a choice picked from its list, a yes or no from Yes and No, and a day from a calendar, its rows sorted by a
+column's header (the table itself reordered, as a spreadsheet's Sort does, and saved so; the read-only table sorts only
+what it shows), each column summed up in its footer by a function picked for it, and each problem marked on its cell and
 listed under it. **It is saved with the form**, never as it is typed: on Save the page flushes its grids (`TableDrafts`)
 -- a grid with a problem stops the save, with the cursor on the cell; each changed table is uploaded once as a new CSV
 file, and its id set in the field -- and then sends the form, whose save checks the table again and stores its
-summaries. An empty field gets its file this way, and a grid emptied of rows saves a header-only one. Reset reloads every
-grid from its field's file, and a grid's own Reset table reloads it alone. Outside a page that can save a form, a table field is a file field, a CSV uploaded whole.
+summaries. An empty field gets its file this way, and a grid emptied of rows saves a header-only one. Reset reloads
+every grid from its field's file, and a grid's own Reset table reloads it alone. Outside a page that can save a form, a
+table field is a file field, a CSV uploaded whole.

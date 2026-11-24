@@ -322,7 +322,7 @@ val TextArea: ComponentType<InputProps> = Input.asDynamic().TextArea.unsafeCast<
 /** The two choices a three-state boolean offers. The wire values, verbatim — see the widget's note on labels. */
 private val booleanOptions = listOf(SchOption("true", "true"), SchOption("false", "false"))
 /** As a listing's cells and a report's say them (the kernel's `yesNoText`). */
-private val friendlyBooleanOptions = listOf(SchOption("true", "Yes"), SchOption("false", "No"))
+internal val friendlyBooleanOptions = listOf(SchOption("true", "Yes"), SchOption("false", "No"))
 
 /**
  * Whether a boolean field has only **two** reachable states, so a checkbox can express it (issue #261).
