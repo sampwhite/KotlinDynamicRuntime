@@ -79,7 +79,7 @@ class ReportBindTest {
     private val unionDefs = mapOf(
         "$ns.Payment" to mapOf(
             SCH.type to SCT.kObject,
-            SCH.oneOf to listOf(mapOf(SCH.dRef to "#/\$defs/$ns.Card"), mapOf(SCH.dRef to "#/\$defs/$ns.Cash")),
+            SCH.oneOf to listOf(mapOf(SCH.dRef to $$"#/$defs/$$ns.Card"), mapOf(SCH.dRef to $$"#/$defs/$$ns.Cash")),
             SCH.discriminator to mapOf(SCH.propertyName to "kind"),
         ),
         // Both declare `total` as a number; they disagree on `settled`, a flag on a card and a count on cash.
