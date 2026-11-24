@@ -120,8 +120,8 @@ The chunks are put together, and the file is checked before it is ready:
   5,000 rows, 100 columns, and 10,000 characters a cell. The refusal names the line. Excel's `application/vnd.ms-excel`
   and `text/x-csv` are taken as CSV too, and a CSV file is served as a download, never shown in the page; the Files
   page saves a copy made safe for a spreadsheet instead of the stored text (`Csv.spreadsheetCopy`). A file that is not
-  UTF-8 -- most often Excel's plain "CSV", written in a Windows code page -- is told to be saved as "CSV UTF-8". No field
-  may hold one until a field can declare a table's columns (#1882), so for now one is uploaded but linked by no form.
+  UTF-8 -- most often Excel's plain "CSV", written in a Windows code page -- is told to be saved as "CSV UTF-8". A
+  **table field** holds one (#1882, `data-tables.md`), whose save also checks its rows against the field's columns.
   The stored text is never rewritten -- not even to keep a cell from being read as a formula, which is done only to a
   copy made for a spreadsheet (`Csv.spreadsheetSafe`). Theme: #DTABL.
 - **The plan still has room**: asked again, since two uploads begun at once can each have found room the other took.
@@ -169,6 +169,7 @@ current. A file a field names that it did not name before the write must be:
 
 - a live data file of the form's own client, no longer uploading;
 - of a kind the field takes, and no larger than its limit;
+- for a table field, a table its columns read: every row fitting the field's row type (#1882, `data-tables.md`);
 - one the caller may use: in their read scope -- their own, or any of the client's for an administrator or an editor --
   or already named by this form, so saving a form someone else put a file on needs no right to the file. The system's
   own writes use whatever the form names.

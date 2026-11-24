@@ -62,6 +62,12 @@ enum class SchemaError : ProblemCode {
      */
     badPrimaryKey,
 
+    /**
+     * A table field that cannot hold a table (issue #1882): a `g-fileRows` whose row type is not an object of declared
+     * scalar columns, or a column of a kind a CSV cell cannot carry -- a timestamp, a file, a derived or secret value.
+     */
+    badTable,
+
     /** Nesting past the depth cap -- in practice, a raw map that refers to itself. */
     tooDeep,
 }
@@ -120,7 +126,9 @@ class SchParseState {
     val pendingItemRefs = mutableListOf<PendingItemRef>()
     val pendingMapValueRefs = mutableListOf<PendingMapValueRef>()
     val pendingBranchRefs = mutableListOf<PendingBranchRef>()
-    val pendingKeyedTypes = mutableListOf<PendingKeyedType>()
+    val pendingKeyedTypes = mutableListOf<PendingTypeCheck>()
+    val pendingFileRowRefs = mutableListOf<PendingFileRowRef>()
+    val pendingTableTypes = mutableListOf<PendingTypeCheck>()
     private val segments = ArrayDeque<String>()
 
     fun enter(segment: String) = segments.addLast(segment)

@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.filekind.FileKind
+import com.dynamicruntime.common.table.DTAB
 
 /**
  * A parsed, resolved JSON Schema type — the consumption form used for validation,
@@ -66,6 +68,14 @@ class SchType(
      * bytes, or null when each kind's own largest applies. See [fileSizeLimit].
      */
     val fileMaxSize: Long? = null,
+    /**
+     * Custom `g-fileRows` keyword (resolved, issue #1882): the type of one row of the CSV table a table field holds,
+     * whose properties are its columns. Null on every other type. Like [itemType], a `$ref` is bound in the
+     * resolution pass, so it is set after construction there.
+     */
+    var fileRowType: SchType? = null,
+    /** Custom `g-fileMaxRows` keyword (resolved, issue #1882): the most rows the table may hold, or null for the default. */
+    val fileMaxRows: Int? = null,
     /**
      * Custom `g-counter` keyword (resolved, issue #1849): the id of the client counter that fills this plain string,
      * or null for an ordinary field. See [SCH.counter].
@@ -265,6 +275,18 @@ fun SchType.fileSizeLimit(kind: FileKind): Long? {
     if (fileKinds.none { it.id == kind.id }) return null
     return fileMaxSize?.let { minOf(it, kind.maxSize) } ?: kind.maxSize
 }
+
+/**
+ * Whether this is a **table field** (issue #1882): a [SFMT.dataFile] field holding a CSV table, whose rows are
+ * [SchType.fileRowType]. Read from its kinds, which the parser holds to exactly `csv` on such a field, so it is known
+ * before a `$ref` row type is bound.
+ *
+ * Theme: #DTABL.
+ */
+fun SchType.isDataTable(): Boolean = isDataFile() && fileKinds.size == 1 && fileKinds[0].id == FKIND.csv
+
+/** The most rows this table field's table may hold: its own [SchType.fileMaxRows], else [DTAB.defaultMaxRows]. */
+fun SchType.tableRowLimit(): Int = fileMaxRows ?: DTAB.defaultMaxRows
 
 /**
  * The modes of the `g-outerWhitespace` keyword (issues #541, #765), resolved from its [SOWS] wire values. An

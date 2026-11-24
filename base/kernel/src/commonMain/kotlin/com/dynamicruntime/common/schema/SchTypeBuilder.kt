@@ -4,6 +4,7 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.config.KdrConfigData
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.toOptT
 import com.dynamicruntime.common.util.toT
@@ -584,6 +585,20 @@ open class SchTypeBuilder(
         format = SFMT.dataFile
         data[SCH.fileKinds] = kinds.toList()
         if (maxSize != null) data[SCH.fileMaxSize] = maxSize
+    }
+
+    /**
+     * Marks this schema as a **table field** (issue #1882): a [dataFile] holding a CSV table, each row of which is a
+     * [rowType] -- a named type, referenced, qualified with this builder's namespace when bare -- whose properties are the
+     * table's columns. At most [maxRows] rows when given (else 1,000), and at most [maxSize] bytes (else the CSV kind's
+     * own largest).
+     *
+     * Theme: #DTABL.
+     */
+    fun dataTable(rowType: String, maxRows: Int? = null, maxSize: Long? = null) {
+        dataFile(FKIND.csv, maxSize = maxSize)
+        data[SCH.fileRows] = mapOf(SCH.dRef to typeRefPath(rowType, namespace))
+        if (maxRows != null) data[SCH.fileMaxRows] = maxRows
     }
 
     /**

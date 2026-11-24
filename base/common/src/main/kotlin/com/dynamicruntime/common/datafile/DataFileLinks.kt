@@ -24,6 +24,7 @@ import com.dynamicruntime.common.gedra.gedraDataTopic
 import com.dynamicruntime.common.gedra.traitDataTypeIn
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.fileSizeLimit
+import com.dynamicruntime.common.schema.isDataTable
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
@@ -54,7 +55,7 @@ import kotlin.time.Instant
  * **Only a live form counts.** A form soft-deleted keeps its links, since it may be brought back, but holds no file in
  * use, opens no file to a reader, and is not said to use one.
  *
- * Theme: #DFILE.
+ * Themes: #DFILE, #DTABL.
  */
 object DataFileLinks {
     private const val tranLinkFile = "linkDataFile"
@@ -184,6 +185,8 @@ object DataFileLinks {
         }
         val size = record[DFILE.size].toOptLong() ?: 0L
         if (size > limit) return "The field $field takes a ${kind.label} file of at most $limit bytes; '${use.fileId}' is $size."
+        // A table field's file is read against its columns (issue #1882): a bad row refuses the save, as a bad value does.
+        if (use.field.isDataTable()) return DataTables.problem(cxt, file, use.field, field)
         return null
     }
 

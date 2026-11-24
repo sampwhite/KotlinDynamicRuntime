@@ -88,14 +88,18 @@ class PickedFile(val kind: FileKind?, val problem: String?)
  * Judges a picked file for field [vt] before anything is sent, from its first bytes [head] (at least
  * [FileKindSniff.headSize] of them, or the whole file) and its [size]: by what its **bytes** are, as the server judges
  * it, never by the name or the type the browser guessed -- a phone's photo named `.png` that is a JPEG is found here,
- * not after its upload. The kind found is what the upload is sent as.
+ * not after its upload. The kind found is what the upload is sent as. A kind with no mark, told by parsing the whole
+ * file ([FileKinds.parsedKinds], a CSV table, issue #1882), is taken when the field takes it and the bytes carry no
+ * other kind's mark: the server parses it when its upload finishes, and a table field's save reads its rows.
  */
 fun judgePick(vt: SchType, head: ByteArray, size: Long): PickedFile {
     if (size < 1) return PickedFile(null, "This file is empty.")
     val takes = dataFileKindsText(vt)
+    val sniffed = FileKindSniff.sniff(head)
     val kind = FileKindSniff.sniff(head, vt.fileKinds)
+        ?: vt.fileKinds.firstOrNull { FileKinds.isParsed(it) }?.takeIf { sniffed == null }
     if (kind == null) {
-        val found = FileKindSniff.sniff(head)?.let { "a ${it.label} file" } ?: "none of these"
+        val found = sniffed?.let { "a ${it.label} file" } ?: "none of these"
         return PickedFile(null, "This field takes only $takes; this file is $found.")
     }
     val limit = vt.fileSizeLimit(kind) ?: return PickedFile(null, "This field takes only $takes.")

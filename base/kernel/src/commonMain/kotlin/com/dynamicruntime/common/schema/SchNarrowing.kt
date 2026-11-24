@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.filekind.FileKind
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.overlay.OverlayMergeError
+import com.dynamicruntime.common.table.DTAB
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
 import com.dynamicruntime.common.util.ProblemLocation
@@ -37,7 +38,9 @@ import com.dynamicruntime.common.util.toOptStr
  *  3. **More required**: [SCH.required] as a superset of the base's.
  *
  * A file field's kinds and largest size ([SCH.fileKinds], [SCH.fileMaxSize], issue #1834) narrow as a choice list does:
- * fewer kinds, or smaller files of each kind it keeps -- judged by the limit in force, not by the keyword alone.
+ * fewer kinds, or smaller files of each kind it keeps -- judged by the limit in force, not by the keyword alone. A
+ * table field's rows (issue #1882) narrow as an array's items do: an inline row type by these same rules, a `$ref` one
+ * not at all, and [SCH.fileMaxRows] only downward.
  *
  * Anything else that affects validation is refused, naming the alternative.
  *
@@ -130,6 +133,9 @@ enum class NarrowingError : ProblemCode {
 
     /** A file field made to hold a larger file of some kind than the type's does (issue #1834). */
     raisesFileMaxSize,
+
+    /** A table field made to hold more rows than the type's does (issue #1882). */
+    raisesFileMaxRows,
 }
 
 private fun narrowed(code: NarrowingError, at: String, message: String) =
@@ -175,7 +181,9 @@ private val presentationKeys = setOf(
  *
  * Theme: #NARRW.
  */
-private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions, SCH.fileKinds, SCH.fileMaxSize)
+private val narrowingKeys = setOf(
+    SCH.properties, SCH.options, SCH.required, SCH.openOptions, SCH.fileKinds, SCH.fileMaxSize, SCH.fileMaxRows,
+)
 
 /**
  * Keys whose merge rule already says what an alteration may do with them, and refuses the rest as a merge problem
@@ -208,15 +216,22 @@ private fun compare(
     checkOpenOptions(path, at, base, variant, out)
     checkRequired(path, at, base, variant, out)
     checkFileField(path, at, base, variant, out)
+    checkFileMaxRows(path, at, base, variant, out)
     // An array's elements are judged by the same rules (issue #1119): elements accepting less make an array that
     // accepts less, so a list of several choices may be narrowed as a single choice is.
     val baseItems = (base[SCH.items] as? Map<*, *>)?.toJsonMap()
     val variantItems = (variant[SCH.items] as? Map<*, *>)?.toJsonMap()
     val itemsCompared = baseItems != null && variantItems != null
     if (itemsCompared) compare("$path[]", "$at.${SCH.items}", baseItems, variantItems, out)
+    // A table's rows the same way (issue #1882), when both declare them inline: a `$ref` is the shared type, which an
+    // alteration may only restate, so it is compared as any keyword is.
+    val baseRows = (base[SCH.fileRows] as? Map<*, *>)?.toJsonMap()?.takeIf { SCH.dRef !in it }
+    val variantRows = (variant[SCH.fileRows] as? Map<*, *>)?.toJsonMap()?.takeIf { SCH.dRef !in it }
+    val rowsCompared = baseRows != null && variantRows != null
+    if (rowsCompared) compare("$path rows", "$at.${SCH.fileRows}", baseRows, variantRows, out)
     for (key in base.keys + variant.keys) {
         val judgedElsewhere = key in presentationKeys || key in narrowingKeys || (typeLevel && key in mergeRuledKeys)
-        if (judgedElsewhere || (key == SCH.items && itemsCompared)) {
+        if (judgedElsewhere || (key == SCH.items && itemsCompared) || (key == SCH.fileRows && rowsCompared)) {
             continue
         }
         if (base[key] != variant[key]) {
@@ -343,6 +358,24 @@ private fun checkFileField(path: String, at: String, base: Map<String, Any?>, va
         NarrowingError.raisesFileMaxSize, "$at.${SCH.fileMaxSize}",
         "'$path' allows a ${raised.label} file of up to ${limitInForce(max, raised).toLong()} bytes, above the type's " +
             "${limitInForce(baseMax, raised).toLong()}. A client may lower a file field's largest size, never raise it.",
+    )
+}
+
+/**
+ * A table field narrows by holding fewer rows (issue #1882): its `g-fileMaxRows` may be lowered, and set where the
+ * base left the default, never raised -- each read as the parser reads it, unset being [DTAB.defaultMaxRows].
+ *
+ * Themes: #DTABL, #NARRW.
+ */
+private fun checkFileMaxRows(path: String, at: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<Problem>) {
+    if (base[SCH.fileRows] == null) return
+    val baseMax = base[SCH.fileMaxRows].toOptDoubleOrNull() ?: DTAB.defaultMaxRows.toDouble()
+    val max = variant[SCH.fileMaxRows].toOptDoubleOrNull() ?: DTAB.defaultMaxRows.toDouble()
+    if (max <= baseMax) return
+    out += narrowed(
+        NarrowingError.raisesFileMaxRows, "$at.${SCH.fileMaxRows}",
+        "'$path' allows a table of up to ${max.toLong()} rows, above the type's ${baseMax.toLong()}. A client may lower " +
+            "a table field's most rows, never raise it.",
     )
 }
 

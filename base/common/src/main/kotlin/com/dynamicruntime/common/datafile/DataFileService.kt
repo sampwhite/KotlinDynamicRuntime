@@ -100,6 +100,15 @@ object DataFileService {
 
     private fun contentKeyOf(row: GedraDataRow, hash: String): String = "${folderOf(row)}files/$hash"
 
+    /**
+     * The bytes of [row], a ready data file, read whole and checked against their hash; null when the store no longer
+     * has them. For a file small enough to hold in memory -- a table's (issue #1882), held to its kind's 4 MiB.
+     */
+    fun bytesOf(cxt: KdrCxt, row: GedraDataRow): ByteArray? {
+        val hash = fileOf(row)[DFILE.hash].toOptStr() ?: return null
+        return FileStoreService.get(cxt).forOwner(cxt, ownerOf(row)).get(cxt, DFILE.bucket, contentKeyOf(row, hash))?.bytes
+    }
+
     /** The data file [fileId] when the caller's read scope admits it; a 404 otherwise, absent or not theirs alike. */
     fun readable(cxt: KdrCxt, fileId: String): GedraDataRow =
         GedraDataService.get(cxt).queryGedra(cxt, fileId, GedraDataType.dataFile, ReadScopeRules.forCaller(cxt))

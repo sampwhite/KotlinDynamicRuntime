@@ -188,6 +188,7 @@ object SchStdKeywords {
     fun nodePlace(keyword: String): String = when (keyword) {
         SCH.items -> "in its item schema"
         SCH.additionalProperties -> "in its value schema"
+        SCH.fileRows -> "in its row type"
         else -> "in its '$keyword' schema"
     }
 

@@ -109,7 +109,7 @@ format means adding a helper and a predicate — not special-casing at each call
   `{"type": "string", "format": "gedra-file", "g-fileKinds": ["mp4", "webm"], "g-fileMaxSize": …}` (issue #1834).
   The value is a **data file record's id**, never the bytes: the file is uploaded apart from the form, and a trait
   field holds only its id. `g-fileKinds` is required and names ids of the kernel's data kinds (`FileKinds.kinds`:
-  png, jpeg, webp, gif, mp4, webm, pdf -- never SVG, HTML, or script); `g-fileMaxSize` is optional, and a file is held
+  png, jpeg, webp, gif, mp4, webm, pdf, csv -- never SVG, HTML, or script); `g-fileMaxSize` is optional, and a file is held
   to the smaller of it and its kind's own largest (`fileSizeLimit(kind)`). A file's kind is told by its **bytes**
   (`FileKindSniff`), never by its declared type or name. The parser refuses the field without kinds, an unknown or
   repeated kind, a size above every kind's own, either keyword off such a field, and the free-text keywords
@@ -118,6 +118,21 @@ format means adding a helper and a predicate — not special-casing at each call
   since a PNG's own 20 MB is lower. `DataFileFields.collect(type, value)` finds every file a value names, by its type,
   however deep; only a string names a file.
   <!-- Theme: #DFILE -->
+
+- **A CSV table in a form's data** — `dataTable("ExpenseLine", maxRows = 500)` →
+  `{"type": "string", "format": "gedra-file", "g-fileKinds": ["csv"], "g-fileRows": {"$ref": "#/$defs/ns.ExpenseLine"},
+  "g-fileMaxRows": 500}` (issue #1882). A file field whose file is a table: **the row type's properties are its
+  columns**, and the CSV's header names them, in any order. `g-fileRows` takes a `$ref` (the builder qualifies a bare
+  name) or an inline object, bound like `items`; `g-fileMaxRows` is 1 to 5,000, and 1,000 unset
+  (`tableRowLimit()`); `isDataTable()` says which file fields are tables. The parser holds the two together -- `csv`
+  only alone and only with `g-fileRows`, either table keyword only on such a field -- and, once refs are bound, the row
+  type to 1 to 100 declared **scalar** columns: a string (choices allowed), an integer, a number, a boolean, or a day
+  (`dayOnlyDate()`). A timestamp, a file, a derived, counted, secret, or `g-visibleWhen` column is refused, as is a
+  name with spaces around it. The column's own `required`, bounds, choices, and `pattern`, and the row type's
+  `g-primaryKey` (unique across rows), are what a table is checked against when the form naming it is saved
+  (`readTable` in the kernel's `common.table`: "Row 4, Amount: 'abc' is not a number."). A client's alteration may
+  lower `g-fileMaxRows` and narrow an inline row type by the usual rules; a `$ref` row type stays the same.
+  <!-- Theme: #DTABL -->
 
 ## Character rules: `visibleOnly`
 

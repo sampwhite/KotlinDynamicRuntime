@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filekind.FileKind
 import com.dynamicruntime.common.filekind.FKIND
 import com.dynamicruntime.common.filekind.FileKinds
+import com.dynamicruntime.common.table.CSVT
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemLocation
@@ -85,6 +86,12 @@ fun parseSchemaTypesInto(
         value.map.additionalValueType = registry[value.refName]
             ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$${value.refName}'.")
     }
+    // And a table field's row type whose `g-fileRows` was a $ref, the same way (issue #1882).
+    for (rows in state.pendingFileRowRefs) {
+        state.at(rows.path)
+        rows.field.fileRowType = registry[rows.refName]
+            ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$${rows.refName}'.")
+    }
     // Bind a union's branches for the same reason: a branch is normally a $ref, and one of them may refer
     // back to the union itself. Done a whole union at a time so the branches land in the order the document
     // declared them, mixed inline and $ref included -- "branch 3" in a boot-check message has to be the
@@ -106,6 +113,11 @@ fun parseSchemaTypesInto(
     for (keyed in state.pendingKeyedTypes) {
         state.at(keyed.path)
         primaryKeyProblem(keyed.type, keyed.where)?.let { throw schemaFault(SchemaError.badPrimaryKey, it) }
+    }
+    // A table's columns are judged once every `$ref` is bound (issue #1882): its row type, and a column's type, may be one.
+    for (table in state.pendingTableTypes) {
+        state.at(table.path)
+        tableRowsProblem(table.type, table.where)?.let { throw schemaFault(SchemaError.badTable, it) }
     }
     return parsed
 }
@@ -154,9 +166,16 @@ class PendingItemRef(val array: SchType, val refName: String, val path: String)
 @KdrPrivate
 class PendingMapValueRef(val map: SchType, val refName: String, val path: String)
 
-/** A [type] declaring a `g-primaryKey`, whose fields are judged once the resolution pass binds them; [where] names it. */
+/** A table field ([field]) whose `g-fileRows` is a `$ref` ([refName]), awaiting binding in the resolution pass. */
 @KdrPrivate
-class PendingKeyedType(val type: SchType, val path: String, val where: String)
+class PendingFileRowRef(val field: SchType, val refName: String, val path: String)
+
+/**
+ * A [type] whose fields are judged once the resolution pass binds them -- one declaring a `g-primaryKey`, or a table
+ * field, whose columns are -- and [where] names it.
+ */
+@KdrPrivate
+class PendingTypeCheck(val type: SchType, val path: String, val where: String)
 
 /** One declared branch: parsed in place ([inline]) or named for the resolution pass ([refName]). */
 @KdrPrivate
@@ -434,6 +453,7 @@ fun parseNode(
     val format = map[SCH.format].toOptStr()
     val variants = parseVariants(name, map, state, depth)
     val (fileKinds, fileMaxSize) = parseDataFile(where, map, jsonType, format)
+    val tableRows = parseDataTable(where, map, fileKinds, state, depth)
     val (minBound, minExclusive) = parseBound(where, map, jsonType, lower = true)
     val (maxBound, maxExclusive) = parseBound(where, map, jsonType, lower = false)
     val schType = SchType(
@@ -449,6 +469,8 @@ fun parseNode(
         longText = parseLongText(map[SCH.longText], name, jsonType, format, hasOptions = map[SCH.options] != null),
         fileKinds = fileKinds,
         fileMaxSize = fileMaxSize,
+        fileRowType = tableRows.inline,
+        fileMaxRows = tableRows.maxRows,
         pattern = parsePattern(where, map[SCH.pattern], jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
@@ -493,9 +515,13 @@ fun parseNode(
     if (itemRefName != null) {
         state.pendingItemRefs.add(PendingItemRef(schType, itemRefName, childPath(state.path().orEmpty(), SCH.items)))
     }
+    if (tableRows.refName != null) {
+        state.pendingFileRowRefs.add(PendingFileRowRef(schType, tableRows.refName, childPath(state.path().orEmpty(), SCH.fileRows)))
+    }
+    if (schType.isDataTable()) state.pendingTableTypes.add(PendingTypeCheck(schType, state.path().orEmpty(), where))
     // Its key's fields are judged once their `$ref`s are bound (issue #1521): a field's type may be a reference.
     if (schType.primaryKey.isNotEmpty()) {
-        state.pendingKeyedTypes.add(PendingKeyedType(schType, state.path().orEmpty(), where))
+        state.pendingKeyedTypes.add(PendingTypeCheck(schType, state.path().orEmpty(), where))
     }
     // The union was parsed before the type that owns it existed; give the boot check the name to complain
     // about now that it does.
@@ -797,6 +823,106 @@ fun isDataFileFormat(format: String?): Boolean = format == SFMT.dataFile
  */
 fun isNonTextFormat(format: String?): Boolean = isDateFormat(format) || isBinaryFormat(format) || isDataFileFormat(format)
 
+/** A table field's rows as [parseDataTable] reads them: an [inline] row type, or a [refName] to bind; its [maxRows]. */
+@KdrPrivate
+class TableRowsParse(val inline: SchType?, val refName: String?, val maxRows: Int?)
+
+/**
+ * Reads a table field's `g-fileRows` and `g-fileMaxRows` (issue #1882), or nothing when the field declares neither.
+ * Refuses, naming [where]: `g-fileRows` on a field whose [kinds] are not exactly `csv` -- off a file field it was
+ * already refused by [parseDataFile] -- and `g-fileMaxRows` without it, or that is not a whole number from 1 to
+ * [CSVT.maxRows]. The row type is parsed like an array's `items`: inline in place, or a `$ref` left to the
+ * resolution pass. What its columns may be is judged after that pass ([tableRowsProblem]).
+ *
+ * Theme: #DTABL.
+ */
+@KdrPrivate
+fun parseDataTable(where: String, map: Map<String, Any?>, kinds: List<FileKind>, state: SchParseState, depth: Int): TableRowsParse {
+    val rawRows = map[SCH.fileRows]
+    val rawMax = map[SCH.fileMaxRows]
+    if (rawRows == null) {
+        if (rawMax != null) {
+            throw schemaFault(
+                SchemaError.notApplicable,
+                "$where has '${SCH.fileMaxRows}', which applies to a field holding a CSV table, one with '${SCH.fileRows}'.",
+            )
+        }
+        return TableRowsParse(null, null, null)
+    }
+    if (kinds.map { it.id } != listOf(FKIND.csv)) {
+        throw schemaFault(
+            SchemaError.notApplicable,
+            "$where has '${SCH.fileRows}', the rows of a CSV table, so it must hold only '${FKIND.csv}' in '${SCH.fileKinds}'.",
+        )
+    }
+    val maxRows = rawMax?.let { raw ->
+        val n = (raw as? Number)?.toDouble() ?: raw.toOptStr()?.toDoubleOrNull()
+        if (n == null || n < 1 || n > CSVT.maxRows || n != kotlin.math.floor(n)) {
+            throw schemaFault(
+                SchemaError.badValue,
+                "$where sets '${SCH.fileMaxRows}' to ${describeSchemaValue(raw)}; it must be a whole number of rows from 1 " +
+                    "to ${CSVT.maxRows}.",
+            )
+        }
+        n.toInt()
+    }
+    // The keyword's shape is an object, checked before this ([SchGKeywords]).
+    val rowsMap = (rawRows as Map<*, *>).toJsonMap()
+    val ref = rowsMap[SCH.dRef].toOptStr()
+    if (ref != null) {
+        refSiblingProblem("The '${SCH.fileRows}' of ${where.replaceFirstChar { it.lowercase() }}", rowsMap, refAnnotationKeys)
+            ?.let { throw it.toException() }
+        return TableRowsParse(null, refTargetName(ref), maxRows)
+    }
+    state.enter(SCH.fileRows)
+    val inline = parseNode(null, rowsMap, state, depth + 1, where = "$where (${SchStdKeywords.nodePlace(SCH.fileRows)})")
+    state.exit()
+    return TableRowsParse(inline, null, maxRows)
+}
+
+/**
+ * What is wrong with table field [field]'s row type (issue #1882), or null: it must be an object that declares its
+ * columns -- 1 to [CSVT.maxColumns] properties, no union, no undeclared ones -- and each column a value a CSV cell
+ * holds as text: a string (choices allowed), an integer, a number, a boolean, or a day. Refused on a column: a
+ * timestamp, a file, binary content, a derived or counted value, a secret, and a visibility gate, none of which a cell
+ * can carry or a grid show. A column's name is a header's, which is read without the spaces around it, so it may have
+ * none. [where] names the field.
+ *
+ * Theme: #DTABL.
+ */
+@KdrPrivate
+fun tableRowsProblem(field: SchType, where: String): String? {
+    val rows = field.fileRowType ?: return "$where holds a CSV table but has no row type in '${SCH.fileRows}'."
+    val inRows = "$where (${SchStdKeywords.nodePlace(SCH.fileRows)})"
+    if (rows.jsonType != SCT.kObject || rows.variants != null) {
+        return "$inRows must be an object whose properties are the table's columns."
+    }
+    if (rows.properties.isEmpty()) return "$inRows declares no columns; each of its properties is one."
+    if (rows.additionalProperties || rows.additionalValueType != null) {
+        return "$inRows takes undeclared properties; a table's columns are the ones it declares."
+    }
+    if (rows.properties.size > CSVT.maxColumns) {
+        return "$inRows declares ${rows.properties.size} columns; a table has at most ${CSVT.maxColumns}."
+    }
+    for ((name, prop) in rows.properties) {
+        val column = "$inRows: column '$name'"
+        if (name.isEmpty() || name.trim() != name) return "$column has spaces around its name, which a header cannot match."
+        val type = prop.valueType
+        val refused = when {
+            !isScalarType(type.jsonType) -> "is not a string, number, integer, or boolean"
+            type.format == SFMT.dateTime -> "is a timestamp; a column holds a day ('${SFMT.date}') at most"
+            type.format == SFMT.dataFile || type.format == SFMT.binary -> "is a file"
+            type.derived -> "is derived"
+            type.counter != null -> "is numbered by a counter"
+            prop.sensitive -> "is a secret"
+            prop.visibleWhen != null -> "is shown only by a fact ('${SCH.visibleWhen}')"
+            else -> null
+        }
+        if (refused != null) return "$column $refused, which a cell of a CSV table cannot carry."
+    }
+    return null
+}
+
 /**
  * Reads a [SFMT.dataFile] field's `g-fileKinds` and `g-fileMaxSize` (issue #1834), or nothing when the type is no such
  * field. Refuses, naming [where]:
@@ -804,7 +930,8 @@ fun isNonTextFormat(format: String?): Boolean = isDateFormat(format) || isBinary
  * - either keyword on any other type, where it would constrain nothing;
  * - such a field without its kinds, or with an empty list -- a file field that takes no kind takes nothing;
  * - a kind that is not one of the kernel's data kinds (`FileKinds.kinds`), or one named twice;
- * - [FKIND.csv], a table's kind, which a field may hold only once it declares the table's columns -- not yet (#1882);
+ * - [FKIND.csv], a table's kind, beside any other kind, or without the table's rows ([SCH.fileRows]) -- see
+ *   [parseDataTable];
  * - a largest size that is not a whole number above zero, or that is above every one of its kinds' own largest, where
  *   it would constrain nothing.
  *
@@ -816,7 +943,10 @@ fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, form
     val rawMax = map[SCH.fileMaxSize]
     val isField = jsonType == SCT.string && isDataFileFormat(format)
     if (!isField) {
-        val stray = listOf(SCH.fileKinds to rawKinds, SCH.fileMaxSize to rawMax).firstOrNull { it.second != null }
+        val stray = listOf(
+            SCH.fileKinds to rawKinds, SCH.fileMaxSize to rawMax, SCH.fileRows to map[SCH.fileRows],
+            SCH.fileMaxRows to map[SCH.fileMaxRows],
+        ).firstOrNull { it.second != null }
         if (stray != null) {
             throw schemaFault(
                 SchemaError.notApplicable,
@@ -834,7 +964,7 @@ fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, form
         return emptyList<FileKind>() to null
     }
     val names = (rawKinds as? List<*>)?.map { it.toOptStr() }
-    val known = FileKinds.kinds.filter { it.id != FKIND.csv }.joinToString(", ") { it.id }
+    val known = FileKinds.kinds.joinToString(", ") { it.id }
     if (names.isNullOrEmpty() || names.any { it == null }) {
         throw schemaFault(
             SchemaError.badValue,
@@ -848,15 +978,24 @@ fun parseDataFile(where: String, map: Map<String, Any?>, jsonType: String?, form
             "$where names '$id' in '${SCH.fileKinds}', which is not a kind of file a field may hold. The kinds are: $known.",
         )
     }
-    if (FKIND.csv in names) {
-        throw schemaFault(
-            SchemaError.badValue,
-            "$where names '${FKIND.csv}' in '${SCH.fileKinds}': a CSV table is held by a field that declares its columns, " +
-                "which a field cannot do yet. The kinds are: $known.",
-        )
-    }
     names.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let {
         throw schemaFault(SchemaError.badValue, "$where names '${it.key}' twice in '${SCH.fileKinds}'.")
+    }
+    if (FKIND.csv in names) {
+        if (names.size > 1) {
+            throw schemaFault(
+                SchemaError.badValue,
+                "$where names '${FKIND.csv}' beside other kinds in '${SCH.fileKinds}'. A field holding a CSV table " +
+                    "holds only that: its rows are checked against the table's columns, which no other kind has.",
+            )
+        }
+        if (map[SCH.fileRows] == null) {
+            throw schemaFault(
+                SchemaError.badValue,
+                "$where holds a CSV table ('${FKIND.csv}') but declares no '${SCH.fileRows}', the type of one of its " +
+                    "rows, whose properties are the table's columns.",
+            )
+        }
     }
     if (rawMax == null) return kinds to null
     val max = (rawMax as? Number)?.toDouble() ?: rawMax.toOptStr()?.toDoubleOrNull()
