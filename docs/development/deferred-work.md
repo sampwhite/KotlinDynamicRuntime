@@ -1507,3 +1507,20 @@ a creation workflow that collects that trait in place of the name, and lists the
   numbered with a prefix, digits, and a reset -- that makes the counter, a numbering trait, a creation workflow
   collecting it rather than the name, and the forms list's first column from it. Built when a client is set up that
   wants its forms numbered.
+
+## When the nightly recompute spends its time reading tables
+
+A table's summaries (issue #1883) are derived values, so the nightly `StateRecomputeJob` asks each form whether they
+are current (`computedDataCurrent`) by running its write functions again -- which reads the table each one names: the
+file's bytes through `DataTables` (cached by hash on each node, 32 of them), and for the system a SQL read of the
+file's links (`DataFileLinks.linkState`). A summary changes only when its table does, and only a write changes that,
+so the reading finds nothing to do.
+
+- **An inputs fingerprint beside the target** *(#1883, deferred here 2026-11-24).* Store, beside each summary, the
+  file id and the function's settings it was computed from, and have the recompute skip a function whose inputs match
+  -- recomputing only when the settings changed (a published combine) or the stored value was written by an older
+  rule. Trigger: a recompute run whose time goes mostly to reading table files, or a client with thousands of forms
+  holding tables.
+
+  Where the fingerprint lives -- a sibling key in the entry's data, which would need a place in the schema, or the
+  gedra row's own metadata -- is the question to settle then.

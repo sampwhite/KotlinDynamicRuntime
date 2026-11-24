@@ -4,8 +4,8 @@ A **table field** is a trait field whose value is a CSV file: rows and columns, 
 webapp as a grid, and checked when its form is saved. It is built on data files (`data-files.md`): the field holds a
 file's id, and the table is that file's text.
 
-Built so far: the CSV codec and the `csv` kind (#1881), and table fields (#1882). Planned: summaries of a column stored
-in the trait's derived fields (#1883), the read-only table and the grid's model (#1884), the editable grid (#1885),
+Built so far: the CSV codec and the `csv` kind (#1881), table fields (#1882), and summaries of a column stored in the
+trait's derived fields (#1883). Planned: the read-only table and the grid's model (#1884), the editable grid (#1885),
 and a sample trait (#1886).
 
 Theme: #DTABL.
@@ -98,3 +98,42 @@ other kind's mark (`judgePick`), and leaves the rest to the server.
 **Every save of an edited table is a new file**: data files are immutable, so the grid uploads its rows as a new file
 and the form names it; the old one is unlinked and swept after the grace. When two people edit the same form, the
 last save wins.
+
+## Summaries
+
+A **summary** is one value summing up a column of a table: how many rows, a total, an average, the least, or the
+greatest. The kernel computes it (`TableSummary.summarize`) the way a report rolls up forms -- each cell read as its
+column's kind, empty cells left out, a sum of whole numbers kept whole (falling back to a fraction rather than
+overflowing), an average whole when it comes out whole -- so the grid's footer, which shows one live, and a save, which
+stores one, run the same code and cannot disagree.
+
+**Stored in the trait's own derived fields** by the write function `summarizeTable(target, table, combine, column)`,
+beside `computeValue` among a type's `g-onWrite` functions, so a listing, a report, or a workflow reads a claim's total
+as any field:
+
+```kotlin
+property("lineCount", "How many lines.") { type = SCT.integer; derived = true }
+property("totalAmount", "The lines' total.") { type = SCT.number; derived = true }
+property("lastSpentOn", "The latest day.") { dayOnlyDate(); derived = true }
+onWrite(
+    summarizeTable("lineCount", "lines", ReportCombine.count),
+    summarizeTable("totalAmount", "lines", ReportCombine.sum, "amount"),
+    summarizeTable("lastSpentOn", "lines", ReportCombine.max, "day"),
+)
+```
+
+- **Checked when the type loads**: the table is a table field of the same type; the column, when named, is one of its
+  row type's; the combine is one of the five and allowed for the column's kind (a sum or an average of numbers only, no
+  least or greatest of a yes or no), and a count when no column is named; the target is derived, not gated by
+  `g-visibleWhen`, and holds what the combine gives -- a number (an integer only where the result is always whole), a
+  day for a day's least or greatest, a plain string for text's.
+- **Computed on every write** from the table the field names, read through `DataTables` (cached by hash, so a save that
+  checks a newly named table reads it once). No table, a table that does not fit its columns, or bytes that cannot be
+  read **clear the target** rather than failing the write. The write functions run before the link hook in the same
+  transaction, so a save the link hook refuses for its table rolls the summary back with it.
+- **A system recompute reads only a file some live form links**: it acts on nobody's behalf, and a value stored before
+  its field held tables was never checked.
+- **Stale values** are what any derived value's are: the nightly recompute (`StateRecomputeJob`) asks
+  `computedDataCurrent`, which runs the functions again and compares. A summary changes only with its table, which only
+  a write changes, so a recompute finds it current -- at the cost of reading each form's table to know so (see
+  `deferred-work.md`).
