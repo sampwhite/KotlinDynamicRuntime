@@ -50,6 +50,7 @@ import com.dynamicruntime.common.gedra.report.RCR
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.ReportChartKind
+import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFP
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
@@ -922,6 +923,8 @@ object AssistantTools {
     fun catalogWrites(): List<AssistantTool> {
         val dryRun = dryRunProperty
         val workflowId = WFD.workflowId to stringSchema("The workflow, by its id.")
+        // What a report column's combine and rollup may be (issue #1894).
+        val combines = ReportCombine.entries.map { it.name }
         // A write held to the dry run: the fields given, sent as a draft unless [draft] says the endpoint takes no mode.
         fun write(
             name: String,
@@ -1084,7 +1087,8 @@ object AssistantTools {
             write(
                 ATOOL.createReport,
                 "Makes a report from simple choices, as a draft, in the client's reports configuration: its name, " +
-                    "description, and columns, each a heading and a path from ${ATOOL.readReportPaths}. One-way: a " +
+                    "description, and columns, each a heading and a path from ${ATOOL.readReportPaths}. A totals report " +
+                    "groups by one column and gives each other column a rollup, such as 'sum' for a total. One-way: a " +
                     "report is changed afterwards with patch_config. **Dry run first**: a report that does not bind is " +
                     "refused, saying which column.",
                 objectSchema(
@@ -1095,7 +1099,28 @@ object AssistantTools {
                         objectSchema(
                             RDEF.label to stringSchema("The column's heading."),
                             RDEF.path to stringSchema("What it reads, a path from ${ATOOL.readReportPaths}."),
+                            RCR.key to arraySchema(
+                                "For a path reading a keyed trait's every entry: the key values naming the one entry to " +
+                                    "show, in the order of its key fields.",
+                                mapOf("type" to "string"),
+                            ),
+                            RDEF.combine to mapOf(
+                                "type" to "string",
+                                "enum" to combines,
+                                "description" to "How a path's several values are made one within a form; absent, the " +
+                                    "first, or a list for a path with several.",
+                            ),
                             RCR.groupedBy to mapOf("type" to "boolean", "description" to "A totals report groups by it."),
+                            RDEF.rollup to mapOf(
+                                "type" to "string",
+                                "enum" to combines,
+                                "description" to "In a totals report, how the column is combined across a group's forms: " +
+                                    "'sum' for a total, 'count', 'avg', 'min', or 'max'. A column the chart measures needs one.",
+                            ),
+                            RCR.mustHaveValue to mapOf(
+                                "type" to "boolean",
+                                "description" to "A form appears in the report only with a value in this column.",
+                            ),
                             RCR.charted to mapOf("type" to "boolean", "description" to "The report's chart measures it."),
                             required = listOf(RDEF.label, RDEF.path),
                         ),

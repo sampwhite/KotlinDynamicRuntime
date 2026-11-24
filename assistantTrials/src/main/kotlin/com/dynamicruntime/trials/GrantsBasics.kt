@@ -147,6 +147,7 @@ object GrantsBasics {
                     else -> Outcome.notMet("No report.")
                 }
             },
+            Expectation("The report is made whole by create_report, not patched afterward") { r -> Checks.reportMadeWhole(r) },
         ),
     )
 

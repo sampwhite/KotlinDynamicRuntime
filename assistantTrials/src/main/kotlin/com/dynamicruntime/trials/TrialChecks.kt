@@ -194,6 +194,27 @@ object Checks {
         }
     }
 
+    /**
+     * The report is made whole by [ATOOL.createReport]: no write of [ATOOL.patchConfig] touches a report afterward
+     * (issue #1894). Before the tool took a column's rollup, every run made the report without its total and then patched
+     * the total and the chart in.
+     */
+    fun reportMadeWhole(r: TrialResult): Outcome {
+        val created = r.calls.filter { it.name == ATOOL.createReport && it.dryRun != true && !it.isError }
+        val patched = r.calls.filter { it.name == ATOOL.patchConfig && it.dryRun != true && CCT.reportDef in patchedSlots(it) }
+        return when {
+            created.isEmpty() && patched.isEmpty() -> Outcome.notMet("No report was made.")
+            created.isEmpty() -> Outcome.varied("Made with ${ATOOL.patchConfig} alone, in ${patched.size} write(s).")
+            patched.isNotEmpty() -> Outcome.varied("Made with ${ATOOL.createReport}, then patched in ${patched.size} write(s).")
+            else -> Outcome.met("Made with ${ATOOL.createReport}, and not patched afterward.")
+        }
+    }
+
+    /** The slots the edits of [call], a [ATOOL.patchConfig] call, name. */
+    fun patchedSlots(call: ToolCall): List<String> = call.input[CFEP.configs].toJsonListOfMaps().flatMap { config ->
+        config[CFEP.edits].toJsonListOfMaps().mapNotNull { it[CFEP.slot].toOptStr() }
+    }
+
     /** A reworded key under [file] whose value mentions [term]. */
     fun copyMentions(r: TrialResult, file: String, namespaceTerm: String?, term: String): Outcome {
         val keys = r.view.copyKeys.filterKeys { k ->
@@ -269,11 +290,7 @@ object MethodChecks {
         if (patches.isEmpty()) {
             Outcome.info("None.")
         } else {
-            val slots = patches.flatMap { call ->
-                call.input[CFEP.configs].toJsonListOfMaps().flatMap { config ->
-                    config[CFEP.edits].toJsonListOfMaps().mapNotNull { it[CFEP.slot].toOptStr() }
-                }
-            }.distinct()
+            val slots = patches.flatMap { Checks.patchedSlots(it) }.distinct()
             Outcome.info("${patches.size}, writing ${slots.joinToString().ifEmpty { "no slot named" }}.")
         }
     }
