@@ -5,8 +5,13 @@ webapp as a grid, and checked when its form is saved. It is built on data files 
 file's id, and the table is that file's text.
 
 Built so far: the CSV codec and the `csv` kind (#1881), table fields (#1882), summaries of a column stored in the
-trait's derived fields (#1883), the read-only table and the grid's model (#1884), and the editable grid (#1885).
-Planned: a sample trait (#1886).
+trait's derived fields (#1883), the read-only table and the grid's model (#1884), the editable grid (#1885), and a
+sample trait (#1886). What was left out, and what would bring each back, is in `deferred-work.md`.
+
+**To try it**, the sample component (loaded in developer environments) declares a global trait, `sample:expenseClaim`:
+its `lines` a table of `ExpenseLine`s -- a day, a category (travel, meals, lodging, supplies, other), a description, an
+amount, and whether there is a receipt -- at most 200 of them, and its count, total, and latest day stored on each save.
+The sample client `globex` takes every global trait, so its users' forms carry it.
 
 Theme: #DTABL.
 

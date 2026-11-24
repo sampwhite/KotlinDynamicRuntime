@@ -268,15 +268,14 @@ fun isHeaderRow(cells: List<String>, columns: List<TableColumn>, fromCol: Int): 
 /**
  * [text] -- a spreadsheet's clipboard, tab-separated -- pasted from the top left of the selection: each row into a grid
  * row, rows added as needed while the grid may hold them, columns past the grid's last dropped, and a first row that
- * names the columns ([isHeaderRow]) skipped. Text that is not tab-separated cells, or none at all, changes nothing; a
- * single value fills only the cursor's cell. The cursor and selection then cover what was pasted, and the outcome says
+ * names the columns ([isHeaderRow]) skipped ([pastedRows] reads it). Nothing at all changes nothing; a single value
+ * fills only the cursor's cell. The cursor and selection then cover what was pasted, and the outcome says
  * how many rows did not fit ([GridPaste.droppedRows]).
  */
 fun GridState.paste(text: String): GridPaste {
-    val parsed = Csv.parse(text, CSVT.tab, header = false)
-    if (!parsed.ok || columns.isEmpty()) return GridPaste(this, 0)
+    if (columns.isEmpty()) return GridPaste(this, 0)
     val start = selection?.let { GridCell(it.top, it.left) } ?: GridCell(rows.size, 0)
-    val lines = parsed.rows.let { if (it.isNotEmpty() && isHeaderRow(it.first(), columns, start.col)) it.drop(1) else it }
+    val lines = pastedRows(text).let { if (it.isNotEmpty() && isHeaderRow(it.first(), columns, start.col)) it.drop(1) else it }
     if (lines.isEmpty()) return GridPaste(this, 0)
     var state = this
     // Rows enough for the paste, as many as the grid may hold.
@@ -297,6 +296,19 @@ fun GridState.paste(text: String): GridPaste {
     val lastCol = minOf(start.col + lines.maxOf { it.size }, columns.size) - 1
     val dropped = (start.row + lines.size - pasted.rows.size).coerceAtLeast(0)
     return GridPaste(pasted.copy(active = GridCell(lastRow, lastCol), anchor = start), dropped)
+}
+
+/**
+ * [text], a paste, as its rows of cells: tab-separated text as a spreadsheet writes it, quoted cells and all
+ * ([Csv.parse]) -- or, where it is not that, its lines split at their tabs, so a cell holding a quote mark a spreadsheet
+ * did not quote (`5" screen`) is pasted as typed rather than the whole paste refused. One line end after the last row
+ * ends it.
+ */
+fun pastedRows(text: String): List<List<String>> {
+    val parsed = Csv.parse(text, CSVT.tab, header = false)
+    if (parsed.ok) return parsed.rows
+    val lines = text.removePrefix(CSVT.bom.toString()).split("\r\n", "\n", "\r")
+    return (if (lines.lastOrNull()?.isEmpty() == true) lines.dropLast(1) else lines).map { it.split(CSVT.tab) }
 }
 
 /** The selected block's text, tab-separated, as a spreadsheet takes a paste: what Copy puts on the clipboard. */

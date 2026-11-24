@@ -1546,3 +1546,54 @@ require their numbers to run without a gap.
   original, which stays as it was, and some jurisdictions allow only that for an issued invoice. It is a later
   workflow on top of the trait: create the credit note, link it to the original, and void the original where the
   rules allow.
+
+## When a table needs a column the grid cannot hold
+
+A table field's columns are its row type's properties, held to a string (with choices or without), an integer, a number,
+a boolean, or a day (`tableRowsProblem`, issues #1882 and #1886); `docs/design/data-tables.md` says why.
+
+- **Date-time columns** *(#1886, deferred here 2026-11-24).* A moment in a cell needs a zone: written as UTC in the
+  CSV, shown and entered in the client's zone (`DisplayZone`, `ZonedEntry`) as a form's date-time field is, and read by
+  `typedCell` the same way on both sides. Trigger: a client whose lines need a time of day, not only a day.
+- **A CSV with no declared columns** *(#1886, deferred here 2026-11-24).* A file field of kind `csv` with no
+  `g-fileRows`, holding whatever table is uploaded -- the grid drawing its header's columns as text, nothing checked but
+  the codec's rules, and no summaries, since no column has a kind. Trigger: a client that collects spreadsheets whose
+  shape it does not know ahead.
+
+## When people bring their tables in from elsewhere
+
+The grid takes a spreadsheet's paste (tab-separated, a header row skipped) and a typed cell; a table field outside a
+form surface takes an uploaded CSV whole (issues #1885 and #1886).
+
+- **Importing a CSV file into the grid** *(#1886, deferred here 2026-11-24).* A "Load from file" beside Add row that
+  reads a picked CSV into the grid -- matched to the columns by header, as a save reads one -- replacing or appending to
+  its rows, so a person with a file need not open it to copy it. Trigger: a client whose people keep claims in files.
+- **Numbers in a locale's spelling on paste** *(#1886, deferred here 2026-11-24).* `1.234,56` or `1,234.56` from a
+  spreadsheet set to another locale is read as text today and refused as not a number. Reading the client's locale (or
+  the browser's) when a paste's cells are typed, and storing the plain spelling, would accept it. Trigger: a client
+  whose people work in a locale that writes numbers otherwise.
+
+## When people edit long tables in the grid
+
+The grid draws every row, a memoized row component each (about 10 ms a commit at 1,000 rows), and drops its unsaved
+changes only whole (Reset table) (issue #1885).
+
+- **Undo** *(#1886, deferred here 2026-11-24).* A history of grid states (they are immutable already, so a stack of
+  them), Ctrl+Z and Ctrl+Shift+Z, bounded, cleared by a save. Trigger: a person who loses work to a wrong paste or
+  sort, or asks for it.
+- **Drawing only the rows in view** *(#1886, deferred here 2026-11-24).* Virtualizing the rows past about 1,000, the
+  box's scroll deciding which are drawn, and the cursor scrolling them into view. Trigger: a field whose
+  `g-fileMaxRows` is raised toward 5,000, or a grid that feels slow.
+
+## When a table's summaries must show or slice before a save
+
+A table's summaries are shown live in the grid's footer, by a function picked for each column, and stored in the trait's
+derived fields only when the form is saved (`summarizeTable`, issue #1883).
+
+- **Stored summaries updated live in the form** *(#1886, deferred here 2026-11-24).* A claim's Total field, shown
+  beside the grid, following the grid as it is edited rather than after the save -- by running the field's
+  `summarizeTable` usages in the page, with the kernel's `TableSummary`, as the footer does. Trigger: a client that wants
+  the derived totals shown while a form is filled in.
+- **Summaries grouped or filtered** *(#1886, deferred here 2026-11-24).* A total per category, or of the lines with a
+  receipt: a `summarizeTable` with a `groupBy` column (a map in a derived field) or a `where` on another column. Trigger:
+  a client asking for a breakdown a single total cannot give.

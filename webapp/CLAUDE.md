@@ -577,7 +577,8 @@ each row keeps its typed values and its problems, worked out when the row change
   what it shows.
 - **Copy and paste** go through the clipboard's own events on the box: Copy writes the selected block as tab-separated
   text, and a paste fills from the cursor, skips a header row, adds rows up to the field's limit, and says how many did
-  not fit (`GridPaste.droppedRows`).
+  not fit (`GridPaste.droppedRows`). A paste is read as quoted TSV, or, where it is not that, as lines split at tabs
+  (`pastedRows`), so a cell holding a quote mark a spreadsheet left unquoted (`5" screen`) is pasted as typed.
 - **Saved with the form, not as you type.** The field holds a file's id, so a page that can save a form provides a
   `TableDraftsContext` (`useTableDrafts()`; a workflow page also a `TableDraftsScopeContext` per trait), and each grid
   registers there. Save calls `drafts.flushAll()` first: a grid with a problem refuses (the message names the field, row,

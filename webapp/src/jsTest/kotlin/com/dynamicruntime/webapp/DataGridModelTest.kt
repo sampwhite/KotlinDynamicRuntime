@@ -156,9 +156,13 @@ class DataGridModelTest {
         assertEquals("'extra' is not yes or no (true or false).", g.rows[3].problems[3])
         // A single value fills the cursor's cell.
         assertEquals("99", grid().moveTo(GridCell(1, 2)).paste("99").state.text(GridCell(1, 2)))
-        // Text that is not cells changes nothing.
+        // A quote mark a spreadsheet did not quote is pasted as typed, not the whole paste refused.
+        val quoted = grid().moveTo(GridCell(1, 1)).paste("2026-11-09\ttaxi\t5\" screen")
+        assertEquals("5\" screen", quoted.state.text(GridCell(1, 3)))
+        assertEquals(listOf(listOf("a", "=HYPERLINK(\"x\")"), listOf("b", "")), pastedRows("a\t=HYPERLINK(\"x\")\nb\t\n"))
+        // Nothing at all changes nothing.
         val same = grid()
-        assertEquals(same.cells(), same.paste("a\t\"b").state.cells())
+        assertEquals(same.cells(), same.paste("").state.cells())
     }
 
     @Test
