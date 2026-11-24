@@ -564,10 +564,12 @@ each row keeps its typed values and its problems, worked out when the row change
   (`aria-activedescendant`); Tab leaves it. Arrows move, Shift+arrows select a block, Home/End and Ctrl+Home/End jump,
   Page Up/Down move 20 rows, Enter or F2 edits, a typed character replaces the cell, Delete clears, Space turns a yes or
   no (`onGridKey`). In a cell's editor, Enter commits and moves down (adding a row on the last), Tab and Shift+Tab move
-  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`), and a
-  day column with an antd `DatePicker`, its calendar open, writing the CSV's `yyyy-MM-dd` -- except an edit begun by
-  typing a key (`GridEdit.typed`), which stays a text box, since a picker's box cannot start with the key typed; a
-  typed day is checked as any cell is, and a bad cell is tinted red (`.data-grid-invalid`). A
+  across, Escape drops the edit (`onEditorKey`). A choice column edits with an antd `Select` (`virtual = false`,
+  `choiceEditor`; clearable when the column is optional), a yes-or-no column with the same `Select` over Yes and No (the
+  form's `friendlyBooleanOptions`, writing `true` or `false`), and a day column with an antd `DatePicker`, its calendar
+  open, writing the CSV's `yyyy-MM-dd` -- a yes or no and a day except when the edit began by typing a key
+  (`GridEdit.typed`), which stays a text box, since a picker's box cannot start with the key typed; a typed value is
+  checked as any cell is, and a bad cell is tinted red (`.data-grid-invalid`). A
   click on another cell commits the open edit first (`clickCell`, `openCell`): React draws the click's update before
   the browser moves focus, so the editor is gone before its blur could commit it.
 - **Sorting**: a column's header is a button (`sortableHeader`) -- ascending, then descending, an arrow and
@@ -577,7 +579,10 @@ each row keeps its typed values and its problems, worked out when the row change
   what it shows.
 - **Copy and paste** go through the clipboard's own events on the box: Copy writes the selected block as tab-separated
   text, and a paste fills from the cursor, skips a header row, adds rows up to the field's limit, and says how many did
-  not fit (`GridPaste.droppedRows`).
+  not fit (`GridPaste.droppedRows`). A paste is read by the kernel's codec, lenient about quotes
+  (`Csv.parse(..., lenientQuotes = true)`): a quoted cell holding a line break stays one cell, and a quote mark a
+  spreadsheet left unquoted (`5" screen`) is pasted as typed. Text the codec refuses (a control character, a cell too
+  long) pastes nothing and says why (`GridPaste.refusal`), rather than failing later at the save's upload.
 - **Saved with the form, not as you type.** The field holds a file's id, so a page that can save a form provides a
   `TableDraftsContext` (`useTableDrafts()`; a workflow page also a `TableDraftsScopeContext` per trait), and each grid
   registers there. Save calls `drafts.flushAll()` first: a grid with a problem refuses (the message names the field, row,

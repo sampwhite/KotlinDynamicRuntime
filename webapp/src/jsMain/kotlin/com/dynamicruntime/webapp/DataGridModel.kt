@@ -48,10 +48,11 @@ data class GridEdit(val at: GridCell, val text: String, val typed: Boolean = fal
 class GridRow(val id: Int, val cells: List<String>, val problems: Map<Int, String>, val typed: Map<String, Any?>)
 
 /**
- * A paste's outcome ([GridState.paste]): the grid after it, and how many pasted rows did not fit -- past the most rows
- * the field holds -- which the grid says rather than dropping them unseen.
+ * A paste's outcome ([GridState.paste]): the grid after it, how many pasted rows did not fit -- past the most rows the
+ * field holds -- which the grid says rather than dropping them unseen, and, when the text was not cells at all, the
+ * [refusal] the grid shows, nothing pasted.
  */
-class GridPaste(val state: GridState, val droppedRows: Int)
+class GridPaste(val state: GridState, val droppedRows: Int, val refusal: String? = null)
 
 /** The selected block: rows [top] to [bottom] and columns [left] to [right], each inclusive. */
 data class GridBlock(val top: Int, val left: Int, val bottom: Int, val right: Int) {
@@ -268,13 +269,17 @@ fun isHeaderRow(cells: List<String>, columns: List<TableColumn>, fromCol: Int): 
 /**
  * [text] -- a spreadsheet's clipboard, tab-separated -- pasted from the top left of the selection: each row into a grid
  * row, rows added as needed while the grid may hold them, columns past the grid's last dropped, and a first row that
- * names the columns ([isHeaderRow]) skipped. Text that is not tab-separated cells, or none at all, changes nothing; a
- * single value fills only the cursor's cell. The cursor and selection then cover what was pasted, and the outcome says
- * how many rows did not fit ([GridPaste.droppedRows]).
+ * names the columns ([isHeaderRow]) skipped. The text is read by the kernel's codec, lenient about quotes
+ * ([Csv.parse]): a spreadsheet quotes a cell holding a line break, but leaves `5" screen` as typed. Nothing at all
+ * changes nothing; a single value fills only the cursor's cell. The cursor and selection then cover what was pasted,
+ * and the outcome says how many rows did not fit ([GridPaste.droppedRows]) -- or, for text the codec refuses (a control
+ * character, a cell too long), why nothing was pasted ([GridPaste.refusal]), rather than letting in what a save's
+ * upload would then refuse.
  */
 fun GridState.paste(text: String): GridPaste {
-    val parsed = Csv.parse(text, CSVT.tab, header = false)
-    if (!parsed.ok || columns.isEmpty()) return GridPaste(this, 0)
+    if (columns.isEmpty()) return GridPaste(this, 0)
+    val parsed = Csv.parse(text, CSVT.tab, header = false, lenientQuotes = true)
+    if (!parsed.ok) return GridPaste(this, 0, "Nothing was pasted. ${parsed.problems.first().message}")
     val start = selection?.let { GridCell(it.top, it.left) } ?: GridCell(rows.size, 0)
     val lines = parsed.rows.let { if (it.isNotEmpty() && isHeaderRow(it.first(), columns, start.col)) it.drop(1) else it }
     if (lines.isEmpty()) return GridPaste(this, 0)

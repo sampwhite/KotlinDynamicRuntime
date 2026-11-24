@@ -5,8 +5,13 @@ webapp as a grid, and checked when its form is saved. It is built on data files 
 file's id, and the table is that file's text.
 
 Built so far: the CSV codec and the `csv` kind (#1881), table fields (#1882), summaries of a column stored in the
-trait's derived fields (#1883), the read-only table and the grid's model (#1884), and the editable grid (#1885).
-Planned: a sample trait (#1886).
+trait's derived fields (#1883), the read-only table and the grid's model (#1884), the editable grid (#1885), and a
+sample trait (#1886). What was left out, and what would bring each back, is in `deferred-work.md`.
+
+**To try it**, the sample component (loaded in developer environments) declares a global trait, `sample:expenseClaim`:
+its `lines` a table of `ExpenseLine`s -- a day, a category (travel, meals, lodging, supplies, other), a description, an
+amount, and whether there is a receipt -- at most 200 of them, and its count, total, and latest day stored on each save.
+The sample client `globex` takes every global trait, so its users' forms carry it.
 
 Theme: #DTABL.
 
@@ -17,8 +22,10 @@ judging an uploaded table and the browser reading one agree. It takes CRLF, LF, 
 cell that holds a delimiter, a quote (doubled), or a line break, and drops a leading byte-order mark; it refuses
 control characters but a tab and the line ends, a quote out of place, and a row of another width than the header's,
 each problem naming its line. A header's names are read without the spaces around them, and must be there and
-distinct. At most 5,000 rows, 100 columns, and 10,000 characters a cell. It writes CRLF line ends and a byte-order
-mark, which is how Excel knows the file is UTF-8.
+distinct. A spreadsheet's paste is read leniently about quotes (`lenientQuotes`): a quote opens a quoted cell only at
+the cell's start, and one out of place is text, as a spreadsheet leaves `5" screen` unquoted. At most 5,000 rows, 100
+columns, and 10,000 characters a cell. It writes CRLF line ends and a byte-order mark, which is how Excel knows the file
+is UTF-8.
 
 **Stored text is never rewritten.** A cell beginning `=`, `+`, `-`, or `@` is a formula to a spreadsheet; only a copy
 made to open in one has such a cell guarded with a leading apostrophe (`Csv.spreadsheetCopy`), and a number is left a
@@ -162,11 +169,13 @@ spreadsheet's tab-separated cells (a header row skipped, rows added up to the fi
 said, columns past the grid dropped), add and remove rows, copy a block as tab-separated text, sum up each column, list the problems (a repeated
 key among them), and write the CSV a save stores.
 
-**The grid** (`DataGrid.kt`) edits a table field in the form: typed into, keyed through as a spreadsheet is, pasted
-into from one, a choice picked from its list and a day from a calendar, its rows sorted by a column's header (the table
-itself reordered, as a spreadsheet's Sort does, and saved so; the read-only table sorts only what it shows), each column summed up in its footer by a function picked for it, and each problem marked on its cell and
+**The grid** (`DataGrid.kt`) edits a table field in the form: typed into, keyed through as a spreadsheet is, pasted into
+from one, a choice picked from its list, a yes or no from Yes and No, and a day from a calendar, its rows sorted by a
+column's header (the table itself reordered, as a spreadsheet's Sort does, and saved so; the read-only table sorts only
+what it shows), each column summed up in its footer by a function picked for it, and each problem marked on its cell and
 listed under it. **It is saved with the form**, never as it is typed: on Save the page flushes its grids (`TableDrafts`)
 -- a grid with a problem stops the save, with the cursor on the cell; each changed table is uploaded once as a new CSV
 file, and its id set in the field -- and then sends the form, whose save checks the table again and stores its
-summaries. An empty field gets its file this way, and a grid emptied of rows saves a header-only one. Reset reloads every
-grid from its field's file, and a grid's own Reset table reloads it alone. Outside a page that can save a form, a table field is a file field, a CSV uploaded whole.
+summaries. An empty field gets its file this way, and a grid emptied of rows saves a header-only one. Reset reloads
+every grid from its field's file, and a grid's own Reset table reloads it alone. Outside a page that can save a form, a
+table field is a file field, a CSV uploaded whole.

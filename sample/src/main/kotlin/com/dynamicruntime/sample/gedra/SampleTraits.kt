@@ -2,7 +2,9 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.datafile.summarizeTable
 import com.dynamicruntime.common.filekind.FKIND
+import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -96,6 +98,29 @@ object ST {
 
     /** The largest photograph [siteMedia] takes: below an image's own 20 MB, so the field's limit is the one met. */
     const val photoMaxBytes = 5L * 1024 * 1024
+
+    // --- the expense claim, which exercises a table field and its summaries (issue #1886) ---
+    const val expenseClaim = "sample:expenseClaim"
+    const val expenseClaimEntry = "ExpenseClaimEntry"
+
+    /** One line of a claim: the row type of its table, whose properties are the table's columns. */
+    const val expenseLine = "ExpenseLine"
+    const val spentOn = "spentOn"
+    const val category = "category"
+    const val description = "description"
+    const val amount = "amount"
+    const val receipt = "receipt"
+    const val lines = "lines"
+    const val lineCount = "lineCount"
+    // Its total is [totalAmount], the expense trait's name for one.
+    const val lastSpentOn = "lastSpentOn"
+
+    /** What a line may be for. */
+    val expenseCategories: List<Pair<String, String>> =
+        listOf("travel" to "Travel", "meals" to "Meals", "lodging" to "Lodging", "supplies" to "Supplies", "other" to "Other")
+
+    /** The most lines a claim holds: a claim's, not a ledger's. */
+    const val claimMaxLines = 200
 
     // --- the yearly trait, which exercises a primary key (issue #487): several entries told apart by `year` ---
     const val yearly = "sample:yearly"
@@ -306,6 +331,66 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         }
         property(ST.video, "A video of the site: MP4 (H.264) or WebM.") { dataFile(FKIND.mp4, FKIND.webm) }
         property(ST.report, "A written report, as a PDF.") { dataFile(FKIND.pdf) }
+    }
+
+    // A table field and its summaries (issue #1886): a claim's lines are a CSV table, edited in the form as a grid, whose
+    // columns are `ExpenseLine`'s properties; its count, total, and latest day are stored in the trait's own derived
+    // fields on each save, by the same code the grid's footer runs. Global, so globex carries it, as it does site media.
+    // Theme: #DTABL.
+    type(ST.expenseLine) {
+        type = SCT.kObject
+        description = "One line of an expense claim: what was spent, on what day, and whether there is a receipt."
+        property(ST.spentOn, "The day it was spent.", required = true) {
+            title = "Day"
+            dayOnlyDate()
+        }
+        property(ST.category, "What it was for.") {
+            title = "Category"
+            for ((value, label) in ST.expenseCategories) option(value, label)
+        }
+        property(ST.description, "What it was, in a few words.") { title = "Description" }
+        property(ST.amount, "How much, in the claim's currency.", required = true) {
+            title = "Amount"
+            type = SCT.number
+            minimum = 0
+        }
+        property(ST.receipt, "Whether there is a receipt for it.") {
+            title = "Receipt"
+            type = SCT.boolean
+        }
+    }
+
+    trait(
+        ST.expenseClaimEntry,
+        ST.expenseClaim,
+        setOf(GedraDataType.formDoc),
+        "An expense claim: its lines, a table, and their count, total, and latest day, worked out on each save.",
+    ) {
+        title = "Expense claim"
+        property(ST.lines, "What was spent, a line each: typed or pasted into the grid.") {
+            title = "Lines"
+            dataTable(ST.expenseLine, maxRows = ST.claimMaxLines)
+        }
+        property(ST.lineCount, "How many lines the claim has.") {
+            title = "Lines claimed"
+            type = SCT.integer
+            derived = true
+        }
+        property(ST.totalAmount, "The lines' amounts added up.") {
+            title = "Total"
+            type = SCT.number
+            derived = true
+        }
+        property(ST.lastSpentOn, "The latest day a line was spent on.") {
+            title = "Last spent"
+            dayOnlyDate()
+            derived = true
+        }
+        onWrite(
+            summarizeTable(ST.lineCount, ST.lines, ReportCombine.count),
+            summarizeTable(ST.totalAmount, ST.lines, ReportCombine.sum, ST.amount),
+            summarizeTable(ST.lastSpentOn, ST.lines, ReportCombine.max, ST.spentOn),
+        )
     }
 
     // A trait with a **primary key** (issue #487), and the one that exercises several entries of one trait: a

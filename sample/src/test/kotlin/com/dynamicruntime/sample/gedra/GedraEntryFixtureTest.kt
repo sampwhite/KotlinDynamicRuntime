@@ -139,7 +139,7 @@ class GedraEntryFixtureTest : StringSpec({
         // Sorted by trait id, and every global trait is here -- `siteVisit` included, whose data is a `$ref`
         // to a named type so that a client can narrow it (issue #379).
         explained[GFX.knownTraits] shouldBe
-            listOf(GT.name, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteMedia, ST.siteVisit, ST.yearly)
+            listOf(GT.name, ST.expenseClaim, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteMedia, ST.siteVisit, ST.yearly)
         explained[GFX.branches] shouldBe listOf(GT.name, GFX.default)
     }
 
@@ -273,7 +273,9 @@ class GedraEntryFixtureTest : StringSpec({
         // not change with the order components happened to load in.
         // Sorted by trait id, so the document does not change with the order components happened to load in --
         // which is also why adding `questionnaire` (issue #337) landed it last rather than anywhere.
-        variants.values shouldContainExactly listOf(GT.name, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteMedia, ST.siteVisit, ST.yearly)
+        variants.values shouldContainExactly listOf(
+            GT.name, ST.expenseClaim, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteMedia, ST.siteVisit, ST.yearly,
+        )
         variants.discriminator shouldBe GE.traitId
         // A default branch, always -- see below for why.
         variants.defaultBranch.shouldNotBeNull()
@@ -297,6 +299,6 @@ class GedraEntryFixtureTest : StringSpec({
         strict.map { it.path to it.code } shouldContainExactly listOf(GE.traitId to SchFailCode.invalidOption)
         // The refusal names what this reader does know, which is the actionable half.
         strict.first().options.shouldNotBeNull().map { it.value } shouldContainExactly
-            listOf(GT.name, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteMedia, ST.siteVisit, ST.yearly)
+            listOf(GT.name, ST.expenseClaim, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteMedia, ST.siteVisit, ST.yearly)
     }
 })
