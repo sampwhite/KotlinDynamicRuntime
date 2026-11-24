@@ -77,7 +77,11 @@ private const val enabledPrefix = "enabled:"
 private fun enabledKey(workflowId: String) = enabledPrefix + workflowId
 
 /** What the slot editor is open on: a new workflow from a template, or a workflow made from one. */
-private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let { "edit:$it" } ?: "new:$templateId"
+private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let { editPrefix + it } ?: (newPrefix + templateId)
+
+/** The open editor's prefix for a workflow's slot editor, opened by its **Edit…**, and for a template's, opened by its **Use…**. */
+private const val editPrefix = "edit:"
+private const val newPrefix = "new:"
 
 /**
  * A client's workflows, on its page (issue #1120): the client's own -- each made from a template with **Edit…**, or why
@@ -86,7 +90,9 @@ private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let 
  * their tasks). Read from `/clientAdmin/client/workflows` on mount and on every refresh generation.
  *
  * The slot editor ([WorkflowSlotEditor]) chooses only what a template leaves to the client -- the workflow's name, and
- * per data-entry task its label and traits -- and explains the rest in words ([workflowFixedParts]). A save takes
+ * per data-entry task its label and traits -- and explains the rest in words ([workflowFixedParts]). It opens in a row of
+ * its own beneath what it was asked for on (issue #1891): the workflow's row for **Edit…**, the template's for **Use…**,
+ * so it appears where it was asked for rather than after the templates. A save takes
  * effect as the page's other editors' do; what is stored is the workflow's overlay of the template, which the backend
  * reads over the template, so a fix to the template reaches the workflow.
  *
@@ -223,7 +229,47 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
     val visibilityOf = open?.takeIf { it.startsWith(visibilityPrefix) }?.removePrefix(visibilityPrefix)
     val enabledOf = open?.takeIf { it.startsWith(enabledPrefix) }?.removePrefix(enabledPrefix)
-    val rowEditorOpen = windowsOf != null || visibilityOf != null || enabledOf != null
+    // The workflow whose slots are open (its Edit…), and the template a workflow is being made from (its Use…), each
+    // drawn beneath its row too (issue #1891).
+    val editOf = open?.takeIf { it.startsWith(editPrefix) }?.removePrefix(editPrefix)
+    val newOf = open?.takeIf { it.startsWith(newPrefix) }?.removePrefix(newPrefix)
+    val rowEditorOpen = windowsOf != null || visibilityOf != null || enabledOf != null || editOf != null
+
+    // The slot editor, on [template] -- for [workflow], or a new one made from it -- opened as [key].
+    fun ChildrenBuilder.slotEditor(key: String, template: WfDef, workflow: WfDef?) {
+        WorkflowSlotEditor {
+            // Keyed by what it opened on, so a draft for one never carries into another.
+            this.key = key.unsafeCast<Key>()
+            this.clientId = props.clientId
+            this.workflowCatalog = shown
+            this.template = template
+            this.workflow = workflow
+            this.savesDraft = props.savesDraft
+            formsOpenable = props.formsOpenable
+            newWorkflowNote = props.newWorkflowNote
+            onSaved = { said ->
+                open = null
+                note = said
+                props.onChanged()
+            }
+            onCancel = { open = null }
+            onChanged = props.onChanged
+        }
+    }
+
+    // What an editor opened on, now gone from the catalog, says in its place, with a way to close it.
+    fun ChildrenBuilder.goneNote(text: String) {
+        p {
+            className = ClassName("type-hint")
+            +text
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { open = null }
+                +"Close"
+            }
+        }
+    }
 
     if (shown.workflows.isEmpty()) {
         p {
@@ -346,6 +392,21 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                 }
                             }
                         }
+                        if (editOf == w.def.workflowId) {
+                            tr {
+                                key = "${w.def.workflowId}-edit".unsafeCast<Key>()
+                                td {
+                                    asDynamic()["colSpan"] = 7
+                                    val templateId = w.def.fromTemplate
+                                    val template = templateId?.let { shown.template(it)?.def }
+                                    if (template != null) {
+                                        slotEditor(open.orEmpty(), template, w.def)
+                                    } else {
+                                        goneNote("Its template, '${templateId.orEmpty()}', is not offered by this deployment now.")
+                                    }
+                                }
+                            }
+                        }
                         if (windowsOf == w.def.workflowId && w.windowsOffered) {
                             tr {
                                 key = "${w.def.workflowId}-windows".unsafeCast<Key>()
@@ -424,7 +485,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
 
     if (props.configEditable) h4 { +"Make a workflow from a template" }
     if (props.configEditable) div {
-        className = ClassName("op-table-scroll")
+        className = ClassName(if (newOf != null) "op-table-scroll detail-open" else "op-table-scroll")
         table {
             className = ClassName("op-table")
             thead {
@@ -467,64 +528,29 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             }
                         }
                     }
+                    if (newOf == t.def.workflowId) {
+                        tr {
+                            key = "${t.def.workflowId}-new".unsafeCast<Key>()
+                            td {
+                                asDynamic()["colSpan"] = 4
+                                slotEditor(open.orEmpty(), t.def, null)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // The editor is drawn in its workflow's row above; a workflow gone from under it -- removed by another page -- is
-    // said here, with a way to close it.
+    // Every editor is drawn in its row above; a workflow gone from under it -- removed by another page -- or a template
+    // no longer offered is said here, with a way to close it.
     val rowGone = (windowsOf != null && shown.workflows.none { it.def.workflowId == windowsOf && it.windowsOffered }) ||
-        (visibilityOf != null && shown.workflows.none { it.def.workflowId == visibilityOf })
-    if (rowGone) {
-        p {
-            className = ClassName("type-hint")
-            +"That workflow is gone."
-            Button {
-                type = "link"
-                size = "small"
-                onClick = { open = null }
-                +"Close"
-            }
-        }
-    }
-    open?.takeIf { !rowEditorOpen }?.let { key ->
-        val editing = key.removePrefix("edit:").takeIf { key.startsWith("edit:") }
-        val workflow = editing?.let { id -> shown.workflows.firstOrNull { it.def.workflowId == id }?.def }
-        val templateId = workflow?.fromTemplate ?: key.removePrefix("new:")
-        val template = shown.template(templateId)?.def
-        if (template != null && (editing == null || workflow != null)) {
-            WorkflowSlotEditor {
-                // Keyed by what it opened on, so a draft for one never carries into another.
-                this.key = key.unsafeCast<Key>()
-                this.clientId = props.clientId
-                this.workflowCatalog = shown
-                this.template = template
-                this.workflow = workflow
-                this.savesDraft = props.savesDraft
-                formsOpenable = props.formsOpenable
-                newWorkflowNote = props.newWorkflowNote
-                onSaved = { said ->
-                    open = null
-                    note = said
-                    props.onChanged()
-                }
-                onCancel = { open = null }
-                onChanged = props.onChanged
-            }
-        } else {
-            // What it opened on is gone from the catalog -- the workflow, or its template -- so there is nothing to edit.
-            p {
-                className = ClassName("type-hint")
-                +(if (template == null) "Its template, '$templateId', is not offered by this deployment now." else "That workflow is gone.")
-                Button {
-                    type = "link"
-                    size = "small"
-                    onClick = { open = null }
-                    +"Close"
-                }
-            }
-        }
+        (visibilityOf != null && shown.workflows.none { it.def.workflowId == visibilityOf }) ||
+        (enabledOf != null && shown.workflows.none { it.def.workflowId == enabledOf && it.enabledOffered }) ||
+        (editOf != null && shown.workflows.none { it.def.workflowId == editOf })
+    if (rowGone) goneNote("That workflow is gone.")
+    if (newOf != null && (!props.configEditable || shown.templates.none { it.def.workflowId == newOf })) {
+        goneNote("Its template, '$newOf', is not offered by this deployment now.")
     }
 }
 
@@ -628,9 +654,15 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                         value = task.traits.map { it.traitId }.toTypedArray()
                         options = choiceOptions(traitChoices(props.workflowCatalog, task))
                         disabled = busy
+                        placeholder = "Add a trait"
                         style = js("({ minWidth: 320 })")
                         onChange = { v -> draft = draft.withTaskTraits(task.taskId, (v as Array<*>).mapNotNull { it?.toString() }) }
                     }
+                }
+                // With one trait chosen the list reads as a single choice, and adding one as replacing it (issue #1891).
+                div {
+                    className = ClassName("type-hint")
+                    +"A step may collect several traits: pick another to add it beside these."
                 }
                 if (task.traits.isNotEmpty()) {
                     div {

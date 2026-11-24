@@ -105,14 +105,29 @@ fun ChildrenBuilder.panelLink(id: String, text: String) {
     }
 }
 
-/** The row of links at a page's top, one per panel -- [panels] as `id to heading` -- for a page long enough to want them. */
-fun ChildrenBuilder.panelLinks(panels: List<Pair<String, String>>) {
+/**
+ * The row of links at a page's top, one per panel -- [panels] as `id to heading` -- for a page long enough to want them.
+ * A panel long enough to want its own has links to its sections beside its link ([sections], by the panel's id, each
+ * `id to heading`; issue #1891), scrolled to the same way.
+ */
+fun ChildrenBuilder.panelLinks(panels: List<Pair<String, String>>, sections: Map<String, List<Pair<String, String>>> = emptyMap()) {
     nav {
         className = ClassName("panel-links")
         panels.forEach { (id, title) ->
             span {
                 key = id.unsafeCast<Key>()
                 panelLink(id, title)
+                sections[id]?.takeIf { it.isNotEmpty() }?.let { subs ->
+                    span {
+                        className = ClassName("panel-sublinks")
+                        subs.forEach { (subId, subTitle) ->
+                            span {
+                                key = subId.unsafeCast<Key>()
+                                panelLink(subId, subTitle)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

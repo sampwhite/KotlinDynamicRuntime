@@ -90,7 +90,9 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   - a line saying how a save takes effect here (`clientSaveEffectLine`);
   - a banner, linking down to publishing, while any configuration could be published (`unpublishedBannerText`);
   - the issues, as a warning block;
-  - links to the panels, which scroll rather than set a hash.
+  - links to the panels, which scroll rather than set a hash. Forms and data's link has sub-links to its sections --
+    Traits, Listing columns (Forms listing where it is not edited), Workflows, and Form states, as the panel draws them
+    (issue #1891) -- which scroll the same way, to headings kept clear of the app bar (`.panel h3[id]`).
 - **The panels**, in order:
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
   2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.
@@ -686,10 +688,12 @@ tasks' labels, an approval that names what it shows with that after it (`workflo
 "Approve it (shows Grant application)"). A template is greyed with the backend's reason when a workflow cannot be made
 from it now (a client has one creation and one core details workflow, and a plan limits workflows and their tasks); a
 workflow not made from a template says why its slots cannot be changed here. **Use…** and **Edit…** open
-`WorkflowSlotEditor` on the **slots** -- the kernel's `WfTemplateSlots`: the
-workflow's name, and per data-entry task its label and the traits it collects, each required or not, named as a form
-names it (the catalog's trait `name`, `catalogTraitName`, issue
-#1438) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
+`WorkflowSlotEditor` in a row of its own beneath the template's or the workflow's row (issue #1891), as the parameters'
+editors open, lifting the table's height cap while it is open (`.op-table-scroll.detail-open`), on the **slots** -- the
+kernel's `WfTemplateSlots`: the workflow's name, and per data-entry task its label and the traits it collects, each
+required or not, named as a form names it (the catalog's trait `name`, `catalogTraitName`, issue #1438). **Collects** is
+a multiple choice that, with one trait chosen, reads as a single one, so it says "Add a trait" while empty and has a
+hint under it that a step may collect several (issue #1891) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
 patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a fix

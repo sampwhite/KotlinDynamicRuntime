@@ -2102,6 +2102,13 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 /* A page's panels (issues #1397, #1477; `Panels.kt`): the links to them at its top, each a shaded box, a draft's
    unsaved marker beside its heading, and the danger zone set apart in red. */
 .panel-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 4px; font-size: .9rem; }
+/* A panel's links to its own sections (issue #1891), beside its link, and the sections they scroll to kept clear of the
+   fixed app bar as a panel is. */
+.panel-sublinks { margin-left: 6px; color: var(--text-muted); }
+.panel-sublinks::before { content: "("; }
+.panel-sublinks::after { content: ")"; }
+.panel-sublinks > span + span::before { content: " · "; }
+.panel h3[id] { scroll-margin-top: 84px; }
 .panel {
     margin-top: 20px;
     padding: 16px 20px 20px;
