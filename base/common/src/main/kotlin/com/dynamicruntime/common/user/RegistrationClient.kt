@@ -43,7 +43,11 @@ object REGC {
 object RegistrationClient {
     /** The roles a registration role may not be: every level above `user`, and the capabilities that widen one. */
     private val privileged: Set<String> =
-        RoleLadder.ordered.filter { it != ROLE.user }.toSet() + ROLE.editor + ROLE.allClients
+        buildSet {
+            addAll(RoleLadder.ordered.filter { it != ROLE.user }.toSet())
+            add(ROLE.editor)
+            add(ROLE.allClients)
+        }
 
     /** What a role name may look like: one word, as every role this deployment grants is. */
     private val roleName = Regex("[A-Za-z][A-Za-z0-9_]*")
