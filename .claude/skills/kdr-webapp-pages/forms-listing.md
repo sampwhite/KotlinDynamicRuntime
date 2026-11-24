@@ -381,7 +381,8 @@ its kind and size, and an image or a `<video preload="metadata">` in place (`.da
   field's columns in the order the row type declares them -- a choice by its label, a yes or no in words, numbers right
   aligned -- in a `.data-table-scroll` of at most 420 pixels, a footer summing up each column as the grid will
   (`TableSummary.defaultFor`: a sum for a number, a count otherwise), and how many rows. The file's text is read once
-  through `/files/content` and kept by its id (`DataTableApi.read`, 16 of them). Edited, it is uploaded as any file
+  through `/files/content` and kept by its id with its parse (`DataTableApi`, the 16 used most recently), so **Download
+CSV** reads nothing again. Edited, it is uploaded as any file
   field is until the grid (#1885); the grid's pure model is already `DataGridModel.kt` (`GridState`), covered by
   `DataGridModelTest`.
 - **The field takes the file's id only once the file is ready**, so the form's values never hold one still uploading,

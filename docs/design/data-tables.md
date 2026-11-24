@@ -149,15 +149,17 @@ onWrite(
 a spreadsheet, never the stored text -- then the rows under the field's columns, a choice by its label and a yes or no
 in words, numbers to the right, and a footer summing up each column as the grid will (a total for a number, how many
 are filled in otherwise) by the kernel's `TableSummary`, which a save's stored summaries run too. The file's text is
-read once and kept by its id: content never changes under an id.
+read once and kept by its id -- content never changes under an id -- with its parse, so the table drawn and the copy
+downloaded come from one read; a page keeps the 16 it used most recently.
 
 **The grid's model** (`DataGridModel.kt`) is pure, so every change is a function a test calls: a `GridState` of the
 columns, the rows as cell text (a cell's stored spelling, `canonicalText`), the cursor, the selection, the cell being
-edited, and whether anything changed. A row's problems are worked out when the row changes and kept on it -- each cell
-read as its column's type, then the row checked whole by the validator -- so an edit re-checks one row. Its
+edited, and whether anything changed. A row's typed values and problems are worked out when the row changes and kept
+on it -- each cell read as its column's type, then the row checked whole by the validator -- so an edit re-checks one
+row, and the footer and the problem list read what is kept. Its
 operations: move and stretch the selection, edit and commit (Enter on the last row adding one), clear, paste a
-spreadsheet's tab-separated cells (a header row skipped, rows added up to the field's limit, columns past the grid
-dropped), add and remove rows, copy a block as tab-separated text, sum up each column, list the problems (a repeated
+spreadsheet's tab-separated cells (a header row skipped, rows added up to the field's limit and how many did not fit
+said, columns past the grid dropped), add and remove rows, copy a block as tab-separated text, sum up each column, list the problems (a repeated
 key among them), and write the CSV a save stores.
 
 Until the grid (#1885), a table field is edited as any file field is, by uploading a CSV.

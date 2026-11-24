@@ -22,8 +22,8 @@ import com.dynamicruntime.common.table.writeTable
  *
  * **A cell's text is its stored value**: what the CSV will hold, as typed, a choice by its value and a boolean and a
  * day in their own spellings ([canonicalText]). What a cell means -- its typed value, its problem -- is derived from
- * the text, and a row's problems are kept on the row ([GridRow.problems]), worked out when the row changes, so an edit
- * re-checks one row and a grid of a thousand stays quick.
+ * the text and kept on the row ([GridRow.typed], [GridRow.problems]), worked out when the row changes, so an edit
+ * re-checks one row, and the footer and the problem list read what is kept rather than reading every cell again.
  *
  * Theme: #DTABL.
  */
@@ -34,8 +34,18 @@ data class GridCell(val row: Int, val col: Int)
 /** The cell being edited, [at], and the text in its editor, not yet committed. */
 data class GridEdit(val at: GridCell, val text: String)
 
-/** One row of the grid: a [id] that stays with it however rows move (a React key), its [cells]' text, and its [problems]. */
-class GridRow(val id: Int, val cells: List<String>, val problems: Map<Int, String>)
+/**
+ * One row of the grid: a [id] that stays with it however rows move (a React key), its [cells]' text, its [problems] by
+ * column index, and its [typed] values by column name -- each cell read as its column's type, an empty cell and one
+ * with a problem left out: what the footer sums up and a key is compared by.
+ */
+class GridRow(val id: Int, val cells: List<String>, val problems: Map<Int, String>, val typed: Map<String, Any?>)
+
+/**
+ * A paste's outcome ([GridState.paste]): the grid after it, and how many pasted rows did not fit -- past the most rows
+ * the field holds -- which the grid says rather than dropping them unseen.
+ */
+class GridPaste(val state: GridState, val droppedRows: Int)
 
 /** The selected block: rows [top] to [bottom] and columns [left] to [right], each inclusive. */
 data class GridBlock(val top: Int, val left: Int, val bottom: Int, val right: Int) {
@@ -87,29 +97,27 @@ class GridState(
     val canAddRow: Boolean get() = rows.size < maxRows
 }
 
-/** A row of [cells] for [rowType]'s [columns], with its problems worked out. */
-fun gridRow(id: Int, cells: List<String>, rowType: SchType, columns: List<TableColumn>): GridRow =
-    GridRow(id, cells, rowProblems(cells, rowType, columns))
-
 /**
- * The problems of one row of [cells], by column index: each cell read as its column's type ([typedCell]), then -- when
- * every cell reads -- the row checked whole against [rowType] by the validator, as a save checks it. A failure the
- * validator does not place in a column is put on the first.
+ * A row of [cells] for [rowType]'s [columns], read once: each cell as its column's type ([typedCell]), then -- when every
+ * cell reads -- the row checked whole against [rowType] by the validator, as a save checks it. A failure the validator
+ * does not place in a column is put on the first. The typed values leave out each column with a problem.
  */
-fun rowProblems(cells: List<String>, rowType: SchType, columns: List<TableColumn>): Map<Int, String> {
-    val out = LinkedHashMap<Int, String>()
-    val row = LinkedHashMap<String, Any?>()
+fun gridRow(id: Int, cells: List<String>, rowType: SchType, columns: List<TableColumn>): GridRow {
+    val problems = LinkedHashMap<Int, String>()
+    val typed = LinkedHashMap<String, Any?>()
     columns.forEachIndexed { at, column ->
         val read = typedCell(cells.getOrNull(at).orEmpty(), column)
-        if (read.problem != null) out[at] = read.problem!! else if (read.value != null) row[column.name] = read.value
+        if (read.problem != null) problems[at] = read.problem!! else if (read.value != null) typed[column.name] = read.value
     }
-    if (out.isNotEmpty()) return out
-    for (failure in coerceAndValidate(rowType, row).failures) {
-        val name = failure.path.substringBefore('.').substringBefore('[')
-        val at = columns.indexOfFirst { it.name == name }.takeIf { it >= 0 } ?: 0
-        if (at !in out) out[at] = failure.userMessage ?: failure.message
+    if (problems.isEmpty()) {
+        for (failure in coerceAndValidate(rowType, typed).failures) {
+            val name = failure.path.substringBefore('.').substringBefore('[')
+            val at = columns.indexOfFirst { it.name == name }.takeIf { it >= 0 } ?: 0
+            if (at !in problems) problems[at] = failure.userMessage ?: failure.message
+        }
+        problems.keys.forEach { typed.remove(columns[it].name) }
     }
-    return out
+    return GridRow(id, cells, problems, typed)
 }
 
 /**
@@ -255,14 +263,15 @@ fun isHeaderRow(cells: List<String>, columns: List<TableColumn>, fromCol: Int): 
  * [text] -- a spreadsheet's clipboard, tab-separated -- pasted from the top left of the selection: each row into a grid
  * row, rows added as needed while the grid may hold them, columns past the grid's last dropped, and a first row that
  * names the columns ([isHeaderRow]) skipped. Text that is not tab-separated cells, or none at all, changes nothing; a
- * single value fills only the cursor's cell. The cursor and selection then cover what was pasted.
+ * single value fills only the cursor's cell. The cursor and selection then cover what was pasted, and the outcome says
+ * how many rows did not fit ([GridPaste.droppedRows]).
  */
-fun GridState.paste(text: String): GridState {
+fun GridState.paste(text: String): GridPaste {
     val parsed = Csv.parse(text, CSVT.tab, header = false)
-    if (!parsed.ok || columns.isEmpty()) return this
+    if (!parsed.ok || columns.isEmpty()) return GridPaste(this, 0)
     val start = selection?.let { GridCell(it.top, it.left) } ?: GridCell(rows.size, 0)
     val lines = parsed.rows.let { if (it.isNotEmpty() && isHeaderRow(it.first(), columns, start.col)) it.drop(1) else it }
-    if (lines.isEmpty()) return this
+    if (lines.isEmpty()) return GridPaste(this, 0)
     var state = this
     // Rows enough for the paste, as many as the grid may hold.
     while (state.rows.size < start.row + lines.size && state.canAddRow) {
@@ -280,7 +289,8 @@ fun GridState.paste(text: String): GridState {
     val pasted = state.setCells(changes).copy(editing = null)
     val lastRow = minOf(start.row + lines.size, pasted.rows.size) - 1
     val lastCol = minOf(start.col + lines.maxOf { it.size }, columns.size) - 1
-    return pasted.copy(active = GridCell(lastRow, lastCol), anchor = start)
+    val dropped = (start.row + lines.size - pasted.rows.size).coerceAtLeast(0)
+    return GridPaste(pasted.copy(active = GridCell(lastRow, lastCol), anchor = start), dropped)
 }
 
 /** The selected block's text, tab-separated, as a spreadsheet takes a paste: what Copy puts on the clipboard. */
@@ -290,17 +300,8 @@ fun GridState.copyText(): String {
     return Csv.write(lines, CSVT.tab, bom = false)
 }
 
-/**
- * The rows as their values, by column name, as a summary reads them: each cell typed ([typedCell]), a cell with a problem
- * or an empty one left out.
- */
-fun GridState.typedRows(): List<Map<String, Any?>> = rows.map { row ->
-    buildMap {
-        columns.forEachIndexed { at, column ->
-            if (at !in row.problems) typedCell(row.cells[at], column).value?.let { put(column.name, it) }
-        }
-    }
-}
+/** The rows as their values, by column name, as a summary reads them: each row's kept [GridRow.typed]. */
+fun GridState.typedRows(): List<Map<String, Any?>> = rows.map { it.typed }
 
 /**
  * Each column's summary for the grid's footer: [combines] by column name -- a column not named gets its default
@@ -330,10 +331,9 @@ fun GridState.problems(limit: Int = 10): List<GridProblem> {
     val key = rowType.primaryKey
     if (key.isNotEmpty()) {
         val seen = HashMap<String, Int>()
-        val typed = typedRows()
-        typed.forEachIndexed { r, values ->
-            if (rows[r].problems.isNotEmpty()) return@forEachIndexed
-            val k = key.joinToString("|") { uniquenessKey(values[it]) }
+        rows.forEachIndexed { r, row ->
+            if (row.problems.isNotEmpty()) return@forEachIndexed
+            val k = key.joinToString("|") { uniquenessKey(row.typed[it]) }
             val first = seen[k]
             if (first == null) {
                 seen[k] = r

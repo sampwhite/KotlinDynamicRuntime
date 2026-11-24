@@ -138,7 +138,9 @@ class DataGridModelTest {
     @Test
     fun pastesASpreadsheetsCells() {
         val tsv = "Day\tCategory\tAmount\n2026-11-05\tMeal\t7.25\n2026-11-06\ttaxi\t3\n2026-11-07\t\t1\textra\n"
-        val g = grid(maxRows = 4).moveTo(GridCell(1, 0)).paste(tsv)
+        val outcome = grid(maxRows = 4).moveTo(GridCell(1, 0)).paste(tsv)
+        assertEquals(0, outcome.droppedRows)
+        val g = outcome.state
         // The header row skipped, rows added up to the field's limit, columns past the grid dropped.
         assertEquals(
             listOf(
@@ -153,10 +155,27 @@ class DataGridModelTest {
         assertEquals(GridBlock(1, 0, 3, 3), g.selection)
         assertEquals("'extra' is not yes or no (true or false).", g.rows[3].problems[3])
         // A single value fills the cursor's cell.
-        assertEquals("99", grid().moveTo(GridCell(1, 2)).paste("99").text(GridCell(1, 2)))
+        assertEquals("99", grid().moveTo(GridCell(1, 2)).paste("99").state.text(GridCell(1, 2)))
         // Text that is not cells changes nothing.
         val same = grid()
-        assertEquals(same.cells(), same.paste("a\t\"b").cells())
+        assertEquals(same.cells(), same.paste("a\t\"b").state.cells())
+    }
+
+    @Test
+    fun aPastePastTheFieldsRowsSaysHowManyDidNotFit() {
+        val outcome = grid(maxRows = 3).moveTo(GridCell(1, 0)).paste("2026-11-05\tmeal\t1\n2026-11-06\tmeal\t2\n2026-11-07\tmeal\t3\n")
+        assertEquals(3, outcome.state.rows.size)
+        assertEquals(1, outcome.droppedRows)
+        assertEquals(GridBlock(1, 0, 2, 2), outcome.state.selection)
+    }
+
+    @Test
+    fun aRowKeepsItsTypedValues() {
+        val g = grid()
+        assertEquals(mapOf("day" to LocalDate(2026, 11, 2), "category" to "meal", "amount" to 12.5), g.rows[0].typed)
+        // A cell with a problem, the validator's included, is not among them.
+        assertEquals(mapOf("day" to LocalDate(2026, 11, 2), "category" to "meal"), g.moveTo(GridCell(0, 2)).startEdit("-1").commitEdit().rows[0].typed)
+        assertEquals(mapOf("category" to "meal", "amount" to 12.5), g.moveTo(GridCell(0, 0)).startEdit("May 2").commitEdit().rows[0].typed.minus("day"))
     }
 
     @Test
@@ -186,7 +205,7 @@ class DataGridModelTest {
 
     @Test
     fun writesWhatASaveStores() {
-        val text = grid().addRow().moveTo(GridCell(1, 0)).paste("2026-11-09\ttaxi\t4\tyes").csvText()
+        val text = grid().addRow().moveTo(GridCell(1, 0)).paste("2026-11-09\ttaxi\t4\tyes").state.csvText()
         val read = readTable(line, text)
         assertTrue(read.ok, read.problems.toString())
         assertEquals(3, read.rows.size)
@@ -198,6 +217,10 @@ class DataGridModelTest {
         val columns = grid().columns.associateBy { it.name }
         assertEquals("Meal", tableCellText("meal", columns.getValue("category")))
         assertEquals("Yes", tableCellText("true", columns.getValue("receipt")))
+        // Any spelling a save reads as a yes or a no.
+        assertEquals("Yes", tableCellText("Y", columns.getValue("receipt")))
+        assertEquals("No", tableCellText("0", columns.getValue("receipt")))
+        assertEquals("maybe", tableCellText("maybe", columns.getValue("receipt")))
         assertEquals("12.50", tableCellText("12.50", columns.getValue("amount")))
         assertEquals("Sum 42.5", tableSummaryText(columns.getValue("amount"), 42.5))
         assertEquals("Sum 30", tableSummaryText(columns.getValue("amount"), 30.0))

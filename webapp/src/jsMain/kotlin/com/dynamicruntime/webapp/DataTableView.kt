@@ -4,6 +4,7 @@ import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.filekind.FileKinds
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.parseExactBool
 import com.dynamicruntime.common.schema.tableRowLimit
 import com.dynamicruntime.common.table.Csv
 import com.dynamicruntime.common.table.CsvParsed
@@ -42,24 +43,38 @@ import web.cssom.ClassName
 
 private val tableScope = MainScope()
 
-/** A table file's requests: its text, read once and kept -- a file's content never changes under its id. */
+/**
+ * A table file's requests: its text, read once and kept with its parse -- a file's content never changes under its id --
+ * so the table drawn and the copy downloaded come from one read.
+ */
 object DataTableApi {
-    /** How many files' parses a page keeps: each is at most a 4 MiB file's rows. */
+    /** How many files a page keeps, the least recently used given up first: each at most a 4 MiB file and its rows. */
     const val cacheSize = 16
 
-    private val parsed = LinkedHashMap<String, CsvParsed>()
+    private class Kept(val text: String) {
+        val parsed: CsvParsed by lazy { Csv.parse(text) }
+    }
 
-    /** [fileId]'s content as text, through `/files/content`: a non-2xx is the server's refusal, an `ApiError`. */
-    suspend fun readText(fileId: String): String = Http.getApiText(DFILE.contentPath + queryString(mapOf(DFILE.fileId to fileId)))
+    // In the order they were last used, the least recent first.
+    private val kept = LinkedHashMap<String, Kept>()
 
-    /** [fileId]'s content parsed as a CSV table, with its header ([Csv.parse]), kept for the next asking. */
-    suspend fun read(fileId: String): CsvParsed {
-        parsed[fileId]?.let { return it }
-        val read = Csv.parse(readText(fileId))
-        parsed[fileId] = read
-        while (parsed.size > cacheSize) parsed.remove(parsed.keys.first())
+    /** [fileId]'s content, kept: read through `/files/content` when it is not, a non-2xx the server's refusal (`ApiError`). */
+    private suspend fun keptOf(fileId: String): Kept {
+        kept.remove(fileId)?.let { hit ->
+            kept[fileId] = hit
+            return hit
+        }
+        val read = Kept(Http.getApiText(DFILE.contentPath + queryString(mapOf(DFILE.fileId to fileId))))
+        kept[fileId] = read
+        while (kept.size > cacheSize) kept.remove(kept.keys.first())
         return read
     }
+
+    /** [fileId]'s content as text. */
+    suspend fun readText(fileId: String): String = keptOf(fileId).text
+
+    /** [fileId]'s content parsed as a CSV table, with its header ([Csv.parse]). */
+    suspend fun read(fileId: String): CsvParsed = keptOf(fileId).parsed
 
     /** [fileId]'s content as a copy made safe for a spreadsheet ([Csv.spreadsheetCopy]). */
     suspend fun spreadsheetCopy(fileId: String): String =
@@ -129,19 +144,16 @@ fun useTableFile(fileId: String?): TableFileState {
     return state
 }
 
-/** A cell of [column] as a table shows it: a choice by its label, a yes or no in words, anything else as stored. */
+/**
+ * A cell of [column] as a table shows it: a choice by its label, a yes or no in words -- any spelling a save reads as
+ * one ([parseExactBool]) -- and anything else as stored.
+ */
 fun tableCellText(text: String, column: TableColumn): String {
     val cell = text.trim()
     if (cell.isEmpty()) return ""
     column.type.options?.firstOrNull { it.value == cell }?.let { return it.label }
-    return when (column.kind) {
-        ReportKind.boolean -> when (cell.lowercase()) {
-            "true", "yes" -> "Yes"
-            "false", "no" -> "No"
-            else -> cell
-        }
-        else -> text
-    }
+    if (column.kind == ReportKind.boolean) parseExactBool(cell)?.let { return if (it) "Yes" else "No" }
+    return text
 }
 
 /** A column's summary in words for a table's footer: its function and its value, or nothing when it has none. */
@@ -182,6 +194,7 @@ val DataTableValue = FC<DataTableValueProps> { props ->
     val grid = useMemo(parsed, rowType) {
         if (parsed != null && parsed.ok && rowType != null) loadGrid(rowType, props.type.tableRowLimit(), parsed, props.fileId) else null
     }
+    val footer = useMemo(grid) { grid?.summaries() }
     div {
         className = ClassName("data-table-value")
         div {
@@ -204,7 +217,7 @@ val DataTableValue = FC<DataTableValueProps> { props ->
             parsed == null -> span { className = ClassName("type-hint"); +"Reading the table…" }
             grid == null -> span { className = ClassName("type-hint"); +"The file is not a table that can be read: ${parsed.problems.first().message}" }
             else -> {
-                val summaries = grid.summaries()
+                val summaries = footer ?: emptyMap()
                 div {
                     className = ClassName("op-table-scroll data-table-scroll")
                     table {
