@@ -4,10 +4,12 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -33,6 +35,8 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
+import com.dynamicruntime.common.gedra.globalTraitBases
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -40,11 +44,13 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
@@ -165,6 +171,17 @@ class FormTypesTest : StringSpec({
         site.lead.typeOf(mine) shouldBe "video"
     }
 
+    "an import stores none of its forms when the type of one is refused" {
+        val site = createSite("site1902j")
+        fun imports(vararg types: String) = mapOf(GIF.data to mapOf(EP.items to types.map { body(typed(it)) }))
+        fun held() = site.lead.getItems(GEP.formDocs).size
+        site.lead.refused(EXC.notAuthorized, GEP.formDocImport, imports("lead", "video")) shouldContain "You may not make"
+        site.lead.refused(EXC.badInput, GEP.formDocImport, imports("lead", "nosuch")) shouldContain "has no form type"
+        held() shouldBe 0
+        site.lead.postData(GEP.formDocImport, imports("lead", "note"))
+        held() shouldBe 2
+    }
+
     "a type is fixed once stored, unless it may be left" {
         val site = createSite("site1902c")
         val fixed = site.lead.make(typed("lead"))
@@ -210,6 +227,9 @@ class FormTypesTest : StringSpec({
         // Its labels, wherever a form is shown, are the catalog's.
         val create = site.lead.catalogLookup(clientPath(GEP.formDocCreate, site.client), HttpMethod.POST)
         choicesIn(create[SCH.dDefs]) shouldContainExactly listOf("lead", "video", "note", "memo")
+        // Another client's, for an administrator of every client looking at it.
+        val chief = TestUser.createFullAdmin(cxt, "chief@formtypes1902.test")
+        choicesIn(chief.catalog(mapOf(EI.client to site.client))[SCH.dDefs]) shouldContainExactly listOf("lead", "video", "note", "memo")
         val service = FormTypeService.get(cxt)
         val caller = cxt.mkSubContext("choices", site.client)
         // The form's own though the caller may not set it, and, when the form may not leave it, no other.
@@ -231,6 +251,47 @@ class FormTypesTest : StringSpec({
         // Nor by asking to store a trait the client does not support.
         visitor.refused(EXC.badInput, GEP.formDocCreate, body(typed("lead")) + (GDF.allowAdditionalTraits to true)) shouldContain
             "has no form type 'lead'"
+        // And it is none of the traits a client may narrow.
+        globalTraitBases(cxt).keys.let {
+            it shouldContain GT.name
+            it shouldNotContain GT.formType
+        }
+    }
+
+    "types declared in code are a client's, its sandbox's, and its template's children's, and a marked entry stands over one" {
+        val on = Startup.mkTestBootCxt(
+            "formTypesCode", "formTypesCode", additionalComponents = listOf(FormTypesComponent()),
+        )
+        val code = FormTypesComponent.client
+        fun labels(client: String) = FormTypeService.get(on).forClient(client).mapValues { it.value.label }
+        labels(code) shouldBe mapOf("lead" to "Lead", "note" to "Note")
+        labels(sandboxOf(code)) shouldBe labels(code)
+        val child = "child1902"
+        fun writeChild(build: GedraConfigBuilder.() -> Unit = {}) {
+            val config = gedraConfig(on, "main", clientNamespace(child), child) {
+                defineClient(
+                    ClientDef(
+                        clientId = child, name = child, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local), extendsFromClientId = code,
+                    ),
+                )
+                build()
+            }
+            GedraConfigService.get(on).writeConfig(asClient(child, on), config, trial = true)
+            GedraConfigReload.reloadClient(on, child)
+        }
+        writeChild()
+        labels(child) shouldBe labels(code)
+        // Unmarked, one of the template's ids is refused; marked, the child's stands over it, whole.
+        shouldThrow<KdrException> { writeChild { formType("lead", "Prospect") } }.message.orEmpty() shouldContain "form type 'lead'"
+        writeChild {
+            formType("lead", "Prospect", setWhen = CFACTS.hasAdminLevel)
+            overridesCode("lead")
+        }
+        labels(child) shouldBe mapOf("lead" to "Prospect", "note" to "Note")
+        FormTypeService.get(on).forClient(child).getValue("lead").traits.size shouldBe 0
+        // The template is as it was.
+        labels(code) shouldBe mapOf("lead" to "Lead", "note" to "Note")
     }
 
     "a type that is no good is refused at the write" {
@@ -286,3 +347,26 @@ class FormTypesTest : StringSpec({
         )
     }
 })
+
+/** A component declaring one client in code, with form types and a sandbox. */
+class FormTypesComponent : ComponentDefinition {
+    override val providerName: String = "formTypesFixture"
+
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "base", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Code", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true, includedTraits = listOf(GT.name),
+                ),
+            )
+            formType("lead", "Lead") { trait(GT.name) }
+            formType("note", "Note", mayLeave = true)
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        const val client = "code1902"
+    }
+}

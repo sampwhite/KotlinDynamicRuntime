@@ -2157,7 +2157,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             CounterService.getOrNull(cxt)?.deliveredFor(surface.client, defs)?.takeIf { it.isNotEmpty() }
                 ?.let { result[CTR.counters] = it }
             val providers = svc?.optionsProviders.orEmpty()
-            return resolveOptionsSources(cxt, result, providers)
+            // Bound to the surface's client (issue #1902), as the cfacts above are: a list that is a client's own is the
+            // named client's. Who is asking is unchanged.
+            val bound = surface.client?.takeIf { it != cxt.client }?.let { cxt.mkSubContext("catalogOptions", it) } ?: cxt
+            return resolveOptionsSources(bound, result, providers)
         }
 
         /**

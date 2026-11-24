@@ -19,12 +19,13 @@ class GlobalTraitBase(val traitId: String, val typeName: String, val body: Map<S
 
 /**
  * Every global data trait as a base ([GlobalTraitBase]), keyed by trait id -- what a narrowing narrows and an extension
- * extends (issue #1119). A trait whose data is not a `$ref` to a named type has no type to alter, and is left out.
+ * extends (issue #1119). A trait whose data is not a `$ref` to a named type has no type to alter, and is left out, as is
+ * one that joins no group (issue #1902), which the traits panel does not show.
  */
 fun globalTraitBases(cxt: KdrCxt): Map<String, GlobalTraitBase> {
     val schema = SchemaService.get(cxt)
     val served = schema.schemaStore.servedDefs
-    return schema.gedraTraitsFor(GID.globalClient).mapNotNull { trait ->
+    return schema.gedraTraitsFor(GID.globalClient).filter { it.joinsGroups }.mapNotNull { trait ->
         val typeName = trait.dataSchema[SCH.dRef].toOptStr()?.let(::refName) ?: return@mapNotNull null
         val body = served[typeName].toJsonMapOrEmpty().ifEmpty { return@mapNotNull null }
         trait.traitId to GlobalTraitBase(trait.traitId, typeName, body)

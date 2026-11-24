@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.SchModule
@@ -77,9 +78,29 @@ class FormTypeService : ServiceInitializer {
 
     /** Whether whoever [cxt] acts as may set a form of [client] to [type]. A rule that no longer parses is met by nobody. */
     fun maySet(cxt: KdrCxt, client: String, type: FormTypeDef): Boolean {
-        val rule = type.setWhen ?: return true
+        if (type.setWhen == null) return true
         val registry = SchemaService.get(cxt).cfactsFor(client)
-        return registry.analyze(rule, evaluateWith = registry.assemble(cxt)).value ?: false
+        return isMet(type, registry, registry.assemble(cxt))
+    }
+
+    private fun isMet(type: FormTypeDef, registry: CFactRegistry, facts: Set<String>): Boolean =
+        type.setWhen == null || registry.analyze(type.setWhen, evaluateWith = facts).value ?: false
+
+    /**
+     * Refuses a form of [client] going from the type [old] (null for none) to [new], written by whoever [cxt] acts as:
+     * [FormTypeHook]'s rule, and what a write of several forms asks of each before it stores any.
+     */
+    fun requireAllowed(cxt: KdrCxt, client: String, old: String?, new: String?) {
+        if (old == new) return
+        val types = forClient(client)
+        types[old]?.takeIf { !it.mayLeave }?.let {
+            throw KdrException.mkInput("This form's type, '${it.label}', was settled when it was stored, and does not change.")
+        }
+        if (new == null) return
+        val type = types[new] ?: throw KdrException.mkInput("The client '$client' has no form type '$new'.")
+        if (!maySet(cxt, client, type)) {
+            throw KdrException("You may not make this form's type '${type.label}'.", code = EXC.notAuthorized)
+        }
     }
 
     /** The choices of a form's type: every type of [client], so a type's label is known wherever a form is shown. */
@@ -92,7 +113,11 @@ class FormTypeService : ServiceInitializer {
     fun choicesFor(cxt: KdrCxt, client: String, current: String?): List<SchOption> {
         val types = forClient(client)
         val fixed = types[current]?.takeIf { !it.mayLeave }
-        return types.values.filter { it.formTypeId == current || (fixed == null && maySet(cxt, client, it)) }
+        val registry = SchemaService.get(cxt).cfactsFor(client)
+        // The caller's facts once, for every type's rule.
+        val facts by lazy { registry.assemble(cxt) }
+        return types.values
+            .filter { it.formTypeId == current || (fixed == null && (it.setWhen == null || isMet(it, registry, facts))) }
             .map { SchOption(it.formTypeId, it.label) }
     }
 
@@ -201,6 +226,7 @@ class FormTypeService : ServiceInitializer {
  * no forms (an edge) has too, where the list is empty.
  */
 fun formTypeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.formType") {
+    // `c.client` is the client whose schema is served, which an administrator of every client may name.
     optionsProvider(FTYPE.optionsSource) { c, _ -> FormTypeService.getOrNull(c)?.choices(c.client).orEmpty() }
 }
 
@@ -211,7 +237,8 @@ fun formTypeOf(entries: List<Map<String, Any?>>): String? =
 /**
  * Holds a form's type to its client's form types (issue #1902), on every write of a form's data -- a create, a patch, an
  * import -- inside the write's transaction, so a refusal rolls the whole write back. A sourced choice list takes no part
- * in validation, so this is what makes the choices bind.
+ * in validation, so this is what makes the choices bind. (An import of several forms also asks before it stores any,
+ * since each is a transaction of its own.)
  *
  * - **Unchanged** from what was stored: not judged, even when the type is no longer defined, since removing a type from
  *   the configuration must not make its forms unwritable.
@@ -226,17 +253,6 @@ object FormTypeHook : GedraWriteHook {
     override fun afterWrite(cxt: KdrCxt, write: GedraWriteContext) {
         val old = formTypeOf(write.priorEntries)
         val new = formTypeOf(write.row.entries)
-        if (old == new) return
-        val client = write.row.client
-        val service = FormTypeService.get(cxt)
-        val types = service.forClient(client)
-        types[old]?.takeIf { !it.mayLeave }?.let {
-            throw KdrException.mkInput("This form's type, '${it.label}', was settled when it was stored, and does not change.")
-        }
-        if (new == null) return
-        val type = types[new] ?: throw KdrException.mkInput("The client '$client' has no form type '$new'.")
-        if (!service.maySet(cxt, client, type)) {
-            throw KdrException("You may not make this form's type '${type.label}'.", code = EXC.notAuthorized)
-        }
+        if (old != new) FormTypeService.get(cxt).requireAllowed(cxt, write.row.client, old, new)
     }
 }
