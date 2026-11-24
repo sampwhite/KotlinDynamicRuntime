@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn.grantsdemo
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.RegistrationClient
 
 /**
  * Provisions the grants demo as the node starts (issue #1799), where [GrantsDemo.provisionAtBootKey] says to -- the
@@ -10,7 +11,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  * time, always finds the demo to join. Provisioning again keeps its users and forms, and rewrites only the bundles that
  * changed (a new release's), so it is safe on every start and adds no revisions when nothing changed. On a test
  * instance only, as the simulation is: it makes users at fixed addresses, which a real deployment has no business
- * holding.
+ * holding. And not on a deployment naming a registration client (issue #1867), whose visitors cannot join a demo.
  */
 class GrantsDemoBootService : ServiceInitializer {
     override val serviceName: String = "GrantsDemoBootService"
@@ -23,6 +24,8 @@ class GrantsDemoBootService : ServiceInitializer {
         ready = true
         val config = cxt.instanceConfig
         if (config.get(GrantsDemo.provisionAtBootKey) != true) return
+        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
+        if (RegistrationClient.skipsDemoAtBoot(cxt, "grants demo")) return
         if (!config.isTestInstance) {
             LogStartup.warn(cxt, "Not provisioning the grants demo at boot: this is not a test instance.")
             return

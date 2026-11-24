@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn.confdemo
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.RegistrationClient
 
 /**
  * Provisions the conference demo as the node starts (issue #1221), where [ConfDemo.provisionAtBootKey] says to -- the
@@ -15,7 +16,8 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  *
  * The same provisioning the simulation runs, so the demo a visitor finds is the one the documentation describes,
  * with its speaker, organizer and committee member. On a test instance only, as the simulation is: it makes users at
- * fixed addresses, which a real deployment has no business holding.
+ * fixed addresses, which a real deployment has no business holding. And not on a deployment naming a registration
+ * client (issue #1867), whose visitors cannot join a demo.
  */
 class ConfDemoBootService : ServiceInitializer {
     override val serviceName: String = "ConfDemoBootService"
@@ -28,6 +30,8 @@ class ConfDemoBootService : ServiceInitializer {
         ready = true
         val config = cxt.instanceConfig
         if (config.get(ConfDemo.provisionAtBootKey) != true) return
+        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
+        if (RegistrationClient.skipsDemoAtBoot(cxt, "conference demo")) return
         if (!config.isTestInstance) {
             LogStartup.warn(cxt, "Not provisioning the conference demo at boot: this is not a test instance.")
             return

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
+import com.dynamicruntime.common.logging.LogStartup
 
 /** Constants for the registration client (issue #1867). */
 @Suppress("ConstPropertyName")
@@ -64,6 +65,20 @@ object RegistrationClient {
         if (client != clientOf(config)) return roles
         if (RoleLadder.highestHeld(roles) != ROLE.user || roles.any { it in privileged }) return roles
         return (roles + roleOf(config)).distinct()
+    }
+
+    /**
+     * Whether a demo's provisioning at boot is skipped (issue #1867), logging the skip under the demo's name for a log
+     * line, [demo]: it is, on a deployment naming a registration client. Such a deployment's visitors all land in that
+     * client, and joining a demo is offered only in `public`, so nobody there could reach the demo. Its users would sit
+     * at fixed addresses in a client of their own, and its stored configuration would make a client nobody uses.
+     */
+    fun skipsDemoAtBoot(cxt: KdrCxt, demo: String): Boolean {
+        val client = clientOf(cxt.instanceConfig) ?: return false
+        LogStartup.info(
+            cxt, "Not provisioning the $demo at boot: every new user here lands in '$client' (${REGC.client}), so none could join it.",
+        )
+        return true
     }
 
     /**

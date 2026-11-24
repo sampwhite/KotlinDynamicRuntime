@@ -3,6 +3,7 @@ package com.dynamicruntime.common.simulation
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.RegistrationClient
 
 /**
  * Provisions the Design View demo as the node starts (issue #1248), where [DesignDemo.provisionAtBootKey] says to --
@@ -13,7 +14,8 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  * so it is safe on every start.
  *
  * On a test instance only, as the simulation is: it makes users at fixed `designdemo.example` addresses, which a real
- * deployment has no business holding.
+ * deployment has no business holding. And not on a deployment naming a registration client (issue #1867), whose
+ * visitors cannot join a demo.
  */
 class DesignDemoBootService : ServiceInitializer {
     override val serviceName: String = "DesignDemoBootService"
@@ -26,6 +28,8 @@ class DesignDemoBootService : ServiceInitializer {
         ready = true
         val config = cxt.instanceConfig
         if (config.get(DesignDemo.provisionAtBootKey) != true) return
+        // Not where every new user lands in one client of the deployment's own (issue #1867): nobody could join it.
+        if (RegistrationClient.skipsDemoAtBoot(cxt, "Design View demo")) return
         if (!config.isTestInstance) {
             LogStartup.warn(cxt, "Not provisioning the Design View demo at boot: this is not a test instance.")
             return

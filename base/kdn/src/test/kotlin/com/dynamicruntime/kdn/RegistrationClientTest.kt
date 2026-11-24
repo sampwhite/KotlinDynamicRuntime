@@ -7,19 +7,24 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.REGC
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -66,6 +71,22 @@ class RegistrationClientTest : StringSpec({
         val user = row(plain, visitor.userId)
         user.client shouldBe CL.public
         user.roles shouldContainExactlyInAnyOrder listOf(ROLE.user, ROLE.admin)
+    }
+
+    "the demos a reference deployment provisions at boot are not provisioned" {
+        // What the reference flavor sets, on a test instance: each demo would otherwise write its users, and the grants and
+        // Design View demos (and the conference demo, not declared in code here) their stored configuration.
+        val demos = Startup.mkTestBootCxt(
+            "regDemos", "registrationClientDemos",
+            mapOf(
+                REGC.client to RegistrationClientComponent.clientId,
+                ConfDemo.provisionAtBootKey to true, GrantsDemo.provisionAtBootKey to true, DesignDemo.provisionAtBootKey to true,
+            ),
+            additionalComponents = listOf(RegistrationClientComponent()),
+        )
+        demos.instanceConfig.isTestInstance shouldBe true
+        val clients = ClientService.get(demos)
+        listOf(ConfDemo.client, GrantsDemo.client, DesignDemo.client).forEach { clients.known(it).shouldBeNull() }
     }
 
     "the boot refuses a registration client that is not present, public or hub, and a role it may not grant" {

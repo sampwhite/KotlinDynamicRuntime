@@ -565,7 +565,8 @@ website in one client of its own. The `registrationClient` config key (which a f
 lands there, administrators included, instead of in `hub` or `public`. A visitor holds `user` there, and the role the
 `registrationRole` key names, such as `lead`, if it names one. Your own people, on the admin domain, hold `admin` and
 `allClients` as before. The node refuses to start with a client that is not present, with `public` or `hub`, or with a
-registration role of `operator`, `admin`, `editor`, or `allClients`.
+registration role of `operator`, `admin`, `editor`, or `allClients`. Since nobody there can join a demo, a demo set to
+be provisioned as the node starts is left out (its users and stored configuration).
 
 It needs:
 
