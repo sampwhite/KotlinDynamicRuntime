@@ -67,6 +67,7 @@ object AssistantPrompt {
      * The system prompt for [client], whose kind [clientLine] said. A turn works the line out once and passes it both here
      * and to [versionFor], so the prompt it sends is the one its conversation's version names.
      */
+    @Suppress("CanConvertToMultiDollarString")
     fun systemFor(client: String, clientLine: String): List<Map<String, Any?>> {
         val text = """
             |You help an administrator of the client '$client' configure it: its workflows, the traits its forms collect,
