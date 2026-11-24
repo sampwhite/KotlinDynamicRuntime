@@ -277,6 +277,16 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             option(CTR.resetDaily, "Each day")
         }
         property(
+            CTR.issue,
+            "When a form is given its id: `${CTR.issueOnOpen}` (the default), as the form opens, so the person sees it " +
+                "before saving, or `${CTR.issueOnSave}`, when the form is saved, so a form opened and left uses none up " +
+                "and the count has fewer gaps. With `${CTR.issueOnSave}` a page does not show the field until the form " +
+                "is saved.",
+        ) {
+            option(CTR.issueOnOpen, "As the form opens")
+            option(CTR.issueOnSave, "When the form is saved")
+        }
+        property(
             CTR.enabled,
             "Whether new ids are issued; true when left out. Disable a counter rather than remove it, so its ids still mean something.",
         ) {

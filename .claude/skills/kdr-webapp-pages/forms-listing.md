@@ -355,6 +355,17 @@ save sends the ids' tokens in `counterTokens`, which no page draws (`formCreateO
 Every ask uses up an id: a page left without saving, a refresh, or a section removed is a gap in the count, which is the
 intended trade (the issue). A failed ask says "Couldn't get this form's id." under the form, and the field stays empty.
 
+**A counter that issues at save** (`issue: onSave`, issue #1852) trades the preview for fewer gaps. The catalog and the
+workflow view say which counters do (`countersOnSave`, from their `counters`), and every create page then:
+
+- asks none of theirs for an id, and draws none of their fields while it is empty (`FieldHidden.givenAtSave`); the
+  workflow form draws no section for a trait with nothing else to show (`hiddenUntilSaved`), and still sends its entry,
+  for the server to fill;
+- names the ids the server gave on arrival at the listing ("The form T-042 was created."), on screen or not: they ride
+  the return as `hli` (`HP.createdIds`, `idsGivenAtSave`), as transient as the flash.
+
+An edit adding such a field asks for its id when Save is clicked, once the form's check has passed (`onSaveSlotsToFill`).
+
 ## A file field uploads a file, then holds its id (issue #1840)
 
 A trait field of format `gedra-file` (`dataFile(...)` in the DSL) draws `DataFileField` wherever a form is filled in --

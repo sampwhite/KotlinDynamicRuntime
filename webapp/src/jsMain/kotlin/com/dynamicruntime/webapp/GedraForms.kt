@@ -234,7 +234,7 @@ fun formStatusLabel(status: FormStatus, keywords: List<CtaKeywordWords>): String
  * other key on a forms address is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`), because
  * the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
-private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.edit, HP.task, HP.workflow)
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.createdIds, HP.edit, HP.task, HP.workflow)
 
 /**
  * The applied forms search read back out of an address (issue #592): every param that is not a navigation key. So a
@@ -248,7 +248,9 @@ fun formsSearchFromRoute(hp: Map<String, String>): Map<String, String> =
  * The note to show when the form a create or edit just saved is **not on the returned listing** (issues #669,
  * #758), or null when it is on screen (so the row-flash is feedback enough) or nothing was saved. [savedId] is
  * the row's id, [rowIds] the ids on the loaded page, [created] whether the save made the form, and
- * [customSort] whether the listing is in anything but its default newest-first order.
+ * [customSort] whether the listing is in anything but its default newest-first order. [createdIds] are the ids counters
+ * gave a created form when it was saved (issue #1852): the person never saw them, so a create that gave any is announced
+ * with them even when its row is on screen.
  *
  * The note says **why**, because the remedy differs. A row saved under the default order lands on page one, so
  * with a filter active the filter is the reason; under a custom sort the sort may be instead, and the note
@@ -268,10 +270,12 @@ fun savedNotShownNote(
     rowIds: List<String?>,
     created: Boolean = false,
     customSort: Boolean = false,
+    createdIds: List<String> = emptyList(),
 ): String? {
-    if (savedId == null) return if (created) "The form was created." else null
-    if (savedId in rowIds) return null
-    val what = if (created) "The form was created, but" else "The form you just saved"
+    val made = if (createdIds.isEmpty()) "The form was created" else "The form ${createdIds.joinToString(" / ")} was created"
+    if (savedId == null) return if (created) "$made." else null
+    if (savedId in rowIds) return if (created && createdIds.isNotEmpty()) "$made." else null
+    val what = if (created) "$made, but" else "The form you just saved"
     val filtered = (appliedSearch - formsDrillKeys).isNotEmpty()
     val drillState = workflowDrillOf(appliedSearch)?.second
     return when {
@@ -314,6 +318,7 @@ fun formsArrivalNote(hp: Map<String, String>, appliedSearch: Map<String, Any?>, 
         rowIds,
         created = hp[HP.created] == formsRouteFlagOn,
         customSort = formsCustomSort(hp),
+        createdIds = hp[HP.createdIds]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty(),
     )
 
 /**
@@ -354,12 +359,18 @@ fun formsSearchRouteParams(search: Map<String, String>): List<Pair<String, Strin
  * link is the same target without the flash. The listing is the one the page was opened from ([formsListingOf]),
  * so a form worked on from a workflow's listing goes home to that listing. Pure, and covered under `jsNodeTest`.
  */
-fun formsListingReturn(hp: Map<String, String>, highlightId: String?, created: Boolean = false): List<Pair<String, String>> =
+fun formsListingReturn(
+    hp: Map<String, String>,
+    highlightId: String?,
+    created: Boolean = false,
+    createdIds: List<String> = emptyList(),
+): List<Pair<String, String>> =
     buildList {
         add(HP.page to formsListingOf(hp))
         addAll(formsSearchRouteParams(formsSearchFromRoute(hp)))
         highlightId?.let { add(HP.highlight to it) }
         if (created) add(HP.created to formsRouteFlagOn)
+        if (created && createdIds.isNotEmpty()) add(HP.createdIds to createdIds.joinToString(","))
     }
 
 /**
@@ -367,15 +378,17 @@ fun formsListingReturn(hp: Map<String, String>, highlightId: String?, created: B
  * it was launched from -- a slow response must not pull someone out of wherever they went next, nor carry that
  * page's address keys into the listing as a "search" (#758 review). [launched] is the address when the create was
  * clicked, [now] the address when it finished, [newId] the new form's id, and [context] the listing context to
- * return with: the launching page's own by default. Pure, and covered under `jsNodeTest`.
+ * return with: the launching page's own by default. [givenIds] are the ids counters gave the form when it was saved
+ * (issue #1852), for the listing to name. Pure, and covered under `jsNodeTest`.
  */
 fun formsCreateReturn(
     launched: Map<String, String>,
     now: Map<String, String>,
     newId: String?,
     context: Map<String, String> = launched,
+    givenIds: List<String> = emptyList(),
 ): List<Pair<String, String>>? =
-    if (now[HP.page] != launched[HP.page]) null else formsListingReturn(context, newId, created = true)
+    if (now[HP.page] != launched[HP.page]) null else formsListingReturn(context, newId, created = true, createdIds = givenIds)
 
 /**
  * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same view a

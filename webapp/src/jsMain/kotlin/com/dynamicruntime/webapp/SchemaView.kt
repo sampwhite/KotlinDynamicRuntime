@@ -83,6 +83,11 @@ class Catalog(
      * [defs] stays the documentation-grade document.
      */
     val fieldLayouts: Map<String, SchLayout> = emptyMap(),
+    /**
+     * The counters a field of [defs] names that give their ids when a form is saved (issue #1852), by id: a create page
+     * asks none of theirs for an id and leaves their fields to the server. Empty when the node says none.
+     */
+    val countersOnSave: Set<String> = emptySet(),
 ) {
     /** The shared `$defs` parsed once into resolved kernel [SchType]s (refs bound). */
     val defTypes: Map<String, SchType> by lazy { parseSchemaTypes(defs) }

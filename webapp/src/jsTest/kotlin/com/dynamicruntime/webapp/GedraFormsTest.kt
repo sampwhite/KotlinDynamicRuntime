@@ -1017,6 +1017,23 @@ class GedraFormsTest {
         assertEquals("acme", formsCreateReturn(forUser, forUser, "g.fd.acme.new", mapOf(EI.client to "acme"))!!.toMap()[EI.client])
     }
 
+    /**
+     * The ids counters gave a form at save (issue #1852) ride the return and are named on arrival, on screen or not: the
+     * person never saw them. They stay off the search, and an edit's return carries none.
+     */
+    @Test
+    fun aCreateNamesTheIdsItWasGivenAtSave() {
+        val launched = mapOf(HP.page to "newForm", EI.q to "roof")
+        val arriving = formsCreateReturn(launched, launched, "g.fd.acme.new", givenIds = listOf("T-042"))!!.toMap()
+        val applied = formsSearchFromRoute(arriving)
+        assertEquals(mapOf(EI.q to "roof"), applied)
+        assertEquals("The form T-042 was created.", formsArrivalNote(arriving, applied, listOf("g.fd.acme.new")))
+        assertTrue(formsArrivalNote(arriving, applied, listOf("g.fd.acme.a"))!!.startsWith("The form T-042 was created, but"))
+        val two = formsListingReturn(launched, null, created = true, createdIds = listOf("T-042", "R-7")).toMap()
+        assertEquals("The form T-042 / R-7 was created.", formsArrivalNote(two, applied, emptyList()))
+        assertTrue(HP.createdIds !in formsListingReturn(launched, "g.fd.acme.new", createdIds = listOf("T-042")).toMap())
+    }
+
     // --- status column (issue #694) --------------------------------------------------------------
 
     /** A row's state entries carrying a `coreDetailsCompletion` entry with the given booleans. */

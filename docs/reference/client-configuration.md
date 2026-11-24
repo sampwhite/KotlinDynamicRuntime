@@ -331,6 +331,7 @@ Keyed by `counterId`.
 | `prefix` | string | yes | A string-script template for the text before the count. It reads `${day}`, the client's day the id is issued on (2026-11-17), and `${compactDay}`, the same day without its dashes (20261117). Empty for ids that are the count alone. |
 | `digits` | integer |  | How many digits the count is padded to with zeroes: 2 to 8, and 4 when left out. A count that outgrows them widens. |
 | `reset` | one of `never`, `daily` |  | When the count starts again at 1: `never` (the default) or `daily`, on each of the client's days. |
+| `issue` | one of `onOpen`, `onSave` |  | When a form is given its id: `onOpen` (the default), as the form opens, so the person sees it before saving, or `onSave`, when the form is saved, so a form opened and left uses none up and the count has fewer gaps. With `onSave` a page does not show the field until the form is saved. |
 | `enabled` | boolean |  | Whether new ids are issued; true when left out. Disable a counter rather than remove it, so its ids still mean something. |
 | `description` | string |  | What the counter numbers, in the administrator's words. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |

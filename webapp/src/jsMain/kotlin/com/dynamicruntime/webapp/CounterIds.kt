@@ -35,11 +35,39 @@ object CounterApi {
 data class CounterSlot(val traitId: String, val field: String, val counterId: String)
 
 /**
+ * The counters a catalog or a workflow view says give their ids when a form is saved ([CTR.issueOnSave], issue #1852),
+ * from its [CTR.counters] map: a page asks for none of theirs and leaves their fields to the server on a create. Empty
+ * when the map is absent -- a client with no counters, or an older node -- and every counter then issues as a form
+ * opens. Pure, and covered under `jsNodeTest`.
+ */
+fun countersOnSaveOf(raw: Any?): Set<String> =
+    raw.toJsonMapOrEmpty().filterValues { it.toJsonMapOrEmpty()[CTR.issue] == CTR.issueOnSave }.keys
+
+/**
  * The counter fields of [traits] -- each trait id with its data type -- that [valuesOf] gives no value yet, each trait
- * once: what a create page asks ids for as it opens, so the person sees them before the form is saved. Pure, and
+ * once: what a create page asks ids for as it opens, so the person sees them before the form is saved. A counter in
+ * [onSave] gives its ids when the form is saved instead (issue #1852), so its fields are not asked for here. Pure, and
  * covered under `jsNodeTest`.
  */
-fun counterSlotsToFill(traits: List<Pair<String, SchType>>, valuesOf: (String) -> Map<String, Any?>?): List<CounterSlot> =
+fun counterSlotsToFill(
+    traits: List<Pair<String, SchType>>,
+    onSave: Set<String> = emptySet(),
+    valuesOf: (String) -> Map<String, Any?>?,
+): List<CounterSlot> = counterSlotsLacking(traits, valuesOf).filter { it.counterId !in onSave }
+
+/**
+ * The fields of [onSave] counters among [traits] that [valuesOf] gives no value yet, each trait once: what an edit asks
+ * ids for when Save is clicked (issue #1852), since the server gives an id only on a create. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun onSaveSlotsToFill(
+    traits: List<Pair<String, SchType>>,
+    onSave: Set<String>,
+    valuesOf: (String) -> Map<String, Any?>?,
+): List<CounterSlot> = counterSlotsLacking(traits, valuesOf).filter { it.counterId in onSave }
+
+/** Every counter field of [traits] that [valuesOf] gives no value yet, each trait once. */
+private fun counterSlotsLacking(traits: List<Pair<String, SchType>>, valuesOf: (String) -> Map<String, Any?>?): List<CounterSlot> =
     traits.distinctBy { it.first }.flatMap { (traitId, type) ->
         val values = valuesOf(traitId) ?: return@flatMap emptyList()
         counterFieldsOf(type).filter { (field, _) -> values[field].toOptStr().isNullOrEmpty() }
@@ -47,14 +75,46 @@ fun counterSlotsToFill(traits: List<Pair<String, SchType>>, valuesOf: (String) -
     }
 
 /**
- * The counter fields of [entries] -- a create's `{traitId, data}` entries -- that have no id yet, one slot an entry and
- * field, so two entries of a keyed trait are each given their own. [dataTypeOf] is a trait's data type, or null for one
+ * Whether a form section of [type] holding [values] has nothing to show while a form is made (issue #1852): every one of
+ * its own fields is an empty one an [onSave] counter fills, which a page does not show until the form is saved, so it
+ * draws no section at all. A derived field, which no form offers, is not counted. Pure, and covered under `jsNodeTest`.
+ */
+fun hiddenUntilSaved(type: SchType, values: Map<String, Any?>, onSave: Set<String>): Boolean {
+    if (onSave.isEmpty()) return false
+    val shown = type.properties.filterValues { !it.valueType.derived }
+    return shown.isNotEmpty() && shown.all { (name, prop) ->
+        prop.valueType.counter in onSave && values[name].toOptStr().isNullOrEmpty()
+    }
+}
+
+/**
+ * The ids [onSave] counters gave a form when it was saved (issue #1852), out of its stored [entries]: what a page names
+ * once the form is made, since the person never saw them before. [dataTypeOf] is a trait's data type, or null for one
  * the page does not know. Pure, and covered under `jsNodeTest`.
  */
-fun counterSlotsInEntries(entries: List<Map<String, Any?>>, dataTypeOf: (String) -> SchType?): List<CounterSlot> =
+fun idsGivenAtSave(entries: List<Map<String, Any?>>, onSave: Set<String>, dataTypeOf: (String) -> SchType?): List<String> {
+    if (onSave.isEmpty()) return emptyList()
+    return entries.flatMap { entry ->
+        val type = entry[GE.traitId].toOptStr()?.let(dataTypeOf) ?: return@flatMap emptyList()
+        val data = entry[GE.data].toJsonMapOrEmpty()
+        counterFieldsOf(type).filterValues { it in onSave }.keys.mapNotNull { data[it].toOptStr()?.ifBlank { null } }
+    }
+}
+
+/**
+ * The counter fields of [entries] -- a create's `{traitId, data}` entries -- that have no id yet, one slot an entry and
+ * field, so two entries of a keyed trait are each given their own. [dataTypeOf] is a trait's data type, or null for one
+ * the page does not know; an [onSave] counter's fields are left to the server (issue #1852). Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun counterSlotsInEntries(
+    entries: List<Map<String, Any?>>,
+    onSave: Set<String> = emptySet(),
+    dataTypeOf: (String) -> SchType?,
+): List<CounterSlot> =
     entries.flatMap { entry ->
         val traitId = entry[GE.traitId].toOptStr() ?: return@flatMap emptyList()
-        counterSlotsToFill(listOfNotNull(dataTypeOf(traitId)?.let { traitId to it })) { entry[GE.data].toJsonMapOrEmpty() }
+        counterSlotsToFill(listOfNotNull(dataTypeOf(traitId)?.let { traitId to it }), onSave) { entry[GE.data].toJsonMapOrEmpty() }
     }
 
 /**
@@ -79,13 +139,15 @@ class CounterIds(val tokens: List<String>, val error: DisplayError?)
  * [inputType] -- the trait picker and the create for another user: each section of a trait a counter numbers is given
  * its id as it is added, so the person sees it before the form is saved, and [values] are updated through
  * [updateValues]. Asked of [client]'s copy of the endpoint when one is named. The ask runs again only when the sections
- * still lacking an id change, not on each keystroke; a section removed while its id is on its way leaves a gap.
+ * still lacking an id change, not on each keystroke; a section removed while its id is on its way leaves a gap. An
+ * [onSave] counter's fields are asked nothing: the server gives their ids when the form is saved (issue #1852).
  */
 fun useCounterIds(
     inputType: SchType?,
     values: Map<String, Any?>,
     updateValues: StateSetter<Map<String, Any?>>,
     client: String? = null,
+    onSave: Set<String> = emptySet(),
 ): CounterIds {
     val tokensState = useState<List<String>>(emptyList())
     val tokens by tokensState
@@ -93,7 +155,7 @@ fun useCounterIds(
     var error by useState<DisplayError?>(null)
     val variants = inputType?.properties?.get(GDF.entries)?.valueType?.itemType?.variants
     val slots = variants?.let { v ->
-        counterSlotsInEntries(values[GDF.entries].toJsonListOfMaps()) { v.select(it)?.properties?.get(GE.data)?.valueType }
+        counterSlotsInEntries(values[GDF.entries].toJsonListOfMaps(), onSave) { v.select(it)?.properties?.get(GE.data)?.valueType }
     }.orEmpty()
     useEffect(slots.joinToString { "${it.traitId}.${it.field}" }, client) {
         if (slots.isEmpty()) return@useEffect
@@ -110,6 +172,19 @@ fun useCounterIds(
         }
     }
     return CounterIds(tokens, error)
+}
+
+/**
+ * The ids counters that give theirs at save gave a form created through [ep] of [catalog] (issue #1852), out of the
+ * stored form [item] the create answered with: what the listing names once the person is taken back to it. Each
+ * trait's data type is read off the create's input, as [useCounterIds] reads it.
+ */
+fun givenIdsOf(catalog: Catalog, ep: EndpointInfo, item: Map<String, Any?>): List<String> {
+    if (catalog.countersOnSave.isEmpty()) return emptyList()
+    val variants = catalog.inputType(ep).properties[GDF.entries]?.valueType?.itemType?.variants ?: return emptyList()
+    return idsGivenAtSave(item[GDF.entries].toJsonListOfMaps(), catalog.countersOnSave) {
+        variants.select(it)?.properties?.get(GE.data)?.valueType
+    }
 }
 
 /** [payload] with [tokens] beside it, as a create sends the tokens of the ids it stores (issue #1849). */

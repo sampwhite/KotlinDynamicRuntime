@@ -32,6 +32,7 @@ import react.useState
 import web.cssom.ClassName
 import com.dynamicruntime.common.util.escapeMarkdown
 import com.dynamicruntime.common.util.humanizeFieldName
+import com.dynamicruntime.common.util.toJsonListOfMaps
 
 private val wfFormScope = MainScope()
 
@@ -196,7 +197,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // The ids a counter issued for this form (issue #1849), asked for while the form can be saved -- as a create opens,
     // or as an edit starts on a form whose counter field is empty -- so the person sees them before saving, and the
     // tokens the save sends back to store them. Keyed by the fields still lacking one, so a view read again in place
-    // that adds one asks for it, and typing asks nothing. Each ask uses up an id.
+    // that adds one asks for it, and typing asks nothing. Each ask uses up an id. A counter that gives its ids at save
+    // (issue #1852) is asked nothing here: a create leaves its field to the server, and an edit asks at Save.
     val counterTokensState = useState<List<String>>(emptyList())
     val counterTokens by counterTokensState
     val updateCounterTokens = counterTokensState.component2()
@@ -204,7 +206,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val counterSlots = if (isEdit && !editing) {
         emptyList()
     } else {
-        counterSlotsToFill(wf.tasks.flatMap { it.traits }.filterNot { it.traitId in wf.lockedTraits }.map { it.traitId to it.type }) { valuesByTrait[it] ?: emptyMap() }
+        counterSlotsToFill(
+            wf.tasks.flatMap { it.traits }.filterNot { it.traitId in wf.lockedTraits }.map { it.traitId to it.type }, wf.countersOnSave,
+        ) { valuesByTrait[it] ?: emptyMap() }
     }
     useEffect(counterSlots.joinToString { "${it.traitId}.${it.field}" }) {
         if (counterSlots.isEmpty()) return@useEffect
@@ -369,7 +373,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // A create save may be for another user (issue #727) when an admin picked one; an edit ignores it.
         val forUserRef = if (isEdit) null else pickedUser?.primaryId
         val save = saveFor(task) ?: return
-        val body = workflowSaveBody(wf.workflowId, task.id, save.id, entries, gedraId, forUserRef, counterTokens)
+        // An edit that adds a field a counter fills at save (issue #1852) asks for its id now, once the check has passed,
+        // since the server gives one only on a create; a create leaves the field to the server.
+        val atSave = if (isEdit) {
+            onSaveSlotsToFill(
+                task.traits.filterNot { it.traitId in wf.lockedTraits }.map { it.traitId to it.type }, wf.countersOnSave,
+            ) { valuesByTrait[it] ?: emptyMap() }
+        } else {
+            emptyList()
+        }
         // What this save sends, by trait, as the working values held it at the click -- what "stored" becomes for them.
         val savedTraitIds = task.traits.map { it.traitId }.toSet()
         val sent = valuesByTrait.filterKeys { it in savedTraitIds }
@@ -386,6 +398,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // make a second form. The sibling create pages skip the same reset for the same reason.
             var leaving = false
             try {
+                val given = atSave.map { it to CounterApi.issue(it.counterId, props.client) }
+                val body = workflowSaveBody(
+                    wf.workflowId, task.id, save.id, given.fold(entries) { acc, (slot, id) -> withCounterId(acc, slot, id.value) },
+                    gedraId, forUserRef, counterTokens + given.map { (_, id) -> id.token },
+                )
                 val outcome = WorkflowApi.save(body, props.client)
                 if (!outcome.saved) {
                     // The create gate: the required traits still empty.
@@ -395,7 +412,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // #758) -- the same return the trait-picker create makes (#663, #669), which this surface
                     // never got: it stopped on an in-place "Form created" page instead. A form whose core details workflow still
                     // needs information says so on its row's status chip, which links into the core details editor.
-                    formsCreateReturn(launched, routeParams(), outcome.item[GDF.gedraId] as? String)?.let {
+                    // The ids counters gave it at save (issue #1852), which the person has not seen: the listing names them.
+                    val givenIds = idsGivenAtSave(outcome.item[GDF.entries].toJsonListOfMaps(), wf.countersOnSave) { traitId ->
+                        wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId }?.type }
+                    }
+                    formsCreateReturn(launched, routeParams(), outcome.item[GDF.gedraId] as? String, givenIds = givenIds)?.let {
                         leaving = true
                         navigate(it)
                     }
@@ -659,6 +680,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // an approval, [shownBy] is it: the traits it names come with their own values (issue #1875), since no task of this
     // workflow holds them, and its own layouts, when it has them, stand in for the workflow's.
     fun ChildrenBuilder.traitSection(task: WfTaskView, trait: WfTraitView, shownBy: WfApprovalView? = null) {
+        // A trait whose only field a counter fills at save (issue #1852) has nothing to show until the form holds its id,
+        // so it draws no section; its entry is still sent, for the server to fill. Design View still draws it, its
+        // field a ghost saying why.
+        if (shownBy == null && designSession == null && hiddenUntilSaved(trait.type, valuesOf(trait.traitId), wf.countersOnSave)) return
         // In Design View, a trait an approval shows is that approval's to lay out (issue #1875).
         val approvalTask = shownBy?.let { task.id }
         designFramed(designSession, DesignTarget.Trait(trait, approvalTask), trait.traitId) {
@@ -712,6 +737,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     showDerivedValues = true
                     derivedRootIsTraitData = true
                     this.cfacts = wf.cfacts
+                    this.countersOnSave = wf.countersOnSave
                     this.fieldLayouts = shownBy?.fieldLayouts ?: wf.fieldLayouts
                     this.failures = shownFailures(
                         failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),

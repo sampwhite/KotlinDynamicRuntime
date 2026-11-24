@@ -91,8 +91,11 @@ val NewFormPage = FC<Props> {
 
     useFocusOnFailure(focusRequest, failures)
 
-    // A counter's field (issue #1849): given its id as its section is added.
-    val counterIds = useCounterIds(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, values, updateValues)
+    // A counter's field (issue #1849): given its id as its section is added -- unless its counter gives ids when the
+    // form is saved (issue #1852), when the field is left to the server and not drawn.
+    val counterIds = useCounterIds(
+        catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, values, updateValues, onSave = catalog?.countersOnSave.orEmpty(),
+    )
 
     div {
         className = ClassName("card wide")
@@ -140,6 +143,7 @@ val NewFormPage = FC<Props> {
                     // The caller's delivered cfacts (issue #564), so a g-visibleWhen field this caller should
                     // not see is hidden here. The backend enforces the condition regardless of what is drawn.
                     cfacts = cat.cfacts
+                    countersOnSave = cat.countersOnSave
                     // The per-type layouts (issue #586): a field's label/description come from the layout for
                     // its type, cascading over the schema's title/description. Joined by type name inside the form.
                     fieldLayouts = cat.fieldLayouts
@@ -194,8 +198,11 @@ val NewFormPage = FC<Props> {
                                         // shared return (issue #758), flagged as a create so a row the active
                                         // filter excludes is announced rather than silently absent. No
                                         // running=false here: this navigation unmounts the page.
-                                        val newId = response[EP.item].toJsonMapOrEmpty()[GDF.gedraId] as? String
-                                        formsCreateReturn(launched, routeParams(), newId)?.let { navigate(it) }
+                                        val item = response[EP.item].toJsonMapOrEmpty()
+                                        val newId = item[GDF.gedraId] as? String
+                                        // The ids counters gave it at save (issue #1852), for the listing to name.
+                                        val givenIds = givenIdsOf(cat, ep, item)
+                                        formsCreateReturn(launched, routeParams(), newId, givenIds = givenIds)?.let { navigate(it) }
                                     } catch (e: Throwable) {
                                         // Only the failure path stays on the page, so re-enable the button here
                                         // rather than in a finally that would run after a create has navigated away.

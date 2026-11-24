@@ -385,10 +385,11 @@ fun errorMessageTemplateProblems(
  * request path, on the wire and in the interactive endpoint form (issue #191), an editor, a cross-client reader.
  *
  * Most options change only the coerced output or how something is reported, but some do change a verdict:
- * [forInput] reads a type as a **request**, so a `g-derived` property is not required and a plain string is
- * trimmed before it is measured (issue #765); [skipCompleteness] defers a fragment's completeness to where it
- * is assembled; and [allowUnknownVariant] off refuses an unknown branch the document admits. This is an object
- * rather than a parameter because the list is expected to grow as the frontend asks for more.
+ * [forInput] reads a type as a **request**, so a `g-derived` property is not required, nor is a field a counter
+ * fills (issue #1852), and a plain string is trimmed before it is measured (issue #765); [skipCompleteness] defers a
+ * fragment's completeness to where it is assembled; and [allowUnknownVariant] off refuses an unknown branch the
+ * document admits. This is an object rather than a parameter because the list is expected to grow as the frontend
+ * asks for more.
  *
  * A data class so a variant is derived with `copy`, which carries every other field along. Rebuilding one field by
  * field once dropped [existingTypes] under an `optionalContents` property (issue #812), and a field added later
@@ -791,6 +792,11 @@ fun validateObject(
         // that a complete record has one, and the server is what supplies it. Demanding it from the caller
         // would make a field they may not send the reason their request is refused (issue #254).
         if (opts.forInput && reqType?.derived == true) {
+            continue
+        }
+        // Nor a field a counter fills (issue #1852): a create that leaves it out is given its id by the server, and a
+        // write that keeps the entry without one is refused where the stored shape is checked, which is not a request.
+        if (opts.forInput && reqType?.counter != null) {
             continue
         }
         val default = reqType?.default

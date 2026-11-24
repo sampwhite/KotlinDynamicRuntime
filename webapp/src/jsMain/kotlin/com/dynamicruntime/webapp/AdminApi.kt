@@ -261,12 +261,11 @@ object AdminApi {
      * Creates a form document **on behalf of** [userRef] (a numeric id or email), owned by that user in their
      * own client (issue #672 Slice 3). [payload] is the create input the form produced (its `entries`, and any
      * `allowAdditionalTraits`); the user rides beside it, and always wins ([formForUserBody]). Returns the new
-     * form's gedra id, or null when the response carried none. The backend resolves the user, derives their
-     * client, and refuses self-creation.
+     * form as stored -- its gedra id, and the ids counters gave it (issue #1852) -- or an empty map when the response
+     * carried none. The backend resolves the user, derives their client, and refuses self-creation.
      */
-    suspend fun createFormForUser(userRef: String, payload: Map<String, Any?>): String? =
-        Http.sendApi("POST", GEP.adminFormDocForUser, formForUserBody(userRef, payload))[EP.item]
-            .toJsonMapOrEmpty()[GDF.gedraId] as? String
+    suspend fun createFormForUser(userRef: String, payload: Map<String, Any?>): Map<String, Any?> =
+        Http.sendApi("POST", GEP.adminFormDocForUser, formForUserBody(userRef, payload))[EP.item].toJsonMapOrEmpty()
 
     /**
      * Replaces a user's free-form labels (issue #786); an empty list clears them. Like every setter here, it answers

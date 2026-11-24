@@ -4,6 +4,8 @@ import com.dynamicruntime.common.app.DBGK
 import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.counter.CounterService
+import com.dynamicruntime.common.counter.CounterTokens
 import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -11,7 +13,9 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.filekind.DataFileFields
+import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.holdsGatedValue
@@ -564,8 +568,56 @@ class GedraDataService : ServiceInitializer {
         //
         // After the envelope is built, not before: what is checked is the entry as it will be stored, and the
         // union requires the fields `asStoredEntry` adds.
-        checkStoredEntries(cxt, kind, stored)
-        return insertStoredGedra(cxt, kind, stored, creationWorkflowId)
+        //
+        // A counter's field an entry leaves out is given its id by the server (issue #1852), issued only once nothing
+        // before the write can refuse the create, so a refused one uses up no id: the check first, excusing the fields
+        // the server fills, then the plan's room for the form. Then the ids, and the whole check again on what will be
+        // stored. The write's claim hook takes the tokens as it takes a page's.
+        val slots = leftOutCounterSlots(cxt, kind, stored)
+        if (slots.isEmpty()) {
+            checkStoredEntries(cxt, kind, stored)
+            return insertStoredGedra(cxt, kind, stored, creationWorkflowId)
+        }
+        checkStoredEntries(cxt, kind, stored, excused = slots.map { it.entryIndex to childPath(GE.data, it.field) }.toSet())
+        if (kind == GedraDataType.formDoc) PlanLimits.requireRoomForForm(cxt, cxt.client)
+        val filled = fillCounterIds(cxt, stored, slots)
+        checkStoredEntries(cxt, kind, filled)
+        return insertStoredGedra(cxt, kind, filled, creationWorkflowId)
+    }
+
+    /** A counter's field an entry of a create leaves out (issue #1852): which entry, which field, and which counter. */
+    private class CounterSlot(val entryIndex: Int, val field: String, val counterId: String)
+
+    /** The counter fields [entries] of a create leave out -- no value, or a blank one -- in the order they appear. */
+    private fun leftOutCounterSlots(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>): List<CounterSlot> {
+        val union = clientUnion(cxt, kind) ?: return emptyList()
+        return entries.flatMapIndexed { i, entry ->
+            val traitId = entry[GE.traitId].toOptStr() ?: return@flatMapIndexed emptyList()
+            val data = entry[GE.data].toJsonMapOrEmpty()
+            traitDataTypeIn(union, traitId)?.let(::counterFieldsOf).orEmpty()
+                .filter { (field, _) -> data[field].toOptStr().isNullOrBlank() }
+                .map { (field, counterId) -> CounterSlot(i, field, counterId) }
+        }
+    }
+
+    /**
+     * [entries] with each of [slots] given the next id of its counter, from [cxt]'s client -- the gedra's -- issued to the
+     * acting user, and the tokens put beside any the request sent, for the claim hook. Each id in its own short
+     * transaction, never the write's ([CounterService.issue]); a create refused after this leaves gaps, as a page left
+     * without saving does.
+     */
+    private fun fillCounterIds(cxt: KdrCxt, entries: List<Map<String, Any?>>, slots: List<CounterSlot>): List<Map<String, Any?>> {
+        val counters = CounterService.get(cxt)
+        val out = entries.toMutableList()
+        val tokens = mutableListOf<String>()
+        for (slot in slots) {
+            val issued = counters.issue(cxt, cxt.client, slot.counterId)
+            val entry = out[slot.entryIndex]
+            out[slot.entryIndex] = entry + (GE.data to (entry[GE.data].toJsonMapOrEmpty() + (slot.field to issued.value)))
+            tokens.add(issued.token)
+        }
+        CounterTokens.add(cxt, tokens)
+        return out
     }
 
     /**
@@ -1854,11 +1906,26 @@ class GedraDataService : ServiceInitializer {
      * check. This is what lets a keyed trait with a required non-key field be deleted by its key alone, which
      * the old on-the-way-in `required` check refused.
      */
-    private fun checkStoredEntries(cxt: KdrCxt, kind: GedraDataType, entries: List<Map<String, Any?>>) {
+    private fun checkStoredEntries(
+        cxt: KdrCxt,
+        kind: GedraDataType,
+        entries: List<Map<String, Any?>>,
+        /**
+         * Missing fields not to refuse, by entry index and path (`data.number`): a counter's that the server fills once
+         * the check has passed (issue #1852). Anything else wrong with them is still refused.
+         */
+        excused: Set<Pair<Int, String>> = emptySet(),
+    ) {
         checkEntryKeys(entries, pkFieldsOf(cxt, kind))
-        validateEntryShapes(clientUnion(cxt, kind), entries) {
-            "The patch would leave ${it.size} problem(s) in the stored entries: " +
-                it.joinToString("; ") { f -> "${f.path}: ${f.message}" }
+        val union = clientUnion(cxt, kind) ?: return
+        val failures = entries.flatMapIndexed { i, entry ->
+            validate(union, entry).filterNot { it.code == SchFailCode.missingRequired && (i to it.path) in excused }
+        }
+        if (failures.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "The patch would leave ${failures.size} problem(s) in the stored entries: " +
+                    failures.joinToString("; ") { f -> "${f.path}: ${f.message}" },
+            )
         }
     }
 

@@ -52,6 +52,55 @@ class CounterIdsTest {
         assertEquals(twice, withCounterId(twice, slots[0], "R-0004"))
     }
 
+    private val ticket: SchType = parseSchemaTypes(
+        mapOf(
+            "c.Ticket" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "ticketNo" to mapOf(SCH.type to SCT.string, SCH.description to "The id.", SCH.counter to "ticket"),
+                    "stamp" to mapOf(SCH.type to SCT.string, SCH.description to "Computed.", SCH.derived to true),
+                ),
+            ),
+        ),
+    ).getValue("c.Ticket")
+
+    /** A counter that gives its ids at save (issue #1852) is asked nothing as a form opens, and only at an edit's Save. */
+    @Test
+    fun aCounterGivingItsIdsAtSaveIsLeftToTheServer() {
+        val onSave = countersOnSaveOf(
+            mapOf("ticket" to mapOf(CTR.issue to CTR.issueOnSave), "receipt" to mapOf(CTR.issue to CTR.issueOnOpen)),
+        )
+        assertEquals(setOf("ticket"), onSave)
+        assertTrue(countersOnSaveOf(null).isEmpty())
+        val traits = listOf("receipt" to receipt, "ticket" to ticket)
+        assertEquals(listOf("receipt"), counterSlotsToFill(traits, onSave) { emptyMap() }.map { it.counterId })
+        assertEquals(listOf("ticket"), onSaveSlotsToFill(traits, onSave) { emptyMap() }.map { it.counterId })
+        val entries = listOf(mapOf(GE.traitId to "ticket", GE.data to emptyMap<String, Any?>()))
+        assertTrue(counterSlotsInEntries(entries, onSave) { ticket }.isEmpty())
+    }
+
+    /** A section whose only field such a counter fills is not drawn until it holds the id; a derived field does not count. */
+    @Test
+    fun aSectionWithNothingButAnIdGivenAtSaveIsHidden() {
+        assertTrue(hiddenUntilSaved(ticket, emptyMap(), setOf("ticket")))
+        assertTrue(!hiddenUntilSaved(ticket, mapOf("ticketNo" to "TK-001"), setOf("ticket")))
+        assertTrue(!hiddenUntilSaved(ticket, emptyMap(), emptySet()))
+        // A section with a field of its own to fill is drawn, its id field left off.
+        assertTrue(!hiddenUntilSaved(receipt, emptyMap(), setOf("receipt")))
+    }
+
+    /** The ids such counters gave a stored form, which the listing names. */
+    @Test
+    fun theIdsGivenAtSaveAreReadOffTheStoredForm() {
+        val stored = listOf(
+            mapOf(GE.traitId to "receipt", GE.data to mapOf("number" to "R-0001")),
+            mapOf(GE.traitId to "ticket", GE.data to mapOf("ticketNo" to "TK-001")),
+        )
+        val types = mapOf("receipt" to receipt, "ticket" to ticket)
+        assertEquals(listOf("TK-001"), idsGivenAtSave(stored, setOf("ticket")) { types[it] })
+        assertTrue(idsGivenAtSave(stored, emptySet()) { types[it] }.isEmpty())
+    }
+
     @Test
     fun aSaveSendsTheTokensItWasGiven() {
         val body = workflowSaveBody("create", "first", "save", emptyList(), counterTokens = listOf("t1"))

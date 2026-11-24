@@ -41,6 +41,30 @@ object CTR {
     /** Every [reset] value, in the order a refusal lists them. */
     val resets: List<String> = listOf(resetNever, resetDaily)
 
+    /** When a page asks for an id (issue #1852): [issueOnOpen] or [issueOnSave]. */
+    const val issue = "issue"
+
+    /**
+     * As a form opens, so the person sees the id before saving (the default). A page left without saving, a refresh, or
+     * a section removed uses one up, leaving a gap in the count.
+     */
+    const val issueOnOpen = "onOpen"
+
+    /**
+     * When the form is saved, by the server: no page asks for one or shows the field on a create, so the person learns
+     * the id once the form is stored. Fewer gaps, though not none -- a create refused inside its write still uses one.
+     */
+    const val issueOnSave = "onSave"
+
+    /** Every [issue] value, in the order a refusal lists them. */
+    val issues: List<String> = listOf(issueOnOpen, issueOnSave)
+
+    /**
+     * On the endpoint catalog and the workflow view (issue #1852): the counters the delivered types' fields name, by id,
+     * each with its [issue] -- how a page knows, before it draws, which fields to leave for the server.
+     */
+    const val counters = "counters"
+
     const val minDigits = 2
     const val maxDigits = 8
 
@@ -80,10 +104,11 @@ object CTR {
 /**
  * One counter a configuration declares (issue #1849), as its `kdr:counterDef` entry holds it: ids are [prefix] (a
  * template over the day) and then a count padded to [digits], the count starting again at 1 each day when [reset] is
- * [CTR.resetDaily].
+ * [CTR.resetDaily]. A page asks for an id as a form opens, or leaves it to the server at save when [issue] is
+ * [CTR.issueOnSave] (issue #1852).
  *
- * [reset] is kept as written, so a value a later release adds is told apart rather than mistaken for one of ours; the
- * load refuses one it does not know. [configName] and [stored] are a stamp, not content: which configuration declared
+ * [reset] and [issue] are kept as written, so a value a later release adds is told apart rather than mistaken for one of
+ * ours; the load refuses one it does not know. [configName] and [stored] are a stamp, not content: which configuration declared
  * it and whether it was read from the database. [extra] is whatever else a stored entry held -- a later release's
  * fields -- written back as it was, as a file ref's is.
  */
@@ -94,6 +119,7 @@ class CounterDef(
     val reset: String = CTR.resetNever,
     val enabled: Boolean = true,
     val description: String? = null,
+    val issue: String = CTR.issueOnOpen,
     val configName: String? = null,
     val stored: Boolean = false,
     val extra: Map<String, Any?> = emptyMap(),
@@ -101,12 +127,16 @@ class CounterDef(
     /** Whether the count starts again at 1 each day. */
     val resetsDaily: Boolean get() = reset == CTR.resetDaily
 
+    /** Whether the server gives the id when a form is saved, rather than a page asking for one as it opens. */
+    val issuesOnSave: Boolean get() = issue == CTR.issueOnSave
+
     /** This counter as its stored entry: what was authored and what was carried, and none of the stamp. */
     fun toEntry(): Map<String, Any?> = buildMap {
         put(CTR.counterId, counterId)
         put(CTR.prefix, prefix)
         put(CTR.digits, digits)
         put(CTR.reset, reset)
+        if (issue != CTR.issueOnOpen) put(CTR.issue, issue)
         if (!enabled) put(CTR.enabled, false)
         description?.let { put(CTR.description, it) }
         putAll(extra)
@@ -135,13 +165,14 @@ class CounterDef(
             reset = entry[CTR.reset].toOptStr() ?: CTR.resetNever,
             enabled = entry[CTR.enabled] != false,
             description = entry[CTR.description].toOptStr(),
+            issue = entry[CTR.issue].toOptStr() ?: CTR.issueOnOpen,
             configName = configName,
             stored = stored,
             extra = entry.filterKeys { it !in readFields },
         )
 
         /** The fields of an entry this release reads; anything else is [extra]. */
-        private val readFields = setOf(CTR.counterId, CTR.prefix, CTR.digits, CTR.reset, CTR.enabled, CTR.description)
+        private val readFields = setOf(CTR.counterId, CTR.prefix, CTR.digits, CTR.reset, CTR.enabled, CTR.description, CTR.issue)
     }
 }
 

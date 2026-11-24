@@ -74,6 +74,27 @@ private fun schCounterTests() = stringSpec {
             .failures.shouldBeEmpty()
     }
 
+    "a required counter field may be left out of a request, which the server fills, and not out of what is stored" {
+        val type = parseSchemaTypes(
+            schemaDefs(cxt, "c") {
+                type("Receipt") {
+                    type = SCT.kObject
+                    property("number", "The receipt's id.", required = true) { counter = "receipt" }
+                    property("note", "A note.")
+                }
+            },
+        ).getValue("c.Receipt")
+        coerceAndValidate(type, mapOf("note" to "cash"), SchOpts(forInput = true)).failures.shouldBeEmpty()
+        validate(type, mapOf("note" to "cash")).map { it.path } shouldContainExactly listOf("number")
+        // A layout that asks for it asks nothing of the person: a counter fills it (issue #1852).
+        val layouts = mapOf(
+            "c.Receipt" to parseSchLayout(
+                "Type 'Receipt'", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "number", SL.required to true))),
+            ),
+        )
+        formRequirementFailures(parse { counter = "receipt" }, layouts, mapOf("note" to "cash")).shouldBeEmpty()
+    }
+
     "a counter is refused off a plain string, and beside a derivation or a list" {
         refusal { type = SCT.integer; counter = "receipt" } shouldContain "numbers a plain string"
         refusal { dayOnlyDate(); counter = "receipt" } shouldContain "numbers a plain string"

@@ -308,6 +308,14 @@ fills it: a prefix, a template over the day, then a zero-padded count, such as `
 digits (2 to 8), and whether it starts again each day. A page asks `/gedra/counter/issue` for an id as it opens a form,
 and shows it read-only; the write that stores it sends the token it was issued with, in `counterTokens`.
 
+- **A create may leave the field out** (issue #1852): `/gedra/formDoc/create`, a creation workflow's save, and
+  `/admin/formDocForUser` give it the counter's next id, issued once nothing before the write can refuse the create, and
+  answer with it. A field `required` is not required of a request for that reason (`SchOpts.forInput`), nor by a layout.
+  A patch or an edit save that adds the field still sends an issued id with its token.
+- **When ids are issued** is the counter's `issue`: `onOpen` (the default) as above, or `onSave`, when no page asks for
+  one or shows the field on a create and the server gives it at save, so a form opened and left uses none up. The
+  catalog and the workflow view say each named counter's `issue` under `counters`, out of band.
+
 - **Not validation.** Any text passes the schema. The write is what holds a field to an id: a value not issued to the
   writer, a token used twice, and a change to a stored id are refused by `CounterClaimHook`, inside the write's
   transaction. An import leaves the field out, since its id belongs to the form it was copied from.

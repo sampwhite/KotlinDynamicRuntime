@@ -124,6 +124,13 @@ object HP {
      */
     const val created = "hlc"
 
+    /**
+     * Forms page: beside [created], the ids counters gave the form when it was saved (issue #1852), comma-separated,
+     * so the listing can name them -- the person never saw them before saving. Transient, exactly as [highlight] is,
+     * and spelled like it for the reason [created] is.
+     */
+    const val createdIds = "hli"
+
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 
