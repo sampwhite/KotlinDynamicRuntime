@@ -374,6 +374,17 @@ its kind and size, and an image or a `<video preload="metadata">` in place (`.da
 - **The upload's end emits through the field's latest props** (`latest`), never the ones it started under: the schema
   form's emit closes over the values of its render, so a stale one would undo what was typed elsewhere while the file
   went up. A field that unmounts -- its section removed, the page left -- cancels its upload and aborts it on the server.
+- **A CSV file's link saves a copy made safe for a spreadsheet** (`SpreadsheetCopyLink`, issue #1881), never the stored
+  text, in the field and read-only alike.
+- **A table field** (`isDataTable()`, issue #1884) is `ControlKind.DataTable`. Read-only it draws `DataTableValue`
+  (`DataTableView.kt`): the file's name and size and **Download CSV** (the guarded copy), then its rows under the
+  field's columns in the order the row type declares them -- a choice by its label, a yes or no in words, numbers right
+  aligned -- in a `.data-table-scroll` of at most 420 pixels, a footer summing up each column as the grid will
+  (`TableSummary.defaultFor`: a sum for a number, a count otherwise), and how many rows. The file's text is read once
+  through `/files/content` and kept by its id with its parse (`DataTableApi`, the 16 used most recently), so **Download
+CSV** reads nothing again. Edited, it is uploaded as any file
+  field is until the grid (#1885); the grid's pure model is already `DataGridModel.kt` (`GridState`), covered by
+  `DataGridModelTest`.
 - **The field takes the file's id only once the file is ready**, so the form's values never hold one still uploading,
   which a save would refuse. An upload stopped by the network keeps its id and the browser's file in the component, and
   offers **Resume** (asks `/files/upload/status`, sends from `nextOffset`, or the last chunk again when every byte is in)
