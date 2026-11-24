@@ -107,7 +107,7 @@ object GrantsBasics {
             Expectation("The core details workflow collects what the New form does") { r -> Checks.coreDetailsMatchesNewForm(r) },
             Expectation("A review workflow with an approval task") { r ->
                 val workflows = r.view.normalWorkflows
-                val approving = workflows.firstOrNull { wf -> wf[WFD.tasks].toJsonListOfMaps().any { it[WFD.approval] != null } }
+                val approving = r.view.review
                 when {
                     approving != null -> {
                         val approval = approving[WFD.tasks].toJsonListOfMaps().first { it[WFD.approval] != null }[WFD.approval]
@@ -123,6 +123,7 @@ object GrantsBasics {
                 }
             },
             Expectation("The review's approval shows the applicant's answers") { r -> Checks.approvalShowsNewForm(r) },
+            Expectation("The review highlights its Start, for whoever takes its first step") { r -> Checks.reviewHighlightsStart(r) },
             Expectation("Home's introduction names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, program) },
             Expectation("The invitation mail names the program") { r -> Checks.copyMentions(r, AFRAG.mail, MAILNS.invitation, program) },
             Expectation("A Home card to start an application") { r ->
