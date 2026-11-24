@@ -309,6 +309,8 @@ fun resolveWorkflowView(
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, store.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }
+    // The template it was made from (issue #1870), so whoever reads the view knows which an editor changes it over.
+    declared.def.fromTemplate?.let { view[WFD.fromTemplate] = it }
     // Help under the title (issue #1221): copy outside the definition, so whoever explains a workflow need not change
     // it. Through the backend pass like a label, so it may pull other copy; blank is no help.
     fragments.resolveFragment(cxt, WVF.helpFile, client, declared.def.workflowId)

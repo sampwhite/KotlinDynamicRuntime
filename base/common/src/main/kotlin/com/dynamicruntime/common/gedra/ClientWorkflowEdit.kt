@@ -247,17 +247,33 @@ object ClientWorkflowEdit {
     ): Result {
         // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
         val owner = sandboxParentOf(client) ?: client
-        // Only a template the deployment's checks admitted.
-        val template = WorkflowService.get(cxt).forClient(null).workflow(slots.templateId)?.def
-            ?: throw KdrException("There is no workflow template '${slots.templateId}'.", code = EXC.notFound)
-        templateSlotProblems(template, slots).takeIf { it.isNotEmpty() }?.let { throw KdrException.mkInput(it.joinToString(" ")) }
         val target = ClientStoredEdit.target(cxt, client, "workflowSave", expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
+        val workflowId = slots.workflowId
+        // A change names the workflow, whose template is the one it was made from (issue #1870): the caller need not say
+        // it, and one who names another is told which it is. A new workflow names its template.
+        val stored = workflowId?.let {
+            storedWorkflow(bound, it) ?: throw KdrException("Client '$owner' stores no workflow '$it'.", code = EXC.notFound)
+        }
+        val templateId = if (workflowId != null && stored != null) {
+            templateOfStored(workflowId, stored.second, slots.templateId)
+        } else {
+            slots.templateId
+        }
+        if (templateId.isBlank()) {
+            throw KdrException.mkInput(
+                "Name the template a new workflow is made from (${WFD.fromTemplate}), as the workflow catalog lists them.",
+            )
+        }
+        val chosen = WfTemplateSlots(workflowId, templateId, slots.label, slots.tasks)
+        // Only a template the deployment's checks admitted.
+        val template = WorkflowService.get(cxt).forClient(null).workflow(templateId)?.def
+            ?: throw KdrException("There is no workflow template '$templateId'.", code = EXC.notFound)
+        templateSlotProblems(template, chosen).takeIf { it.isNotEmpty() }?.let { throw KdrException.mkInput(it.joinToString(" ")) }
         val written: GedraConfigRow
         val issues: List<GedraConfigIssue>
         val made: WfDef
-        val workflowId = slots.workflowId
         if (workflowId != null && visibility != null) {
             throw KdrException.mkInput("Who sees workflow '$workflowId' is one of its parameters, set apart from its slots.")
         }
@@ -267,7 +283,7 @@ object ClientWorkflowEdit {
                 .map { it.removePrefix(CWF.configPrefix) }
             val taken = WorkflowService.get(cxt).forClient(owner).workflows.keys + storedWorkflowIds(bound) + leftover
             val id = keyFromLabel(slots.label, taken, "workflow")
-            made = withTemplateSlots(bound, template, slots, id)
+            made = withTemplateSlots(bound, template, chosen, id)
             if (!dryRun) seenFromTheStart(cxt, owner, id, visibility ?: WfVisibility.adminsOnly, target.draft)
             // A creation or core details workflow stands over the one its client's code has (issue #1634), and says so.
             val entry = CodeOverrides.markedIfOverCode(
@@ -278,15 +294,12 @@ object ClientWorkflowEdit {
             // Nothing stored can be engaged with a workflow that did not exist, so there is no impact to judge.
             issues = ClientStoredEdit.settle(cxt, target, written, dryRun, undo = {}, impact = impact)
         } else {
-            val (row, stored) = storedWorkflow(bound, workflowId)
-                ?: throw KdrException("Client '$owner' stores no workflow '$workflowId'.", code = EXC.notFound)
-            if (stored[WFD.fromTemplate] != slots.templateId) {
-                throw KdrException.mkInput("Workflow '$workflowId' is not made from template '${slots.templateId}', so its slots are not these.")
-            }
+            // Read above, since a change names its workflow.
+            val (row, overlaid) = checkNotNull(stored)
             if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
-            made = withTemplateSlots(bound, WorkflowTemplates.readStored(bound, stored), slots, workflowId)
+            made = withTemplateSlots(bound, WorkflowTemplates.readStored(bound, overlaid), chosen, workflowId)
             val overlay = workflowTemplateOverlay(template, made)
-            if (overlay == stored) throw KdrException.mkInput("Workflow '$workflowId' is already so; nothing to save.")
+            if (overlay == overlaid) throw KdrException.mkInput("Workflow '$workflowId' is already so; nothing to save.")
             fun patch(on: GedraConfigRow, to: Map<String, Any?>, dry: Boolean = false) =
                 ClientStoredEdit.patch(bound, dry) { edit(on.configId) { slotsOf ->
                 slotsOf + (CCT.workflowDef to slotsOf[CCT.workflowDef].orEmpty().map { if (it[CCT.workflowId] == workflowId) it + (CCT.definition to to) else it })
@@ -294,7 +307,7 @@ object ClientWorkflowEdit {
             written = patch(row, overlay, dryRun)
             issues = ClientStoredEdit.settle(
                 cxt, target, written, dryRun,
-                undo = { patch(written, stored) },
+                undo = { patch(written, overlaid) },
                 restorePublished = row.isPublished,
                 impact = impact,
             )
@@ -429,6 +442,25 @@ object ClientWorkflowEdit {
     /** Every workflow id [bound]'s client stores, latest revisions, drafts included: none a new one may take. */
     private fun storedWorkflowIds(bound: KdrCxt): Set<String> = GedraConfigService.get(bound).listConfigs(bound)
         .flatMap { row -> row.entriesBySlot()[CCT.workflowDef].orEmpty().mapNotNull { it[CCT.workflowId].toOptStr() } }.toSet()
+
+    /**
+     * The template stored workflow [workflowId] was made from (issue #1870), given its definition as [stored]: what a
+     * change of its slots is made over, whatever template the caller [named] -- blank to leave it to the workflow, or one
+     * that must be that one. Refused for a workflow written whole, which has no slots to change.
+     */
+    private fun templateOfStored(workflowId: String, stored: Map<String, Any?>, named: String): String {
+        val own = stored[WFD.fromTemplate].toOptStr()
+            ?: throw KdrException.mkInput(
+                "Workflow '$workflowId' is written whole, not made from a template, so it has no slots to change here.",
+            )
+        if (named.isNotBlank() && named != own) {
+            throw KdrException.mkInput(
+                "Workflow '$workflowId' is made from template '$own', not '$named'. Leave ${WFD.fromTemplate} out to change " +
+                    "it, or give '$own'.",
+            )
+        }
+        return own
+    }
 
     /** The stored configuration holding [bound]'s client's workflow [workflowId], and its definition as stored. */
     private fun storedWorkflow(bound: KdrCxt, workflowId: String): Pair<GedraConfigRow, Map<String, Any?>>? {
