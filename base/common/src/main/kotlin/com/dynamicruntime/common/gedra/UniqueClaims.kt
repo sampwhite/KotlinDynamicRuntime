@@ -17,7 +17,6 @@ import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
-import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -401,8 +400,11 @@ fun nestedUniqueProblems(types: Map<String, SchType>, names: Set<String>): List<
     }.toSet()
     for (dataType in dataTypes) {
         val seen = HashSet<SchType>()
-        fun nestedIn(type: SchType): List<SchType> = type.properties.values.map { it.valueType } +
-            listOfNotNull(type.itemType, type.additionalValueType) + type.variants?.branches.orEmpty()
+        fun nestedIn(type: SchType): List<SchType> = buildList {
+            type.properties.values.mapTo(this) { it.valueType }
+            addAll(listOfNotNull(type.itemType, type.additionalValueType))
+            addAll(type.variants?.branches.orEmpty())
+        }
         fun walk(type: SchType) {
             if (!seen.add(type)) return
             uniqueFieldsOf(type).keys.forEach { field ->

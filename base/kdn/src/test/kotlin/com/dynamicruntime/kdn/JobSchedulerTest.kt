@@ -102,7 +102,7 @@ class JobSchedulerTest : StringSpec({
     }
 
     "a slot left unfinished is picked up by a later tick, which adopts its work" {
-        var broken = true
+        @Suppress("CanBeVal") var broken = true
         JobScripts.set("jsResume", mapOf(CL.hub to listOf("a1", "x1"))) { _, key ->
             if (key == "x1" && broken) throw KdrException.mkJob("Not today.", JobHandling.abortJob, "testFatal", key)
             JobTaskResult.done

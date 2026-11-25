@@ -1371,7 +1371,7 @@ private fun schStdKeywordsTests() = stringSpec {
             mapOf(SCH.type to SCT.string, SCH.format to 5L) to "'format'",
             mapOf(SCH.type to SCT.string, SCH.description to listOf("x")) to "'description'",
             mapOf(SCH.type to SCT.string, SCH.title to true) to "'title'",
-            mapOf(SCH.dRef to mapOf("to" to "s.Other")) to "'\$ref'",
+            mapOf(SCH.dRef to mapOf("to" to "s.Other")) to $$"'$ref'",
             mapOf(SCH.type to SCT.string, SCH.minLength to "three") to "'minLength'",
             mapOf(SCH.type to SCT.integer, SCH.maximum to listOf(5L)) to "'maximum'",
             mapOf(SCH.oneOf to "s.Other") to "'oneOf'",
@@ -1387,7 +1387,7 @@ private fun schStdKeywordsTests() = stringSpec {
             parseSchemaTypes(
                 mapOf(
                     "s.Other" to mapOf(SCH.type to SCT.string),
-                    "s.Holder" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("o" to mapOf(SCH.dRef to "#/\$defs/s.Other") + own)),
+                    "s.Holder" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("o" to mapOf(SCH.dRef to $$"#/$defs/s.Other") + own)),
                 ),
             )
         }.message.orEmpty()
@@ -1402,7 +1402,7 @@ private fun schStdKeywordsTests() = stringSpec {
         refusal(mapOf(SCH.type to SCT.string, SCH.minLength to 3L, SCH.maxLength to "64")) shouldBe null
         refusal(mapOf(SCH.type to null, SCH.required to null, SCH.items to null)) shouldBe null
         // A keyword this layer does not read is the document's own: a stock validator's document still parses.
-        refusal(mapOf(SCH.type to SCT.string, "examples" to "not a list", "\$comment" to 5L, "multipleOf" to "x")) shouldBe null
+        refusal(mapOf(SCH.type to SCT.string, "examples" to "not a list", $$"$comment" to 5L, "multipleOf" to "x")) shouldBe null
         refusal(mapOf(SCH.type to SCT.string, "x-note" to mapOf(SCH.type to "strng"))) shouldBe null
         // Nor is a keyword's word in a value: a default is data.
         refusal(mapOf(SCH.type to SCT.kObject, SCH.default to mapOf(SCH.type to "refund", SCH.required to "soon"))) shouldBe null

@@ -248,8 +248,11 @@ object ClientCreate {
      */
     private fun caseVariant(cxt: KdrCxt, client: String): String? {
         val clients = ClientService.get(cxt)
-        val ids = clients.clients.keys + clients.declaredClients().map { it.clientId } +
-            GedraConfigService.get(cxt).storedClients(cxt)
+        val ids = buildSet {
+            addAll(clients.clients.keys)
+            clients.declaredClients().mapTo(this) { it.clientId }
+            addAll(GedraConfigService.get(cxt).storedClients(cxt))
+        }
         return caseVariantOf(client, ids)
     }
 

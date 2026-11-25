@@ -323,7 +323,7 @@ class UniqueValuesTest : StringSpec({
                 sqlCxt, "qTestUniqueClaims", cxt.getGlobalSchema().tables.getValue(VCL.gedraValueClaims).columns,
                 "select * from t:${VCL.gedraValueClaims} where c:${VCL.gedraId} = :${VCL.gedraId} and c:${VCL.fieldName} = 'title'",
             )
-            var key = ""
+            @Suppress("CanBeVal") var key = ""
             sqlCxt.sqlDb.withSession(cxt) {
                 key = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(VCL.gedraId to form)).single().let {
                     "${it[VCL.valueKey]} ${it[PF.createdAt]}"

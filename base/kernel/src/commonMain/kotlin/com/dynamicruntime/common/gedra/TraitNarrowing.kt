@@ -188,7 +188,12 @@ fun traitNarrowingProblems(narrowing: TraitNarrowing, base: Map<String, Any?>): 
     val out = mutableListOf<String>()
     val props = base[SCH.properties].toJsonMapOrEmpty()
     val baseRequired = base[SCH.required].toJsonListOfStrings().toSet()
-    for (field in narrowing.hidden + narrowing.required + narrowing.choices.keys + narrowing.unique) {
+    for (field in buildSet {
+        addAll(narrowing.hidden)
+        addAll(narrowing.required)
+        addAll(narrowing.choices.keys)
+        addAll(narrowing.unique)
+    }) {
         if (field !in props) out.add("The trait has no field '$field'.")
     }
     for (field in narrowing.hidden) {
