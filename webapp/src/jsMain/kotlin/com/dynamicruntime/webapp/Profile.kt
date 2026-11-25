@@ -514,10 +514,21 @@ val Profile = FC<Props> {
         }
     }
 
-    div {
-        // Wide for its tables (issues #1330, #1402): the person's users, and their API keys, which every profile shows
-        // -- a sandbox's too (issue #1453) -- so the card is always wide.
-        className = ClassName("card profile-wide")
+    // Its panels (issue #1479), worked out before the card so its top links and its side menu (issue #1924) name the
+    // same ones as it draws -- once the users are in, as the panels are.
+    val profilePanels = config?.takeIf { it.user != null && usersLoaded }?.let { cfg ->
+        buildList {
+            add(PRFP.account to t(PRFA.account, "title", "Your account"))
+            if (showsUsersTable(myUsers)) add(PRFP.users to t("users", "title", "Your users"))
+            add(PRFP.name to t("profile", "nameTitle", "Your name"))
+            if (cfg.features.canSetPassword) add(PRFP.signIn to t("password", "title", "Sign-in"))
+            add(PRFP.keys to t("profile", "keysTitle", "API keys"))
+        }
+    }.orEmpty()
+    // Wide for its tables (issues #1330, #1402): the person's users, and their API keys, which every profile shows -- a
+    // sandbox's too (issue #1453) -- so the card is always wide. A page of panels (issue #1924), so a long one gets a
+    // side menu.
+    panelPage(profilePanels, cardKey = "profile", cardClass = "card profile-wide") {
         h1 { +t("profile", "title", "Your profile") }
 
         val cfg = config
@@ -531,14 +542,7 @@ val Profile = FC<Props> {
 
             val usersShown = showsUsersTable(myUsers)
             val signInShown = cfg.features.canSetPassword
-            val panels = buildList {
-                add(PRFP.account to t(PRFA.account, "title", "Your account"))
-                if (usersShown) add(PRFP.users to t("users", "title", "Your users"))
-                add(PRFP.name to t("profile", "nameTitle", "Your name"))
-                if (signInShown) add(PRFP.signIn to t("password", "title", "Sign-in"))
-                add(PRFP.keys to t("profile", "keysTitle", "API keys"))
-            }
-            panelLinks(panels)
+            panelLinks(profilePanels)
 
             // ---- Your account: read-only (issue #1479) ---------------------
             panel(PRFP.account, t(PRFA.account, "title", "Your account")) {

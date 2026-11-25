@@ -175,7 +175,8 @@ Current UI-config endpoints:
   `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
   again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
   person's default user, or ends it when none remains. The **profile page** (issue #1330) is built to the page
-  structure (issue #1479): under its title the structure line (the address, the person's users, the access of the one
+  structure (issue #1479), drawn through `panelPage` (a side menu of its panels when the page is long, issue #1924):
+  under its title the structure line (the address, the person's users, the access of the one
   acted as, `profileStructure`), then the panels Your account (read-only: who, client, persona and access,
   organization, account type, when the address was proven, the user's registration and previous sign-in -- absolute,
   each labeled with its zone, as a user's own page shows them (issue #1480); not its activation, which reads out of
@@ -418,10 +419,13 @@ all of them.
    loaded or opened content moves the places without a scroll). It shows only from 1200 pixels wide, taking the place of
    the links at the top, which a narrower screen keeps; the card narrows for the column only where the window has no
    room beside it. The menu comes after the card in the page's order, so a keyboard and a screen reader reach the page
-   first, and CSS places it on the left. The Clients page uses `panelPage`; another paneled page adopts it by drawing
-   its card through it. Tabs only for sections that are separate tasks, visited one at a time, on a page past about
-   three screens -- none yet, so there are no `Tabs` bindings: a side menu keeps everything on the page, where a hidden
-   tab could hide a draft. **A draft never spans tabs**: Save must not commit what is out of sight.
+   first, and CSS places it on the left. The paneled pages draw through `panelPage` -- Clients, Users (a user's editor),
+   Profile, the assistant, and the Operator object pages (issue #1924) -- each naming its panels in one list for its top
+   links and its menu alike; another adopts it by drawing its card through it. A card of any width (`wide`, `full`,
+   `profile-wide`) keeps it, capped to leave the column room. Tabs only for sections that are separate tasks, visited
+   one at a time, on a page past about three screens -- none yet, so there are no `Tabs` bindings: a side menu keeps
+   everything on the page, where a hidden tab could hide a draft. **A draft never spans tabs**: Save must not commit
+   what is out of sight.
 5. **Simple first, the rest on request — per panel, not a global mode.** An "advanced mode" switch hides state: a
    reader in simple mode cannot see that a user holds All clients. A draft panel shows its common fields and puts the
    rest under `MoreOptions`, which opens itself when anything inside is set and names what is in its summary ("More

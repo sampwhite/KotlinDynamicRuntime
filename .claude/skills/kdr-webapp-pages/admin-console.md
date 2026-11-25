@@ -6,7 +6,9 @@
 chips (`userStatusChips`: enabled, disabled, or deleted; unclaimed; sandbox), and its Forms and
 Client links (not for a deleted user; the Client link not for an editor, whom the Clients page refuses), with
 **Become** after them for a caller with test access -- then the
-structure line, the links to the panels, and the panels in order. In the structure line another of the person's users
+structure line, the links to the panels, and the panels in order -- drawn through `panelPage`, so a long editor gets a
+side menu of them beside the card (issue #1924; `userEditorPanels` names them, for the links and the menu alike). In the
+structure line another of the person's users
 that is not simply live says so beside its link (`userStructureFlag`), and for a screen reader the line is a labeled
 group with the open user marked current.
 

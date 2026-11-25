@@ -800,9 +800,24 @@ val Users = FC<Props> {
     // An editor (issue #1432): every user of its client is shown, and nothing that changes one.
     val readOnly = readOnlyView
     val inEditor = creating || editing != null
+    // Editing yourself: the backend refuses to let anyone change their own administrator status or disable their own
+    // account, so those controls are locked here rather than offered and then rejected. The backend remains the
+    // enforcement point -- this only keeps the UI honest.
+    val self = editing != null && editing?.userId == config?.user?.userId
+    // What the editor's panels are (issue #1478), worked out before the card so its top links and its side menu
+    // (issue #1924) name the same ones as it draws: another user at the caller's own address is theirs too, and nobody
+    // mails themself a reminder.
+    val mailOffer = editing?.let {
+        userMailOffer(it, own = self || it.primaryId == ownAddress, carried = clientCarried(it.client, carriedClients))
+    } ?: UserMailOffer.none
+    val keysShown = editing != null && config?.user?.let { mayCreateForOthers(it) } != false
+    val dangerShown = editing != null && !self
+    val editorPanels = userEditorPanels(
+        inEditor && !denied, editing != null, editing?.deleted == true, readOnly, mailOffer, keysShown, dangerShown,
+    )
 
-    div {
-        className = ClassName("card full")
+    // The list, or a user's editor: a page of panels (issue #1924), so a long editor gets a side menu.
+    panelPage(editorPanels, cardKey = "users", cardClass = "card full") {
 
         if (denied) {
             h1 { +"Users" }
@@ -817,10 +832,6 @@ val Users = FC<Props> {
             // one Save covers every field in it; the live Invitation or Sign-in reminder, and API keys, which act as
             // they are pressed; the read-only Activity; and the danger zone last. Each says how its own action went.
             val open = editing
-            // Editing yourself: the backend refuses to let anyone change their own administrator status or disable
-            // their own account, so those controls are locked here rather than offered and then rejected. The
-            // backend remains the enforcement point -- this only keeps the UI honest.
-            val self = open != null && open.userId == config?.user?.userId
             div {
                 className = ClassName("row")
                 Button {
@@ -896,26 +907,7 @@ val Users = FC<Props> {
                     }
                 }
             } else {
-            // Another user at the caller's own address is theirs too: nobody mails themself a reminder.
-            val mailOffer = open?.let {
-                userMailOffer(it, own = self || it.primaryId == ownAddress, carried = clientCarried(it.client, carriedClients))
-            } ?: UserMailOffer.none
-            val keysShown = open != null && config?.user?.let { mayCreateForOthers(it) } != false
-            val dangerShown = open != null && !self
-            if (open != null) {
-                val shown = buildList {
-                    add(panelUser to "User")
-                    when (mailOffer) {
-                        UserMailOffer.invitation -> add(panelInvitation to "Invitation")
-                        UserMailOffer.reminder -> add(panelInvitation to "Sign-in reminder")
-                        UserMailOffer.none -> {}
-                    }
-                    add(panelActivity to "Activity")
-                    if (keysShown) add(panelKeys to "API keys")
-                    if (dangerShown) add(panelDanger to "Danger zone")
-                }
-                if (shown.size > 2) panelLinks(shown)
-            }
+            if (open != null && editorPanels.size > 2) panelLinks(editorPanels)
 
             // ---- User: the draft, saved together -----------------------------
             val editorShown = openedNote == null && draftLevel != ROLE.admin && editorOffered
@@ -2084,4 +2076,36 @@ fun openedUserNote(user: AdminUser): String? {
     val what = if (client == sandboxParentOf(user.client)) "that user's roles and organization" else "that user's roles"
     val who = user.openedBy?.let { "user $it" } ?: "a user"
     return "Opened from outside the sandbox: this user acts as $who in $client, with $what.$record"
+}
+
+/**
+ * The panels a user's editor draws (issues #1478, #1924), `id to heading` in their order -- what its top links and its
+ * side menu name. None outside the editor; a deleted user's record is the User panel alone, and an editor's read-only
+ * view adds Activity; a user being created is the User draft alone; an open user adds the mail offer's panel, Activity,
+ * API keys where the caller may make them, and the danger zone for anybody but the caller. Pure; `jsNodeTest`.
+ */
+fun userEditorPanels(
+    inEditor: Boolean,
+    open: Boolean,
+    deleted: Boolean,
+    readOnly: Boolean,
+    mailOffer: UserMailOffer,
+    keysShown: Boolean,
+    dangerShown: Boolean,
+): List<Pair<String, String>> = when {
+    !inEditor -> emptyList()
+    open && deleted -> listOf(panelUser to "User")
+    readOnly -> if (open) listOf(panelUser to "User", panelActivity to "Activity") else emptyList()
+    !open -> listOf(panelUser to "User")
+    else -> buildList {
+        add(panelUser to "User")
+        when (mailOffer) {
+            UserMailOffer.invitation -> add(panelInvitation to "Invitation")
+            UserMailOffer.reminder -> add(panelInvitation to "Sign-in reminder")
+            UserMailOffer.none -> {}
+        }
+        add(panelActivity to "Activity")
+        if (keysShown) add(panelKeys to "API keys")
+        if (dangerShown) add(panelDanger to "Danger zone")
+    }
 }

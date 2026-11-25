@@ -2123,7 +2123,7 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
    view however far the page scrolls, marking where the reader is. After the card in the page's order (a keyboard reaches
    the page first), placed on its left here. Only where the screen has room for it and the page is long enough to need it
    (`page-long`, measured), taking the place of the links at the card's top, which otherwise stay. The card keeps its
-   width where the window has room beside it for the column (the menu's 220px, the page's 32px of padding, and a
+   own width where the window has room beside it for the column (the menu's 220px, the page's 32px of padding, and a
    scrollbar's 20px), and narrows only as far as it must where it has not. The 1200px is `SMENU.wideQuery`'s too. */
 .page-side-menu { display: none; }
 @media (min-width: 1200px) {
@@ -2136,7 +2136,8 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
         width: 200px;
         margin-right: 20px;
     }
-    .card.wide:has(+ .page-side-menu.page-long) { width: min(var(--content-width), calc(100vw - 272px)); }
+    /* Any card's own width -- `wide`, `full`, `profile-wide` -- capped to leave the column room (issue #1924). */
+    .card:has(+ .page-side-menu.page-long) { max-width: calc(100vw - 272px); }
     .card:has(+ .page-side-menu.page-long) .panel-links { display: none; }
 }
 .page-side-menu ul { list-style: none; margin: 0; padding: 0; }

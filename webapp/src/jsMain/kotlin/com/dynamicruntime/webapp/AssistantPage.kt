@@ -366,8 +366,11 @@ val AssistantPage = FC<Props> {
         }
     }
 
-    div {
-        className = ClassName("card wide")
+    // Which view the page draws, and -- for the assistant switched on -- its panels, worked out before the card so its
+    // top links and its side menu (issue #1924) name the same ones as it draws.
+    val view = assistantViewOf(status, statusError != null)
+    val onPanels = status?.takeIf { view == AssistantView.on }?.let { assistantPanels(it.hasSandbox) }.orEmpty()
+    panelPage(onPanels, cardKey = "assistant") {
         h1 { +"Configuration assistant" }
         p {
             className = ClassName("subtitle")
@@ -378,7 +381,7 @@ val AssistantPage = FC<Props> {
             )
         }
         val current = status
-        when (assistantViewOf(current, statusError != null)) {
+        when (view) {
             AssistantView.failed -> errorText("Couldn't load the assistant.", statusError!!)
             AssistantView.loading -> p { className = ClassName("subtitle"); +"Loading…" }
             AssistantView.switchOn -> panel(panelSwitchOn, "Switch on the assistant", kind = PanelKind.live) {
@@ -436,14 +439,7 @@ val AssistantPage = FC<Props> {
                 current!!
                 val running = summary?.running == true || pendingTurnId != null
                 val drafts = draftsOf(messages)
-                panelLinks(
-                    listOfNotNull(
-                        (panelSandbox to "Sandbox").takeIf { !current.hasSandbox },
-                        panelConversation to "Conversation",
-                        panelDrafts to "Drafts",
-                        panelAllowance to "Allowance",
-                    ),
-                )
+                panelLinks(onPanels)
                 if (!current.hasSandbox) {
                     // Turned on here for a client defined in code too (issue #1677), as an overlay of its definition.
                     panel(panelSandbox, "Sandbox", kind = PanelKind.live) {
@@ -736,3 +732,15 @@ private fun ChildrenBuilder.draftList(drafts: List<AssistantDraft>, status: Assi
         }
     }
 }
+
+/**
+ * The assistant's panels once it is on (issue #1924), `id to heading` in their order -- what its top links and its side
+ * menu name: the Sandbox panel only for a client with no sandbox of its own, then the conversation, its drafts, and
+ * the allowance. Pure; `jsNodeTest`.
+ */
+fun assistantPanels(hasSandbox: Boolean): List<Pair<String, String>> = listOfNotNull(
+    (panelSandbox to "Sandbox").takeIf { !hasSandbox },
+    panelConversation to "Conversation",
+    panelDrafts to "Drafts",
+    panelAllowance to "Allowance",
+)

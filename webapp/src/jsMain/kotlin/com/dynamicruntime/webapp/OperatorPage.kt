@@ -213,8 +213,10 @@ val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
         }
     }
 
-    div {
-        className = ClassName("card wide")
+    // The object's panels ([objectPanels]), worked out before the card so its top links and its side menu (issue #1924)
+    // name the same ones as it draws: none until it has loaded, or when it failed to.
+    val panels = obj?.takeIf { error == null }?.let { objectPanels(it) }.orEmpty()
+    panelPage(panels.map { it.id to it.heading }, cardKey = "operatorObject") {
         backToListing(HMENU.pageOperator)
         h1 { +props.title }
         props.description?.let { desc ->
@@ -226,7 +228,7 @@ val OperatorObjectPage = FC<OperatorObjectPageProps> { props ->
             current == null -> p { className = ClassName("subtitle"); +"Loading…" }
             else -> {
                 asOf?.let { p { className = ClassName("op-asof"); +"as of $it" } }
-                objectPanelsView(current)
+                objectPanelsView(current, panels)
             }
         }
     }
@@ -255,11 +257,10 @@ fun objectPanels(obj: Map<String, Any?>): List<ObjectPanel> {
 private fun isPanelSection(value: Any?): Boolean = value is Map<*, *> || value is List<*>
 
 /**
- * A free-form object drawn to the page structure (issues #1477, #1620): the links to its panels, then a view panel per
- * top-level section ([objectPanels]), each section's contents drawn value-driven as before.
+ * A free-form object drawn to the page structure (issues #1477, #1620): the links to its [panels] ([objectPanels] of
+ * [obj], worked out by the page for its side menu too), then a view panel for each, its contents drawn value-driven.
  */
-private fun ChildrenBuilder.objectPanelsView(obj: Map<String, Any?>) {
-    val panels = objectPanels(obj)
+private fun ChildrenBuilder.objectPanelsView(obj: Map<String, Any?>, panels: List<ObjectPanel>) {
     if (panels.size > 1) panelLinks(panels.map { it.id to it.heading })
     for (panel in panels) {
         panel(panel.id, panel.heading) {
