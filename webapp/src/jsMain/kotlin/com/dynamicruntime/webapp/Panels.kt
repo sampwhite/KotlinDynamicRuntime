@@ -68,8 +68,10 @@ enum class PanelKind {
 
 /**
  * A panel of a page (issues #1397, #1477): a keyed `section` set apart from the others, headed by [heading] with its
- * "What is this?" [explanation] (none when blank), its element id [id] what a [panelLink] leads to. A [PanelKind.draft]
- * panel marks its heading while [dirty]; a [PanelKind.live] one says under it that its changes take effect at once.
+ * "What is this?" [explanation] (none when blank), its element id [id] what a [panelLink] leads to. Its heading says
+ * "Unsaved changes" while [dirty]: a [PanelKind.draft] panel's own, or an editor's inside any panel on a page that keeps
+ * its unsaved edits ([PendingEdits], issue #1922). A [PanelKind.live] one says under it that its changes take effect at
+ * once. What it holds is told it is in this panel ([PendingPlaceContext]).
  */
 fun ChildrenBuilder.panel(
     id: String,
@@ -86,10 +88,15 @@ fun ChildrenBuilder.panel(
         WhatIsThis {
             this.heading = heading
             text = explanation
-            marker = PNL.unsaved.takeIf { kind == PanelKind.draft && dirty }
+            // A draft's own changes, or -- on a page that keeps them -- an editor's inside it (issue #1922).
+            marker = PNL.unsaved.takeIf { dirty }
             subline = PNL.liveNote.takeIf { kind == PanelKind.live }
         }
-        body()
+        // An editor drawn inside knows which panel it is in, for the page's unsaved edits (issue #1922).
+        PendingPlaceContext.Provider {
+            value = PendingPlace(id)
+            body()
+        }
     }
 }
 
@@ -274,6 +281,9 @@ external interface PageSideMenuProps : Props {
 
     /** The sections of a panel that has them, by the panel's id, as [panelLinks] takes them. */
     var sections: Map<String, List<Pair<String, String>>>
+
+    /** The page's unsaved edits (issue #1922), marked beside their panels and sections and listed; null for none kept. */
+    var pending: PendingEdits?
 }
 
 /**
@@ -392,12 +402,31 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
                 asDynamic()["aria-hidden"] = true
                 +"On this page"
             }
+            // The page's unsaved edits (issue #1922), each a way to the editor holding it.
+            props.pending?.all?.takeIf { it.isNotEmpty() }?.let { edits ->
+                div {
+                    className = ClassName("side-menu-pending")
+                    div {
+                        className = ClassName("side-menu-pending-title")
+                        +pendingCountText(edits.size)
+                    }
+                    ul {
+                        edits.forEach { edit ->
+                            li {
+                                key = edit.key.unsafeCast<Key>()
+                                goToEdit(edit)
+                            }
+                        }
+                    }
+                }
+            }
             ul {
                 entries.filter { !it.isSection }.forEach { panelEntry ->
                     li {
                         key = panelEntry.id.unsafeCast<Key>()
                         className = ClassName(if (panelEntry.id == activePanel) "side-menu-panel side-menu-in" else "side-menu-panel")
                         panelLink(panelEntry.id, panelEntry.title, current = panelEntry.id == active)
+                        if (props.pending?.inPanel(panelEntry.id) == true) unsavedMark()
                         val subs = entries.filter { it.isSection && it.panelId == panelEntry.id }
                         if (subs.isNotEmpty()) {
                             ul {
@@ -407,6 +436,7 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
                                         val here = sub.id == active
                                         className = ClassName(if (here) "side-menu-section side-menu-in" else "side-menu-section")
                                         panelLink(sub.id, sub.title, current = here)
+                                    if (props.pending?.inSection(sub.id) == true) unsavedMark()
                                     }
                                 }
                             }
@@ -418,12 +448,108 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
     }
 }
 
+/** Beside a side menu's entry: a dot for the eye, and words for a screen reader, that it holds unsaved changes. */
+private fun ChildrenBuilder.unsavedMark() {
+    span {
+        className = ClassName("side-menu-unsaved")
+        asDynamic()["aria-hidden"] = true
+        asDynamic()["title"] = PNL.unsaved
+        +"●"
+    }
+    span {
+        className = ClassName("visually-hidden")
+        +" (${PNL.unsaved.lowercase()})"
+    }
+}
+
+/**
+ * A link to [edit]'s editor (issue #1922), scrolled to the middle of the window -- the edit, not its panel's top -- and
+ * any section folded around it opened first.
+ */
+private fun ChildrenBuilder.goToEdit(edit: PendingEdit) {
+    a {
+        className = ClassName("wf-cell-link")
+        href = "#"
+        onClick = { e ->
+            e.preventDefault()
+            val target = document.getElementById(edit.anchorId)
+            // An edit folded inside a closed section is opened to first: the section's `details`, each that holds it.
+            var at = target?.asDynamic()?.parentElement
+            var depth = 0
+            while (at != null && depth < SMENU.maxDepth) {
+                if ((at.tagName as String).equals("details", ignoreCase = true) && at.open != true) at.open = true
+                at = at.parentElement
+                depth++
+            }
+            target?.asDynamic()?.scrollIntoView(js("({ block: 'center', behavior: 'smooth' })"))
+        }
+        +edit.label
+    }
+}
+
+external interface PendingEditsBarProps : Props {
+    var pending: PendingEdits
+}
+
+/**
+ * A page's unsaved edits at the window's foot (issue #1922), where its side menu is not shown -- a narrow screen, a
+ * short page -- since nothing else then says they are there once their editors are out of sight: how many, and a way to
+ * each. `app.css` hides it where the menu shows, which lists them itself.
+ */
+val PendingEditsBar = FC<PendingEditsBarProps> { props ->
+    val edits = props.pending.all
+    if (edits.isEmpty()) return@FC
+    div {
+        className = ClassName("pending-edits-bar")
+        asDynamic()["role"] = "status"
+        span {
+            className = ClassName("pending-edits-count")
+            +"${pendingCountText(edits.size)}:"
+        }
+        edits.forEach { edit ->
+            span {
+                key = edit.key.unsafeCast<Key>()
+                goToEdit(edit)
+            }
+        }
+    }
+}
+
+external interface PendingEditsGuardProps : Props {
+    var pending: PendingEdits
+
+    /** Whether an address (as `routeParams` reads it) is still this page, which a move to is not a leave. */
+    var stays: (Map<String, String>) -> Boolean
+}
+
+/**
+ * Leaving a page with unsaved edits asks first (issue #1922): [LeaveGuard] armed while any is in the register, for every
+ * editor of the page together -- its one slot is the page's, not an editor's -- and disarmed once none is.
+ */
+val PendingEditsGuard = FC<PendingEditsGuardProps> { props ->
+    val anyPending = props.pending.any()
+    useEffect(anyPending) {
+        if (!anyPending) return@useEffect
+        val token = LeaveGuard.arm(props.stays) { LeaveGuard.confirmLeave(pendingLeavePrompt(props.pending.all)) }
+        try {
+            awaitCancellation()
+        } finally {
+            // Its own arm only: cancelled late, as an effect's coroutine is, it must not clear the next page's.
+            LeaveGuard.disarm(token)
+        }
+    }
+}
+
 /**
  * A page of panels in one card (issue #1919): the card ([cardClass], keyed [cardKey]) holding [body], and then its
  * [PageSideMenu] of [panels] and [sections] -- the lists the card's own top links ([panelLinks]) take. After the card in
  * the page's order, so a keyboard or a screen reader reaches the page first, and placed beside it on the left by
  * `app.css`. The menu shows only on a screen wide enough for it and a page long enough to need it
  * ([pageNeedsSideMenu]), where it takes the place of the top links; otherwise the page reads as it always did.
+ *
+ * A page that keeps its editors' unsaved edits passes its register ([pending], issue #1922): the card's editors put
+ * themselves in it, the menu marks and lists them, a bar at the window's foot says so where the menu is not shown, and
+ * leaving -- for an address [stays] does not call this page -- asks first.
  *
  * Drawn into the page's centered row (`.app-content`), as a page's card is: the two must be its items, side by side.
  */
@@ -432,17 +558,38 @@ fun ChildrenBuilder.panelPage(
     sections: Map<String, List<Pair<String, String>>> = emptyMap(),
     cardKey: String = "page",
     cardClass: String = "card wide",
+    pending: PendingEdits? = null,
+    stays: (Map<String, String>) -> Boolean = { false },
     body: ChildrenBuilder.() -> Unit,
 ) {
     div {
         key = cardKey.unsafeCast<Key>()
         className = ClassName(cardClass)
-        body()
+        if (pending == null) {
+            body()
+        } else {
+            PendingEditsContext.Provider {
+                value = pending
+                body()
+            }
+        }
     }
     PageSideMenu {
         key = "$cardKey-sideMenu".unsafeCast<Key>()
         this.panels = panels
         this.sections = sections
+        this.pending = pending
+    }
+    if (pending != null) {
+        PendingEditsBar {
+            key = "$cardKey-pendingBar".unsafeCast<Key>()
+            this.pending = pending
+        }
+        PendingEditsGuard {
+            key = "$cardKey-pendingGuard".unsafeCast<Key>()
+            this.pending = pending
+            this.stays = stays
+        }
     }
 }
 
@@ -467,15 +614,20 @@ external interface DisclosureProps : PropsWithChildren {
 }
 
 /**
- * A section of the page shown on request (issue #1397), its contents drawn only once opened: the menu's editor,
+ * A section of the page shown on request (issue #1397), its contents drawn only once opened -- and kept once they have
+ * been, folded away rather than dropped, so an editor inside keeps its unsaved work (issue #1922): the menu's editor,
  * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it. Closed to start
  * unless [DisclosureProps.initiallyOpen], and opened by [DisclosureProps.openWhen] as [MoreOptions] uses it.
  */
 val Disclosure = FC<DisclosureProps> { props ->
     var expanded by useState(props.initiallyOpen == true || props.openWhen == true)
+    // Once opened, its contents stay drawn, folded away by the `details` element (issue #1922): an editor inside keeps
+    // its unsaved work when the section is folded, rather than losing it unasked.
+    var opened by useState(expanded)
     useEffect(props.openWhen) {
         if (props.openWhen == true) expanded = true
     }
+    if (expanded && !opened) opened = true
     details {
         className = ClassName("disclosure")
         this.open = expanded
@@ -487,7 +639,7 @@ val Disclosure = FC<DisclosureProps> { props ->
                 else -> +props.summaryText
             }
         }
-        if (expanded) +props.children
+        if (expanded || opened) +props.children
     }
 }
 

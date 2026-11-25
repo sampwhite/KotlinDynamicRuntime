@@ -25,6 +25,7 @@ import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val usagesScope = MainScope()
 
@@ -314,6 +315,8 @@ val UsageColumnEditor = FC<UsageColumnEditorProps> { props ->
     val readsAs = usageDraftReadsAs(draft, trait)
     val problems = usageDraftProblems(draft, catalog, column)
     val changed = usageDraftChanged(draft, column)
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit(column?.usage?.label?.let { "Listing column $it" } ?: "New listing column", changed)
 
     fun save() {
         busy = true
@@ -333,6 +336,7 @@ val UsageColumnEditor = FC<UsageColumnEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 { +(if (column == null) "New column" else "Column “${column.usage.label}”") }
         choiceRow("Trait") {
             if (column != null) {

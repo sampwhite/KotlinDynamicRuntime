@@ -6,6 +6,8 @@ import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.parseDateOrNull
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -23,8 +25,7 @@ import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.ul
 import react.useState
 import web.cssom.ClassName
-import kotlin.time.Clock
-import kotlin.time.Instant
+import web.dom.ElementId
 
 private val windowsScope = MainScope()
 
@@ -74,6 +75,8 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
     val now = Clock.System.now()
     val problem = draft.problem(props.workflow.workflowId)
     val changed = draft != baseline
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit("Time windows of ${props.workflow.workflowId}", changed)
 
     // Null [windows] unsets them, so they follow the fallback again.
     fun save(windows: WfWindows?, acknowledge: Boolean) {
@@ -101,6 +104,7 @@ val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 {
             +"Time windows of "
             code { +props.workflow.workflowId }

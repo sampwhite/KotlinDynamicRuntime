@@ -96,6 +96,11 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
     the sub-links read one list (`formsDataSections`, ids in `FDSEC`), so a section drawn always has its link. The panel
     repeats those links under its heading (`sectionLinks`), and each section ends with "↑ Back to Forms and data"
     (`backToFormsData`), so a reader deep in the panel need not scroll to the page's top.
+  - **Unsaved edits** (issue #1922): every editor on the page with changes -- a workflow's slots and parameters, a
+    trait's design or narrowing, the included traits, a listing column, the definition, the copy, a menu item -- is in
+    the page's register (`usePendingEdits`, `usePendingEdit`). Its panel's heading says "Unsaved changes", the side menu
+    lists it and dots its panel and section, a bar at the window's foot lists it where the menu is not shown, and
+    leaving the client's page asks first (`PendingEditsGuard`, the copy editor's own guard folded into it).
   - **A side menu** (issue #1919, `PageSideMenu`, drawn with the card by `panelPage`): on a screen from 1200 pixels
     wide, for a page over two screens tall, the same panels and Forms and data's sections in a column beside the card,
     in view however far the page scrolls, marking the section and panel the reader is in. It replaces the links at the

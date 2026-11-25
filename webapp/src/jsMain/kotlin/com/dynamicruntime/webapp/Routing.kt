@@ -698,7 +698,9 @@ fun restoreUrl(url: String) {
  * What counts as "still here" is the armed page's to say, through the `stays` predicate it arms with: the core details
  * editor answers true for an address naming its page *and its form*, so a task switch or Back between tasks is never a
  * leave, while a move to another form's core details workflow -- the same page, whose keyed remount would drop the
- * edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work.
+ * edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work. A page of several
+ * editors arms it once for all of them, through its register of unsaved edits ([PendingEditsGuard], issue #1922), never
+ * an editor for itself -- one editor's disarm would drop the guard another's edits still need.
  *
  * Arming also sets `onbeforeunload`, so a reload, a closed tab or a typed address get the browser's own
  * "leave site?" prompt -- the one exit the app cannot see. A permitted in-app leave clears both.
@@ -713,18 +715,28 @@ object LeaveGuard {
     private var stays: ((Map<String, String>) -> Boolean)? = null
     private var check: (() -> Boolean)? = null
 
+    /** Which arm holds the slot: each [arm] takes the next, so a late [disarm] of an earlier one cannot clear it. */
+    private var armedBy = 0
+
     /**
      * Arms the guard: [stays] says whether an address (as [routeParams] reads it) still belongs to the armed work;
-     * [check] answers true to allow a leave, false to stay.
+     * [check] answers true to allow a leave, false to stay. Returns the arm's token, for a [disarm] that clears only
+     * this arm's slot.
      */
-    fun arm(stays: (Map<String, String>) -> Boolean, check: () -> Boolean) {
+    fun arm(stays: (Map<String, String>) -> Boolean, check: () -> Boolean): Int {
         this.stays = stays
         this.check = check
         js("window.onbeforeunload = function (e) { e.preventDefault(); e.returnValue = ''; return ''; }")
+        return ++armedBy
     }
 
-    /** Clears the guard and the browser prompt. Safe to call when not armed. */
-    fun disarm() {
+    /**
+     * Clears the guard and the browser prompt. Safe to call when not armed. Given the [token] its [arm] returned, it
+     * clears only that arm: one made since holds the slot, and is left armed.
+     */
+    fun disarm(token: Int? = null) {
+        // Another arm since [token]'s holds the slot now (issue #1922): a late cleanup leaves it alone.
+        if (token != null && token != armedBy) return
         stays = null
         check = null
         js("window.onbeforeunload = null")

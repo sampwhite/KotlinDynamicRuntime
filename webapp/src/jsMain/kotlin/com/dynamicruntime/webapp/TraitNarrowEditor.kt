@@ -24,6 +24,7 @@ import react.dom.html.ReactHTML.ul
 import react.useMemo
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val narrowScope = MainScope()
 
@@ -82,6 +83,8 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
     var introText by useState(baseline.introduction ?: platformIntro)
     val problems = narrowProblems(draft, props.base)
     val changed = narrowingChanged(draft, baseline)
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit("How this client takes ${props.trait.traitId}", changed)
     val preview = useMemo(draft.toInfo().toString()) { traitPreviewOf(narrowPreviewDefs(props.base, draft), props.base.typeName) }
 
     fun save(narrowing: TraitNarrowing, acknowledge: Boolean) {
@@ -106,6 +109,7 @@ val TraitNarrowEditor = FC<TraitNarrowEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 {
             +"Adapt "
             code { +props.trait.traitId }

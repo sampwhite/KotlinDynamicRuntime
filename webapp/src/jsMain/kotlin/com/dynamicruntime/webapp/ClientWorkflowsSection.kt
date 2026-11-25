@@ -1,11 +1,12 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.user.UserLabelDetail
-import com.dynamicruntime.common.user.nobodyCarriesWarnings
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
+import com.dynamicruntime.common.user.UserLabelDetail
+import com.dynamicruntime.common.user.nobodyCarriesWarnings
+import kotlin.time.Clock
 import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -32,7 +33,7 @@ import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
-import kotlin.time.Clock
+import web.dom.ElementId
 
 private val workflowsScope = MainScope()
 
@@ -629,6 +630,10 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
     var pending by useState<WfTemplateSlots?>(null)
     val problems = workflowSlotProblems(props.template, draft)
     val changed = workflowSlotsChanged(draft, baseline)
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit(
+        if (props.workflow == null) "New workflow from ${props.template.workflowId}" else "Workflow ${base.workflowId}", changed,
+    )
     val preview = workflowPreview(base, draft)
 
     fun save(slots: WfTemplateSlots, acknowledge: Boolean) {
@@ -653,6 +658,7 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 {
             if (props.workflow == null) {
                 +"New workflow from "

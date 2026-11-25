@@ -20,6 +20,7 @@ import react.dom.html.ReactHTML.ul
 import react.useMemo
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val designScope = MainScope()
 
@@ -75,6 +76,8 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
     val problems = draftProblems(draft, baseline, base)
     val count = draftAttributeCount(draft)
     val changed = draftChanged(draft, baseline)
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit(baseline?.traitId?.let { "Trait $it" } ?: "New trait", changed)
     val preview = useMemo(draft.toInfo().toString()) {
         if (problems.any { it.contains("needs at least one field") }) null else traitPreviewOf(previewDefs(draft, base = base), previewTypeName)
     }
@@ -99,6 +102,7 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 { +(baseline?.let { "Edit ${it.label}" } ?: "New trait") }
         textField("Name", draft.label, disabled = busy) { v -> draft = draft.withHeading(v, draft.description.orEmpty()) }
         textField("Description", draft.description.orEmpty(), disabled = busy) { v -> draft = draft.withHeading(draft.label, v) }

@@ -86,6 +86,8 @@ private const val storedConfigurationId = "stored-configuration"
 val ClientsPage = FC<Props> {
     // The page's own copy (issue #1337): its sections' "What is this?" explanations.
     val pageCopy = usePageCopy(PFRAG.clients)
+    // Its editors' unsaved edits (issue #1922): shown and guarded for every editor of an open client together.
+    val pending = usePendingEdits()
     var config by useState<HomeConfig?>(null)
     // The refresh generation [config] was read at, which the next steps' reads key on ([useCardRead]): opening or leaving
     // a sandbox here changes the caller before their config arrives. -1 until a config has loaded.
@@ -295,7 +297,7 @@ val ClientsPage = FC<Props> {
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
-            inPlace, pageCopy, nextSteps.takeIf { nextStepsWanted }, hiddenOnHome,
+            inPlace, pageCopy, nextSteps.takeIf { nextStepsWanted }, hiddenOnHome, pending,
             showOnHome = {
                 checklistOwner?.let { owner ->
                     showChecklistOnHome(owner)
@@ -354,6 +356,8 @@ private fun ChildrenBuilder.clientDetail(
     nextSteps: List<ChecklistStep>?,
     /** Whether this browser put the checklist away on Home (issue #1757), which the Getting started panel offers to undo. */
     hiddenOnHome: Boolean,
+    /** The page's register of its editors' unsaved edits (issue #1922). */
+    pending: PendingEdits,
     /** Brings the checklist back to Home in this browser (issue #1757). */
     showOnHome: () -> Unit,
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
@@ -399,7 +403,10 @@ private fun ChildrenBuilder.clientDetail(
     // Every child of the card is keyed (issue #1397), so each panel keeps its state by what it is, not by how many
     // elements happen to be drawn above it: mending a file ref clears an issue (issue #1176), and the issues coming
     // and going must not tear down and remake the editors below, losing what was half typed in them.
-    panelPage(panels, mapOf(panelFormsData to formsSections), cardKey = "clientCard") {
+    panelPage(
+        panels, mapOf(panelFormsData to formsSections), cardKey = "clientCard",
+        pending = pending, stays = { h -> staysOnClientPage(h, clientId, inPlace) },
+    ) {
         div {
             key = "header".unsafeCast<Key>()
             className = ClassName("client-header")
@@ -478,7 +485,7 @@ private fun ChildrenBuilder.clientDetail(
             }
         }
         stepsLeft?.let { steps ->
-            panel(panelGettingStarted, "Getting started") {
+            panel(panelGettingStarted, "Getting started", dirty = pending.inPanel(panelGettingStarted)) {
                 p {
                     className = ClassName("subtitle")
                     +"A few steps make your client ready for the people who will use it. Each is checked off once it is done."
@@ -499,7 +506,7 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
         }
-        panel(panelDefinition, "Definition", "") {
+        panel(panelDefinition, "Definition", "", dirty = pending.inPanel(panelDefinition)) {
             // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
             def?.stored?.let { stored ->
                 if (definitionEditable(row)) {
@@ -553,7 +560,8 @@ private fun ChildrenBuilder.clientDetail(
             }
         }
         if (workflowsShown) {
-            panel(panelFormsData, "Forms and data", pageCopy.explanation(PFRAG.formsDataNs)) {
+            val formsDataDirty = pending.inPanel(panelFormsData)
+            panel(panelFormsData, "Forms and data", pageCopy.explanation(PFRAG.formsDataNs), dirty = formsDataDirty) {
                 // Its sections' links (issue #1891), for a reader already in the panel, and at each section's end a way
                 // back up to them: the panel is long, and the page's links are far above.
                 nav {
@@ -571,13 +579,15 @@ private fun ChildrenBuilder.clientDetail(
                         id = ElementId(FDSEC.traits)
                         +title
                     }
-                    ClientTraitsSection {
-                        this.clientId = clientId
-                        this.stored = stored?.get(CLD.includedTraits).toJsonListOfStrings()
-                        this.savesDraft = savesDraft
-                        formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
-                        this.onChanged = onChanged
-                        previewExplanation = pageCopy.explanation(PFRAG.traitPreviewNs)
+                    inFormsDataSection(FDSEC.traits) {
+                        ClientTraitsSection {
+                            this.clientId = clientId
+                            this.stored = stored?.get(CLD.includedTraits).toJsonListOfStrings()
+                            this.savesDraft = savesDraft
+                            formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
+                            this.onChanged = onChanged
+                            previewExplanation = pageCopy.explanation(PFRAG.traitPreviewNs)
+                        }
                     }
                     backToFormsData()
                 }
@@ -589,10 +599,12 @@ private fun ChildrenBuilder.clientDetail(
                         headingId = FDSEC.listing
                         text = pageCopy.explanation(PFRAG.listingColumnsNs)
                     }
-                    ClientUsagesSection {
-                        this.clientId = clientId
-                        this.savesDraft = savesDraft
-                        this.onChanged = onChanged
+                    inFormsDataSection(FDSEC.listing) {
+                        ClientUsagesSection {
+                            this.clientId = clientId
+                            this.savesDraft = savesDraft
+                            this.onChanged = onChanged
+                        }
                     }
                 } else {
                     h3 {
@@ -602,11 +614,13 @@ private fun ChildrenBuilder.clientDetail(
                 }
                 // How the listing draws each row's workflows (issue #1599): for every client, one defined in code included,
                 // since a stored listing setting stands over the code's -- beside the columns where those are editable.
-                ClientListingLayout {
-                    this.clientId = clientId
-                    this.savesDraft = savesDraft
-                    this.onChanged = onChanged
-                    readOnly = !editing.editable
+                inFormsDataSection(FDSEC.listing) {
+                    ClientListingLayout {
+                        this.clientId = clientId
+                        this.savesDraft = savesDraft
+                        this.onChanged = onChanged
+                        readOnly = !editing.editable
+                    }
                 }
                 backToFormsData()
                 // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
@@ -614,15 +628,17 @@ private fun ChildrenBuilder.clientDetail(
                     id = ElementId(FDSEC.workflows)
                     +formsSectionTitles.getValue(FDSEC.workflows)
                 }
-                ClientWorkflowsSection {
-                    this.clientId = clientId
-                    this.savesDraft = savesDraft
-                    this.configEditable = configEditable
-                    paramsEditable = editing.editable
-                    formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
-                    // How a workflow made restricted is opened to people (issue #1384): empty as shipped, said by a flavor.
-                    newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
-                    this.onChanged = onChanged
+                inFormsDataSection(FDSEC.workflows) {
+                    ClientWorkflowsSection {
+                        this.clientId = clientId
+                        this.savesDraft = savesDraft
+                        this.configEditable = configEditable
+                        paramsEditable = editing.editable
+                        formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
+                        // How a workflow made restricted is opened to people (issue #1384): empty as shipped, said by a flavor.
+                        newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
+                        this.onChanged = onChanged
+                    }
                 }
                 backToFormsData()
                 // Bringing its forms' stored state up to date with the configuration above now, rather than overnight
@@ -642,7 +658,7 @@ private fun ChildrenBuilder.clientDetail(
         // What the client's own configuration changes about what its people see (issue #917): the copy it rewords,
         // file by file, and its editor (issues #918, #1062).
         if (!overridesRefused) {
-            panel(panelCopy, "Copy", pageCopy.explanation(PFRAG.copyNs)) {
+            panel(panelCopy, "Copy", pageCopy.explanation(PFRAG.copyNs), dirty = pending.inPanel(panelCopy)) {
                 when {
                     overridesError != null -> errorText("Couldn't load this client's copy changes.", overridesError)
                     overrides == null -> p {
@@ -658,7 +674,6 @@ private fun ChildrenBuilder.clientDetail(
                         }
                         CopyFileEditor {
                             this.clientId = clientId
-                            this.inPlace = inPlace
                             this.overrides = overrides.copy
                             this.savesDraft = savesDraft
                             readOnly = !editing.editable
@@ -672,7 +687,7 @@ private fun ChildrenBuilder.clientDetail(
         // carries, whose people there are to see them. A sandbox shows its parent's web assets, and says so; its own
         // page lists the files its parent has drafted.
         if (present) {
-            panel(panelImages, "Images", pageCopy.explanation(PFRAG.imagesNs)) {
+            panel(panelImages, "Images", pageCopy.explanation(PFRAG.imagesNs), dirty = pending.inPanel(panelImages)) {
                 h3 { +"Web assets" }
                 WebAssetsSection {
                     this.clientId = clientId
@@ -700,7 +715,7 @@ private fun ChildrenBuilder.clientDetail(
         // Its sandbox (issue #932), then the configuration it stores, where the drafts the panels above make are
         // published. A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed
         // here as such.
-        panel(panelPublishing, publishingHeading(row), "") {
+        panel(panelPublishing, publishingHeading(row), "", dirty = pending.inPanel(panelPublishing)) {
             row?.let { overview ->
                 WhatIsThis {
                     heading = "Sandbox"
@@ -764,7 +779,7 @@ private fun ChildrenBuilder.clientDetail(
         }
         // The home menu and its editor (issue #919), collapsed: changing it is rare, and it is the longest table here.
         if (!overridesRefused) {
-            panel(panelMenu, "Menu", pageCopy.explanation(PFRAG.menuNs)) {
+            panel(panelMenu, "Menu", pageCopy.explanation(PFRAG.menuNs), dirty = pending.inPanel(panelMenu)) {
                 when {
                     overridesError != null -> errorText("Couldn't load this client's menu changes.", overridesError)
                     overrides == null -> p {
@@ -844,6 +859,14 @@ private fun ChildrenBuilder.summaryGroups(
                 }
             }
         }
+    }
+}
+
+/** [body], an editor of Forms and data's section [sectionId], told so for the page's unsaved edits (issue #1922). */
+private fun ChildrenBuilder.inFormsDataSection(sectionId: String, body: ChildrenBuilder.() -> Unit) {
+    PendingPlaceContext.Provider {
+        value = PendingPlace(panelFormsData, sectionId)
+        body()
     }
 }
 
@@ -966,6 +989,11 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
         }
     }
 
+    // An unsaved change is the page's to show and guard (issue #1922): one the open editor's save would send.
+    val definitionDirty = editing &&
+        definitionEditChanges(definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft), props.platform))
+    val anchor = usePendingEdit("Definition", definitionDirty)
+
     if (!editing) {
         p {
             Button {
@@ -974,6 +1002,8 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
             }
         }
     } else {
+        // Where "go to it" for the definition's unsaved change scrolls: the editor's top.
+        span { id = ElementId(anchor) }
         val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft), props.platform)
         // The one list the endpoint's input is built from, so a field joining it is drawn here without a change --
         // under its section's heading (issue #1308), declared beside it in the kernel.
@@ -1719,6 +1749,14 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
         }
     }
 
+    // An unsaved change is the page's to show and guard (issue #1922): a label typed and not saved, or an audience
+    // picked and not shown.
+    val renamed = renaming?.let { id -> items?.firstOrNull { it.itemId == id } }
+    val menuDirty = (renamed != null && draft != renamed.label.orEmpty()) || (showing != null && audience != null)
+    val anchor = usePendingEdit(
+        renamed?.let { "Menu item ${it.itemId}" } ?: showing?.let { "Menu item $it" } ?: "Menu", menuDirty,
+    )
+
     fun run(action: suspend () -> MenuEditResult, done: (MenuEditResult) -> String) {
         busy = true
         editError = null
@@ -1783,6 +1821,8 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                         listed.forEach { item ->
                             tr {
                                 key = item.itemId.unsafeCast<Key>()
+                                // Where "go to it" for an unsaved rename or audience scrolls: the item's row.
+                                if (item.itemId == renaming || item.itemId == showing) id = ElementId(anchor)
                                 td {
                                     // A child sits under its parent, as it does in the menu.
                                     if (item.parentId != null) +"\u2003"
