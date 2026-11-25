@@ -65,6 +65,12 @@ object WFD {
      */
     const val highlightStart = "highlightStart"
     const val traits = "traits"
+
+    /**
+     * On a task of a creation or core details workflow (issue #1903): whether it also collects the traits of its form's
+     * type, after those it lists. See [forFormType].
+     */
+    const val formTypeTraits = "formTypeTraits"
     const val saves = "saves"
     const val layout = "layout"
 
@@ -783,6 +789,12 @@ class WfTask(
      * what it carries when it declares none.
      */
     val keyword: String? = null,
+    /**
+     * Whether the task also collects the traits of its form's type (issue #1903), after [traits] and leaving out any
+     * another task of the workflow lists. Only a creation or core details workflow's task, at most one of the workflow;
+     * [forFormType] says what it then collects.
+     */
+    val formTypeTraits: Boolean = false,
 ) {
     /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -821,7 +833,7 @@ class WfTask(
         if (approval != null) {
             // An approval is pressed, not filled in: its completion is the approval itself (issue #787), so a
             // trait or a save on it would be a second, competing idea of what finishing the task means.
-            if (traits.isNotEmpty() || saves.isNotEmpty()) {
+            if (traits.isNotEmpty() || formTypeTraits || saves.isNotEmpty()) {
                 throw KdrException.mkConv(
                     "Approval task '$id' collects traits or offers saves; an approval task does neither -- it is " +
                         "complete when a reviewer approves it.",
@@ -933,6 +945,11 @@ class WfTask(
 
     /** The save named, or null. */
     fun save(saveId: String): WfSave? = saves.firstOrNull { it.id == saveId }
+
+    /** This task collecting [refs] in place of its own traits, its resolved functions with it; see [forFormType]. */
+    internal fun collecting(refs: List<WfTraitRef>): WfTask = WfTask(
+        id, label, refs, saves, layout, functionUsages, approval, display, saveWhen, comment, keyword, formTypeTraits,
+    ).also { it.resolvedFunctions = resolvedFunctions }
 }
 
 /**
@@ -1150,6 +1167,23 @@ class WfDef(
                 )
             }
         }
+        // The traits of a form's type (issue #1903) are for the workflows that collect whatever a type asks for, of which a
+        // client has one each. A normal workflow's steps mean something for particular data, so it lists its traits.
+        val byType = tasks.filter { it.formTypeTraits }
+        byType.firstOrNull()?.let {
+            if (entry == WfEntry.normal) {
+                throw KdrException.mkConv(
+                    "Normal workflow '$workflowId' task '${it.id}' collects the traits of its form's type; only a creation or " +
+                        "core details workflow's task does. A normal workflow lists its traits.",
+                )
+            }
+        }
+        if (byType.size > 1) {
+            throw KdrException.mkConv(
+                "Workflow '$workflowId' has ${byType.size} tasks that collect the traits of their form's type " +
+                    "(${byType.joinToString(", ") { "'${it.id}'" }}); at most one does, since each would collect the same.",
+            )
+        }
         for (task in tasks) {
             val rule = task.saveWhen ?: continue
             // Core details workflow and creation saves keep their own ownership rules (issue #856); a rule there would be ignored,
@@ -1284,6 +1318,12 @@ class WfDef(
 
     /** The task named, or null. */
     fun task(id: String): WfTask? = tasksById[id]
+
+    /** This workflow with [tasks] in place of its own, its resolved functions with it; see [forFormType]. */
+    internal fun withTasks(tasks: List<WfTask>): WfDef = WfDef(
+        workflowId, entry, tasks, functionUsages, label, eligibility, singletons, locks, typeAlterations, typeBasis, comment,
+        fromTemplate, highlightStart, templateOverlay,
+    ).also { it.resolvedFunctions = resolvedFunctions }
 
     /**
      * The tasks whose traits approval task [task] shows, read-only, above its prompt (issue #1695), so a reviewer
@@ -1461,6 +1501,14 @@ object WfDefSchema {
                 allowCoerce = true
                 items { ref(WFD.traitRefType) }
             }
+            property(
+                WFD.formTypeTraits,
+                "A creation or core details workflow task's: whether it also collects the traits of its form's type, after " +
+                    "those it lists, leaving out any another task of the workflow lists. At most one task of a workflow.",
+            ) {
+                type = SCT.boolean
+                allowCoerce = false
+            }
             property(WFD.saves, "The saves this task offers.", required = true) {
                 type = SCT.array
                 allowCoerce = true
@@ -1575,6 +1623,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                 task.comment?.let { put(SCH.dComment, it) }
                 put(WFD.label, task.label)
                 put(WFD.traits, task.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) })
+                if (task.formTypeTraits) put(WFD.formTypeTraits, true)
                 put(WFD.saves, task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to it.label, WFD.kind to it.kind.name) })
                 task.layout?.let { put(WFD.layout, linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name)) }
                 // A usage re-emits its own initialization data, so a code-built and a stored definition
@@ -1684,6 +1733,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<Str
                 saveWhen = t[WFD.saveWhen].toOptStr(),
                 comment = t[SCH.dComment].toOptStr(),
                 keyword = t[WFD.keyword].toOptStr(),
+                formTypeTraits = t[WFD.formTypeTraits] == true,
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
@@ -1852,6 +1902,12 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private var saveWhen: String? = null
     private var keyword: String? = null
 
+    /**
+     * Whether the task also collects the traits of its form's type (issue #1903), after those it lists. A creation or core
+     * details workflow's, at most one task of it; see [forFormType].
+     */
+    var formTypeTraits: Boolean = false
+
     /** The author's note on the task (issue #1135), stored as its `$comment`; it changes nothing. */
     var comment: String? = null
 
@@ -1944,6 +2000,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         comment?.let { out[SCH.dComment] = it }
         out[WFD.label] = label
         out[WFD.traits] = traits.toList()
+        if (formTypeTraits) out[WFD.formTypeTraits] = true
         out[WFD.saves] = saves.toList()
         layout?.let { out[WFD.layout] = it }
         if (functions.isNotEmpty()) out[WFD.functions] = functions.toList()

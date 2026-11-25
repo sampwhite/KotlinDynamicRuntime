@@ -715,7 +715,13 @@ does not collect yet (`traitsToAdd`), and a hint that a step may collect several
 another is included under Traits first (`collectsHint`). Each row is a group named for its trait, and a move or a
 removal puts focus back where a keyboard user can go on -- the same arrow, the other at an end, the next row's Remove,
 or the picker (`collectsFocusAfterMove`, `collectsFocusAfterRemove`). It replaced a multiple choice, which read as a single choice
-with one trait chosen and as a wall of long tags past a few, beside a separate line of Required checkboxes -- and say
+with one trait chosen and as a wall of long tags past a few, beside a separate line of Required checkboxes. Under it, on
+a creation or core details step of a client with form types (issue #1903, `formTypeTraitsOffered`), **Also collect the
+traits of the form's type**, and, while it is checked, **each form type with the traits it brings to this step**, required
+or not (`formTypeTraitLines`): the step's list no longer says by itself what it collects, so the page does, by the kernel's
+own rule (`formTypeBrings`). The catalog carries the types (`CWF.formTypes`); a slot that does not say the choice
+(`WfTaskSlot.formTypeTraits` null, as another caller sends it) leaves it as it is, and a listed workflow's step that makes it
+says so. The editors also say
 in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is

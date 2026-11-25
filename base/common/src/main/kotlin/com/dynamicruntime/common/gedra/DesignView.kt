@@ -153,7 +153,7 @@ object DesignView {
             // Editing (issue #984): whether this caller may change the workflow's copy here -- and why not, when not
             // -- and the stamp of the definition the page was drawn from, which an edit sends back.
             DSV.canEdit to (refusal == null),
-            DSV.basedOn to workflowDefStamp(declared.def),
+            DSV.basedOn to workflowDefStamp(declared.written.def),
         )
         if (refusal != null) {
             out[DSV.editRefusal] = refusal.message

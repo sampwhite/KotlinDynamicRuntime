@@ -236,6 +236,15 @@ fun formTypeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.formType") {
     optionsProvider(FTYPE.optionsSource) { c, _ -> FormTypeService.getOrNull(c)?.choices(c.client).orEmpty() }
 }
 
+/**
+ * The form types [client]'s configurations declare (issue #1903), as written: what a check of its workflows asks over,
+ * wherever the client's configurations are -- an edge has no [FormTypeService] -- and before its types are judged. A type
+ * the load drops, or a trait it leaves out of one, is still here, so a check that finds nothing wrong here finds nothing
+ * wrong with what the load keeps.
+ */
+fun declaredFormTypes(configs: GedraConfigCollector, client: String): List<FormTypeDef> =
+    configs.configs.filter { it.gedraId.client == client }.flatMap { it.formTypes }
+
 /** The form type [entries] say the form is of, or null when they say none (issue #1902). */
 fun formTypeOf(entries: List<Map<String, Any?>>): String? =
     entries.firstOrNull { it[GE.traitId].toOptStr() == GT.formType }?.get(GE.data).toJsonMapOrEmpty()[GT.formTypeField].toOptStr()

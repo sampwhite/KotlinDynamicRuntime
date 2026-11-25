@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.FTYPE
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.DSV
@@ -850,5 +851,32 @@ class DesignViewTest {
         // Issue #1617: a long line counts as one, since the block does not wrap.
         assertEquals(3, jsonBlockRowsFor("{\n  \"a\": \"${"x".repeat(500)}\"\n}"))
         assertEquals(DVI.jsonRows, jsonBlockRowsFor((1..40).joinToString("\n")))
+    }
+
+    @Test
+    fun thePageIsDrawnForAFormType() {
+        // Issue #1903: the form's own type first, as no choice, then none, then the others.
+        val types = listOf("lead" to "Lead", "video" to "Video").map { (id, label) -> mapOf(FTYPE.formTypeId to id, FTYPE.label to label) }
+        val design = parseWfDesign(mapOf(DSV.formTypes to types, DSV.ownFormType to "lead"))!!
+        assertEquals(
+            listOf("This form's type (Lead)" to "", "No type" to DSV.noFormType, "Video" to "video"),
+            drawnFormTypeChoices(design, isEdit = true),
+        )
+        assertNull(drawnFormTypeNote(design))
+        val fresh = parseWfDesign(mapOf(DSV.formTypes to types, DSV.drawnFormType to "video"))!!
+        assertEquals(
+            listOf("A new form (no type)" to "", "Lead" to "lead", "Video" to "video"), drawnFormTypeChoices(fresh, isEdit = false),
+        )
+        assertEquals("Drawn as a form of the type Video, so nothing is saved from here.", drawnFormTypeNote(fresh))
+        assertEquals(
+            "Drawn as a form with no type, so nothing is saved from here.",
+            drawnFormTypeNote(parseWfDesign(mapOf(DSV.formTypes to types, DSV.drawnFormType to DSV.noFormType))),
+        )
+        // A form of a type no longer defined is called by its id.
+        val gone = parseWfDesign(mapOf(DSV.formTypes to types, DSV.ownFormType to "old"))!!
+        assertEquals("This form's type (old)" to "", drawnFormTypeChoices(gone, isEdit = true).first())
+        // Any other workflow has none to choose, and an approval's block keeps them.
+        assertEquals(emptyList(), parseWfDesign(emptyMap<String, Any?>())!!.formTypes)
+        assertEquals("video", fresh.forApproval("review").drawnFormType)
     }
 }

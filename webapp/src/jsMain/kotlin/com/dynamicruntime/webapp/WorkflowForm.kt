@@ -28,6 +28,7 @@ import react.Key
 import react.dom.html.ReactHTML.ul
 import react.dom.html.ReactHTML.li
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 import com.dynamicruntime.common.counter.counterFieldsOf
@@ -140,6 +141,12 @@ external interface WorkflowFormProps : Props {
      * with or without the explanation. Unset, the header draws no switch.
      */
     var onDesignToggle: (() -> Unit)?
+
+    /**
+     * Draws the page for a form type in Design View (issue #1903): told the type's id, `DSV.noFormType`, or empty for the
+     * form's own. The page re-reads the view in place. Unset, the choice is not offered.
+     */
+    var onDrawnFormType: ((String) -> Unit)?
 }
 
 /**
@@ -250,6 +257,21 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val storedState = useState(seeded)
     val stored by storedState
     val updateStored = storedState.component2()
+    // A view read again in place may draw a trait this form has not: its form's type was changed by a save, or Design View
+    // draws another type (issue #1903). Seeded from that view as the first was, or its stored data would be drawn empty and
+    // a save would replace it. One drawn before keeps what it holds, typed or not.
+    val drawnTraits = useRef(wf.tasks.flatMap { it.traits }.map { it.traitId }.toSet())
+    useEffect(wf) {
+        val drawn = drawnTraits.current ?: emptySet()
+        val arrived = wf.tasks.flatMap { it.traits }.map { it.traitId }.toSet() - drawn
+        if (arrived.isEmpty()) return@useEffect
+        drawnTraits.current = drawn + arrived
+        val values = presentation.working.filterKeys { it in arrived }
+        updateValues { it + values }
+        updateStored { it + values }
+        val suggested = arrived.associateWith { suggestedFilledFields(presentation, it) }.filterValues { it.isNotEmpty() }
+        updateSuggested { it + suggested }
+    }
     // An approval in flight (issue #832), by task, and a failure that never reached a verdict -- the network, a 5xx --
     // shown by that task's button. A refusal instead goes to the page, which reloads (see `onApproveSettled`).
     var approvingTask by useState<String?>(null)
@@ -959,7 +981,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // A task that offers no save -- a normal workflow's approval step (issues #787, #791) -- draws none:
             // there is nothing here to save, and asking for its save would find none.
             val save = saveFor(task)
-            val savesHere = editing && wf.isEditable(task, isEdit) && save != null
+            // Not while it is drawn for a type that is not the form's (issue #1903): the save would be refused its traits.
+            val drawnFor = drawnFormTypeNote(wf.design)
+            val savesHere = editing && wf.isEditable(task, isEdit) && save != null && drawnFor == null
+            if (drawnFor != null && editing && save != null) {
+                p {
+                    className = ClassName("subtitle")
+                    +drawnFor
+                }
+            }
             if (!savesHere && (satisfied || next != null)) {
                 div {
                     className = ClassName("row")
@@ -1125,6 +1155,26 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // Design View's switch (issues #972, #1577), last in the row: this header is the one surface the switch
             // changes, so it sits here rather than in the app bar. Offered only to a caller the backend answers.
             props.onDesignToggle?.takeIf { designSwitchOffered(shellFacts) }?.let { designSwitch(it) }
+        }
+
+        // Which form type the page is drawn for, in Design View (issue #1903): a task that collects its form's type's traits
+        // draws one type's at a time, so laying out another's needs it said.
+        props.onDrawnFormType?.let { onDrawn ->
+            val design = designSession?.design?.takeIf { it.formTypes.isNotEmpty() } ?: return@let
+            div {
+                className = ClassName("row dv-drawn-for")
+                span {
+                    className = ClassName("field-label")
+                    +"Drawn for"
+                }
+                Select {
+                    value = design.drawnFormType ?: ""
+                    options = choiceOptions(drawnFormTypeChoices(design, isEdit))
+                    asDynamic()["aria-label"] = "The form type this page is drawn for"
+                    style = js("({ minWidth: 260 })")
+                    onChange = { v -> onDrawn(v?.toString().orEmpty()) }
+                }
+            }
         }
 
         // What the core details are (issue #1571): what every form carries, which is not all of its data -- unless the

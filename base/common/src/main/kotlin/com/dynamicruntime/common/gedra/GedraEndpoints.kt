@@ -18,6 +18,8 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.collectsFormType
+import com.dynamicruntime.common.gedra.workflow.DrawnFormTypes
 import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -894,6 +896,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 "details workflow.")
             field(GDF.gedraId, "An existing form to resolve against, seeding each field with its data; with no workflowId this " +
                 "resolves the client's core details workflow.")
+            field(
+                DSV.drawnFormType,
+                "For an administrator in Design View, where a task collects its form's type's traits: the form type to draw " +
+                    "the page for, by id, or '${DSV.noFormType}'; the form's own when absent. It stores nothing.",
+            )
         },
         publicApi = true,
         needsClientConfig = true,
@@ -906,7 +913,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // caller never needs to know the id up front (issue #658). A workflow the caller does not see (issue #1384) is
         // as good as not configured for them: one named is refused as an unknown one is, and a creation or core details
         // workflow falls back as for a client with none -- the trait picker, the raw editor.
-        val declared = when {
+        val found = when {
             requested != null -> WorkflowPhases.liveFor(c, registry, requested)
                 ?: throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
             gedraId != null -> WorkflowPhases.seenOrNull(c, registry, registry.coreDetails)
@@ -914,16 +921,22 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         // A creation workflow makes new forms (issue #817): asked against an existing one it would draw that form under a
         // "new form" heading, with a save the save endpoint refuses -- so it is refused here, before anything is read.
-        if (declared != null && gedraId != null && declared.def.entry == WfEntry.creation) {
+        if (found != null && gedraId != null && found.def.entry == WfEntry.creation) {
             throw KdrException.mkInput(
-                "Workflow '${declared.def.workflowId}' creates new forms, so it cannot be opened against an existing one.",
+                "Workflow '${found.def.workflowId}' creates new forms, so it cannot be opened against an existing one.",
             )
         }
-        if (declared == null) {
+        if (found == null) {
             noWorkflowView()
         } else {
             // A named form seeds each task from its current entries -- which also makes completeness real.
             val row = if (gedraId == null) null else coreDetailsFormRow(c, gedraId)
+            // As it is for a form of this one's type (issue #1903), or the type a Design View asks to be drawn for.
+            val drawn = drawnFormTypes(c, found, row, request[DSV.drawnFormType].toOptStr())
+            val declared = when (drawn?.asked) {
+                null -> found.forForm(c, c.client, row?.entries.orEmpty())
+                else -> found.forFormType(drawn.types.firstOrNull { it.formTypeId == drawn.asked })
+            }
             // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
             // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
             // The form's state, read once: where it stands with a normal workflow, and its locked traits (issue #857).
@@ -956,7 +969,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             resolveWorkflowView(
                 c, declared, entriesByTask, ownerAttributes, approvals.current, formFacts, lockedTraits, keptToOwner,
                 formEntries = row?.entries.orEmpty(), rowFacts = RowCfacts.of(c, row?.userId),
-                reversals = approvals.reversals, mayReverse = mayReverse,
+                reversals = approvals.reversals, mayReverse = mayReverse, drawnTypes = drawn,
             )
         }
     }
@@ -1734,6 +1747,21 @@ private fun approveRefusal(c: KdrCxt, judge: WorkflowTaskJudge, task: WfTask, ro
             "You are not a reviewer of task '${task.id}' of workflow '$workflowId'."
         else -> "You may not approve task '${task.id}' of workflow '$workflowId'."
     }
+}
+
+/**
+ * In Design View, the form types [found]'s page may be drawn for, and the one [asked] for when that is not the form's own
+ * (issue #1903): null outside Design View, and for a workflow no task of which collects its form's type's traits. [row] is
+ * the form, or null for a new one, which has no type. Refused (400) when the client has no type [asked].
+ */
+private fun drawnFormTypes(c: KdrCxt, found: WfDeclared, row: GedraDataRow?, asked: String?): DrawnFormTypes? {
+    if (!found.def.collectsFormType || !DesignView.isOn(c)) return null
+    val types = FormTypeService.get(c).forClient(c.client)
+    val own = formTypeOf(row?.entries.orEmpty())
+    if (asked != null && asked != DSV.noFormType && asked !in types) {
+        throw KdrException.mkInput("The client '${c.client}' has no form type '$asked'.")
+    }
+    return DrawnFormTypes(types.values, own, asked?.takeIf { it != (own ?: DSV.noFormType) })
 }
 
 /** The same split over entries already in hand as wire maps -- a save's returned item (issue #700). */

@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.traitIdsOverTypes
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.schema.SCH
@@ -122,16 +123,18 @@ object DesignSharedEdit {
     }
 
     /**
-     * The client's workflows whose pages show any of [typeNames] -- reached from the traits their tasks collect,
-     * through every `$ref` -- each as `{ workflowId, label }`.
+     * The client's workflows whose pages show any of [typeNames] -- reached from the traits their tasks collect, a form
+     * type's included (issue #1903), through every `$ref` -- each as `{ workflowId, label }`.
      */
     fun whereUsed(cxt: KdrCxt, typeNames: Set<String>): List<Map<String, Any?>> {
         val schema = SchemaService.get(cxt)
         val traits = schema.gedraTraitsFor(cxt.client).associateBy { it.traitId }
         val store = cxt.getClientSchema()
+        val formTypes = FormTypeService.getOrNull(cxt)?.forClient(cxt.client)?.values.orEmpty()
         return WorkflowService.get(cxt).forClient(cxt.client).workflows.values.filter { declared ->
-            val seeds = declared.def.tasks.flatMap { it.traits }.flatMap { ref ->
-                val trait = traits[ref.traitId] ?: return@flatMap emptyList()
+            // Over every form type (issue #1903), since the page drawing one for some form is a use of it.
+            val seeds = declared.def.traitIdsOverTypes(formTypes).flatMap { traitId ->
+                val trait = traits[traitId] ?: return@flatMap emptyList()
                 listOfNotNull(trait.typeName, trait.dataSchema[SCH.dRef].toOptStr()?.let { refName(it) })
             }
             collectDefClosure(seeds, store.defs).keys.any { it in typeNames }

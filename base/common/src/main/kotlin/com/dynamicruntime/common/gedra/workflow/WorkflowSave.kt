@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEdit
@@ -44,8 +45,7 @@ fun saveWorkflow(
     /** An edit save's check on the form, run under its lock before the write (issue #856); see [GedraPatchTarget.underLock]. */
     underLock: ((GedraDataRow, List<Map<String, Any?>>) -> Unit)? = null,
 ): Map<String, Any?> {
-    val task = declared.def.task(taskId)
-        ?: throw KdrException.mkInput("Workflow '${declared.ref}' has no task '$taskId'.")
+    val task = saveTaskOf(cxt, declared, taskId, entries, gedraId)
     val save = task.save(saveId)
         ?: throw KdrException.mkInput("Task '$taskId' of '${declared.ref}' has no save '$saveId'.")
 
@@ -53,7 +53,8 @@ fun saveWorkflow(
     // it is refused loudly rather than folded into the completeness reasons. Applies to every save kind.
     val declaredTraits = task.traits.map { it.traitId }.toSet()
     entries.mapNotNull { it[GE.traitId].toOptStr() }.firstOrNull { it !in declaredTraits }?.let {
-        throw KdrException.mkInput("Task '$taskId' does not collect the trait '$it'.")
+        val ofType = if (task.formTypeTraits) " for a form of this type" else ""
+        throw KdrException.mkInput("Task '$taskId' does not collect the trait '$it'$ofType.")
     }
     // What this workflow's form asks for beyond the schema (issue #1022): refused here as the page refuses it, so a
     // call made around the page is held to the same form. Never asked of a general data edit.
@@ -80,6 +81,26 @@ fun saveWorkflow(
         }
         WfSaveKind.edit -> editForm(cxt, declared, gedraId, entries, underLock)
     }
+}
+
+/**
+ * The task [taskId] of [declared] as this save finds it: for one that collects its form's type's traits (issue #1903), as
+ * it is for the type among the [entries] being saved, if they set one, else the form's stored one -- so choosing a type and
+ * filling in its traits is one save. The stored type is read before the write's lock, which costs nothing: a trait the
+ * form's type no longer lists is still valid on the form.
+ */
+private fun saveTaskOf(cxt: KdrCxt, declared: WfDeclared, taskId: String, entries: List<Map<String, Any?>>, gedraId: String?): WfTask {
+    val task = declared.def.task(taskId)
+        ?: throw KdrException.mkInput("Workflow '${declared.ref}' has no task '$taskId'.")
+    if (!task.formTypeTraits) return task
+    val saysType = entries.any { it[GE.traitId].toOptStr() == GT.formType }
+    // Out of the caller's reach is the write's to refuse, so a form not found here is one of no type.
+    val judged = if (saysType || gedraId == null) {
+        entries
+    } else {
+        GedraDataService.get(cxt).queryGedra(cxt, gedraId, GedraDataType.formDoc, ReadScopeRules.forCaller(cxt))?.entries.orEmpty()
+    }
+    return declared.forForm(cxt, cxt.client, judged).def.task(taskId) ?: task
 }
 
 /**

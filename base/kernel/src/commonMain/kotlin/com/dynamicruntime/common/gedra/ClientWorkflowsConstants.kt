@@ -21,6 +21,13 @@ object CWF {
     /** On the catalog: the traits a workflow of the client's may collect. */
     const val traits = "traits"
 
+    /**
+     * On the catalog: the client's form types (issue #1903), each its `formTypeId`, `label`, and `traits` as a task's are
+     * -- what a task that collects its form's type's traits may collect. Absent when the client has none.
+     */
+    const val formTypes = "formTypes"
+    const val formTypeTypeName = "ClientWorkflowFormType"
+
     /** On a template or a workflow: its definition, as it runs -- what the page explains the fixed parts from. */
     const val definition = "definition"
 

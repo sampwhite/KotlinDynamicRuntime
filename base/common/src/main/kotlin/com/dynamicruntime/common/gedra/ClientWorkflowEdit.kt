@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.ResolvedWorkflowParams
 import com.dynamicruntime.common.gedra.workflow.WFP
@@ -42,7 +43,8 @@ import com.dynamicruntime.common.util.toOptStr
  * A workflow made from a template is stored as its overlay of the template (`WFD.fromTemplate`): only what the client
  * chose. A new one gets a stored configuration of its own, named for it ([CWF.configPrefix]); a change is patched where
  * the workflow is stored, and keeps whatever else its overlay holds -- Design View's layouts and save labels. The
- * slots are the workflow's name and, per data-entry task, its label and traits ([WfTemplateSlots]); everything else is
+ * slots are the workflow's name and, per data-entry task, its label, its traits, and whether it also collects its form's
+ * type's ([WfTemplateSlots], issue #1903); everything else is
  * the template's, and the page explains it rather than editing it.
  *
  * ### How it takes effect
@@ -84,6 +86,10 @@ object ClientWorkflowEdit {
             // definition as drafts, which only the sandbox runs, and a workflow made now may collect a draft trait, be
             // seen by a draft label, and show its windows in a draft time zone.
             put(CWF.traits, usableTraits(cxt, view))
+            // The form types (issue #1903) whose traits a task may collect, as [view] has them.
+            FormTypeService.getOrNull(cxt)?.forClient(view)?.values?.takeIf { it.isNotEmpty() }?.let { types ->
+                put(CWF.formTypes, types.map { formTypeInfo(it) })
+            }
             ClientService.get(cxt).displayZoneOf(view)?.let { put(CWF.timeZone, it) }
             // The labels a workflow's visibility may name, as the Users page offers them (issue #1384).
             ClientService.get(cxt).known(view)?.userLabels?.takeIf { it.isNotEmpty() }?.let { put(CWF.userLabels, it) }
@@ -144,6 +150,13 @@ object ClientWorkflowEdit {
         shownLabels(cxt, scope, def)?.let { put(CWF.labels, it) }
         put(CWF.params, paramsInfo(WorkflowParamsService.get(cxt).resolve(cxt, scope, def.workflowId), names))
     }
+
+    /** One form type for the catalog (issue #1903): what it is called and the traits a form of it collects. */
+    private fun formTypeInfo(type: FormTypeDef): Map<String, Any?> = linkedMapOf(
+        FTYPE.formTypeId to type.formTypeId,
+        FTYPE.label to type.label,
+        FTYPE.traits to type.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) },
+    )
 
     /**
      * [def]'s labels as [scope]'s page shows them ([CWF.labels]): each fragment pull resolved, or the label as written
@@ -266,10 +279,16 @@ object ClientWorkflowEdit {
                 "Name the template a new workflow is made from (${WFD.fromTemplate}), as the workflow catalog lists them.",
             )
         }
-        val chosen = WfTemplateSlots(workflowId, templateId, slots.label, slots.tasks)
         // Only a template the deployment's checks admitted.
         val template = WorkflowService.get(cxt).forClient(null).workflow(templateId)?.def
             ?: throw KdrException("There is no workflow template '$templateId'.", code = EXC.notFound)
+        // What the slots are filled into, and where a task not said to collect its form type's traits, or not to, keeps what
+        // it does now (issue #1903): a caller who does not know of the choice must not undo it.
+        val base = stored?.let { WorkflowTemplates.readStored(bound, it.second) } ?: template
+        val chosen = WfTemplateSlots(
+            workflowId, templateId, slots.label,
+            slots.tasks.map { WfTaskSlot(it.taskId, it.label, it.traits, it.formTypeTraits ?: base.task(it.taskId)?.formTypeTraits) },
+        )
         templateSlotProblems(template, chosen).takeIf { it.isNotEmpty() }?.let { throw KdrException.mkInput(it.joinToString(" ")) }
         val written: GedraConfigRow
         val issues: List<GedraConfigIssue>
@@ -283,7 +302,7 @@ object ClientWorkflowEdit {
                 .map { it.removePrefix(CWF.configPrefix) }
             val taken = WorkflowService.get(cxt).forClient(owner).workflows.keys + storedWorkflowIds(bound) + leftover
             val id = keyFromLabel(slots.label, taken, "workflow")
-            made = withTemplateSlots(bound, template, chosen, id)
+            made = withTemplateSlots(bound, base, chosen, id)
             if (!dryRun) seenFromTheStart(cxt, owner, id, visibility ?: WfVisibility.adminsOnly, target.draft)
             // A creation or core details workflow stands over the one its client's code has (issue #1634), and says so.
             val entry = CodeOverrides.markedIfOverCode(
@@ -297,7 +316,7 @@ object ClientWorkflowEdit {
             // Read above, since a change names its workflow.
             val (row, overlaid) = checkNotNull(stored)
             if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
-            made = withTemplateSlots(bound, WorkflowTemplates.readStored(bound, overlaid), chosen, workflowId)
+            made = withTemplateSlots(bound, base, chosen, workflowId)
             val overlay = workflowTemplateOverlay(template, made)
             if (overlay == overlaid) throw KdrException.mkInput("Workflow '$workflowId' is already so; nothing to save.")
             fun patch(on: GedraConfigRow, to: Map<String, Any?>, dry: Boolean = false) =

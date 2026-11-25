@@ -109,8 +109,10 @@ object CoreDetailsStateDeriver : GedraStateDeriver {
      * (issue #675) reaches it through [derive].
      */
     fun evaluate(cxt: KdrCxt, row: GedraDataRow, coreDetails: WfDeclared): List<Map<String, Any?>> {
-        val def = coreDetails.def
         val entries = row.entries
+        // As it is for a form of this one's type (issue #1903), so a change of type, or of what its type lists, shows here.
+        val declared = coreDetails.forForm(cxt, row.client, entries)
+        val def = declared.def
 
         // Complete: every required trait across the core details workflow's tasks has a present entry. Presence, not content --
         // the same check the save gate uses, reused here so the two never disagree about "done".
@@ -124,7 +126,7 @@ object CoreDetailsStateDeriver : GedraStateDeriver {
         // created cleanly is always valid at create -- the interesting cases are a lenient import and a schema
         // narrowed after capture (the recompute path).
         val coreDetailsTraitIds = def.tasks.flatMap { task -> task.traits.map { it.traitId } }.toSet()
-        val invalidTraits = coreDetailsContentFailures(cxt, row.client, coreDetailsTraitIds, entries, coreDetails).keys.toList()
+        val invalidTraits = coreDetailsContentFailures(cxt, row.client, coreDetailsTraitIds, entries, declared).keys.toList()
         val valid = invalidTraits.isEmpty()
 
         // The core details workflow's own two facts, plus whatever the core details workflow's cfactCalc functions emit from the same
