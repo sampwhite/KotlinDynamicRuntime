@@ -96,6 +96,9 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
     the sub-links read one list (`formsDataSections`, ids in `FDSEC`), so a section drawn always has its link. The panel
     repeats those links under its heading (`sectionLinks`), and each section ends with "↑ Back to Forms and data"
     (`backToFormsData`), so a reader deep in the panel need not scroll to the page's top.
+  - **A side menu** (issue #1919, `PageSideMenu`): on a screen from 1200 pixels wide, the same panels and Forms and
+    data's sections in a column beside the card, in view however far the page scrolls, marking the section and panel
+    the reader is in. It replaces the links at the top there (CSS hides them); a narrower screen keeps them.
 - **The panels**, in order:
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
   2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.

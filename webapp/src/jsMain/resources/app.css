@@ -2119,6 +2119,32 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 /* A panel's links to its own sections (issue #1891), beside its link, and the sections they scroll to kept clear of the
    fixed app bar as a panel is. */
 .panel-sublinks { margin-left: 6px; color: var(--text-muted); }
+/* A long page's side menu (issue #1919; `PageSideMenu` in `Panels.kt`): a column beside the card, in view however far
+   the page scrolls, marking where the reader is. Only where the screen has room for it, taking the place of the links
+   at the card's top, which a narrower screen keeps. The card gives up the column's width. */
+.page-side-menu { display: none; }
+@media (min-width: 1200px) {
+    .page-side-menu {
+        display: block;
+        position: sticky;
+        top: 84px;
+        flex: none;
+        width: 200px;
+        margin-right: 20px;
+        max-height: calc(100vh - 104px);
+        overflow-y: auto;
+        font-size: .9rem;
+    }
+    .page-side-menu + .card.wide { width: calc(var(--content-width) - 220px); }
+    .page-side-menu + .card .panel-links { display: none; }
+}
+.page-side-menu ul { list-style: none; margin: 0; padding: 0; }
+.page-side-menu .side-menu-panel { padding: 3px 0 3px 10px; border-left: 2px solid transparent; }
+.page-side-menu .side-menu-panel > ul { margin-top: 2px; }
+.page-side-menu .side-menu-section { padding: 2px 0 2px 12px; font-size: .85rem; }
+.page-side-menu .side-menu-panel.side-menu-in { border-left-color: var(--accent-bright); }
+.page-side-menu .side-menu-in > a { font-weight: 600; }
+.page-side-menu a[aria-current] { color: var(--accent-brighter); }
 /* Inside a long panel (issue #1891): its sections' links under its heading, and at each section's end a link back up. */
 .panel-section-links { font-size: .9rem; color: var(--text-muted); }
 .section-back-link { font-size: .85rem; color: var(--text-muted); text-align: right; }

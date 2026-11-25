@@ -1,6 +1,9 @@
 package com.dynamicruntime.webapp
 
 import kotlinx.browser.document
+import kotlinx.browser.window
+import kotlinx.coroutines.awaitCancellation
+import org.w3c.dom.Element
 import react.ChildrenBuilder
 import react.FC
 import react.Key
@@ -11,11 +14,13 @@ import react.dom.html.ReactHTML.details
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.h4
+import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.section
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.summary
+import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -93,12 +98,14 @@ fun panelClasses(kind: PanelKind): String = when (kind) {
 
 /**
  * A link to a panel of the page (issue #1397), scrolled to rather than navigated to: the address is the page's, and a
- * hash would be read as one. To the panel's top, which its `scroll-margin-top` keeps clear of the fixed app bar.
+ * hash would be read as one. To the panel's top, which its `scroll-margin-top` keeps clear of the fixed app bar. A side
+ * menu marks the link to where the reader is [current] (`aria-current`).
  */
-fun ChildrenBuilder.panelLink(id: String, text: String) {
+fun ChildrenBuilder.panelLink(id: String, text: String, current: Boolean = false) {
     a {
         className = ClassName("wf-cell-link")
         href = "#"
+        if (current) asDynamic()["aria-current"] = "location"
         onClick = { e ->
             e.preventDefault()
             document.getElementById(id)?.asDynamic()?.scrollIntoView(js("({ block: 'start', behavior: 'smooth' })"))
@@ -161,6 +168,157 @@ private fun ChildrenBuilder.punctuation(text: String) {
     span {
         asDynamic()["aria-hidden"] = true
         +text
+    }
+}
+
+/** A long page's side menu (issue #1919): where the reader is counts as reached, and when it is checked. */
+@Suppress("ConstPropertyName")
+object SMENU {
+    /**
+     * How far past where a link scrolls a place to -- its scroll box's `scroll-padding-top` and its own
+     * `scroll-margin-top`, read from the page (`landingOffset`) -- it may be and still count as reached, in pixels.
+     */
+    const val lineSlack = 16.0
+
+    /** How near the end of its scroll box the page counts as scrolled to the bottom, in pixels. */
+    const val bottomSlack = 2.0
+
+    /** The most ancestors looked through for the element that scrolls the page. */
+    const val maxDepth = 50
+}
+
+/** One place a side menu leads to (issue #1919): a panel, or a section of [panelId] -- a panel is its own. */
+class SideMenuEntry(val id: String, val title: String, val panelId: String) {
+    val isSection: Boolean get() = id != panelId
+}
+
+/**
+ * A side menu's places (issue #1919), in the page's order: each of [panels] (`id to heading`), then its [sections],
+ * from the same lists the links at the page's top draw ([panelLinks]), so the two cannot disagree. Pure; `jsNodeTest`.
+ */
+fun sideMenuEntries(panels: List<Pair<String, String>>, sections: Map<String, List<Pair<String, String>>>): List<SideMenuEntry> =
+    panels.flatMap { (id, title) ->
+        listOf(SideMenuEntry(id, title, id)) + sections[id].orEmpty().map { (sub, subTitle) -> SideMenuEntry(sub, subTitle, id) }
+    }
+
+/**
+ * Where the reader is (issue #1919): of the places drawn, in the page's order with each one's top against the window
+ * ([tops]), the last to have reached [line]. Scrolled to the bottom ([atBottom]), where the last ones may never reach
+ * it, the last whose top shows above [viewportBottom]. Before the first is reached, the first. Pure; `jsNodeTest`.
+ */
+fun activeSideMenuEntry(tops: List<Pair<String, Double>>, line: Double, atBottom: Boolean, viewportBottom: Double): String? {
+    if (tops.isEmpty()) return null
+    val reached = if (atBottom) tops.lastOrNull { it.second < viewportBottom } else tops.lastOrNull { it.second <= line }
+    return (reached ?: tops.first()).first
+}
+
+/** A CSS length in pixels, as `getComputedStyle` gives one (`72px`); 0 for anything else (`auto`). */
+fun cssPixels(value: String?): Double = value?.trim()?.removeSuffix("px")?.toDoubleOrNull() ?: 0.0
+
+/**
+ * How far below its scroll box's top a link scrolls [target] to: the box's `scroll-padding-top` and the target's
+ * `scroll-margin-top` together, since both apply. Read from the page, so a change to either rule moves the line with it.
+ */
+fun landingOffset(scroller: dynamic, target: dynamic): Double =
+    cssPixels(window.getComputedStyle(scroller.unsafeCast<Element>()).asDynamic().scrollPaddingTop as String?) +
+        cssPixels(window.getComputedStyle(target.unsafeCast<Element>()).asDynamic().scrollMarginTop as String?)
+
+/** The element that scrolls the page holding [start]: its nearest ancestor that scrolls, else the document's own. */
+fun pageScroller(start: dynamic): dynamic {
+    var at = start?.parentElement
+    var depth = 0
+    while (at != null && depth < SMENU.maxDepth) {
+        val overflow = window.getComputedStyle(at.unsafeCast<Element>()).overflowY
+        if ((overflow == "auto" || overflow == "scroll") && (at.scrollHeight as Int) > (at.clientHeight as Int)) return at
+        at = at.parentElement
+        depth++
+    }
+    return document.asDynamic().scrollingElement ?: document.documentElement
+}
+
+external interface PageSideMenuProps : Props {
+    /** The page's panels, `id to heading`, as [panelLinks] takes them. */
+    var panels: List<Pair<String, String>>
+
+    /** The sections of a panel that has them, by the panel's id, as [panelLinks] takes them. */
+    var sections: Map<String, List<Pair<String, String>>>
+}
+
+/**
+ * A long page's side menu (issue #1919): its panels and their sections, beside the page and in view however far it
+ * scrolls, marking where the reader is ([activeSideMenuEntry]) -- the section, and the panel it is in. A click scrolls
+ * as the links at the page's top do. Drawn only on a screen wide enough for a column (`app.css`), where it takes the
+ * place of those links; a narrower one keeps them.
+ *
+ * Where the reader is is measured on scroll, once a frame: an `IntersectionObserver` hears a place cross a line, but
+ * not the page reaching its bottom, where the last, short panels never reach the line at all.
+ */
+val PageSideMenu = FC<PageSideMenuProps> { props ->
+    val entries = sideMenuEntries(props.panels, props.sections)
+    var active by useState<String?>(null)
+    val ids = entries.joinToString(" ") { it.id }
+    useEffect(ids) {
+        if (entries.isEmpty()) return@useEffect
+        var frame = 0
+        fun measure() {
+            val tops = entries.mapNotNull { e ->
+                document.getElementById(e.id)?.getBoundingClientRect()?.top?.let { e.id to it }
+            }
+            val first = document.getElementById(entries.first().id) ?: return
+            val scroller = pageScroller(first)
+            val ownScroller = scroller == document.asDynamic().scrollingElement || scroller == document.documentElement
+            val scrollerTop = if (ownScroller) 0.0 else (scroller.getBoundingClientRect().top as Double)
+            val atBottom = (scroller.scrollTop as Double) + (scroller.clientHeight as Int) >=
+                (scroller.scrollHeight as Int) - SMENU.bottomSlack
+            val line = scrollerTop + landingOffset(scroller, first) + SMENU.lineSlack
+            active = activeSideMenuEntry(tops, line, atBottom, window.innerHeight.toDouble())
+        }
+        val onScroll: (dynamic) -> Unit = {
+            if (frame == 0) {
+                frame = window.requestAnimationFrame {
+                    frame = 0
+                    measure()
+                }
+            }
+        }
+        // Capturing on the document hears whichever element scrolls the page, since a scroll does not bubble.
+        val options = js("({ capture: true, passive: true })")
+        document.asDynamic().addEventListener("scroll", onScroll, options)
+        window.asDynamic().addEventListener("resize", onScroll, options)
+        measure()
+        try {
+            awaitCancellation()
+        } finally {
+            document.asDynamic().removeEventListener("scroll", onScroll, options)
+            window.asDynamic().removeEventListener("resize", onScroll, options)
+            if (frame != 0) window.cancelAnimationFrame(frame)
+        }
+    }
+    val activePanel = entries.firstOrNull { it.id == active }?.panelId
+    nav {
+        className = ClassName("page-side-menu")
+        asDynamic()["aria-label"] = "Page sections"
+        ul {
+            props.panels.forEach { (id, title) ->
+                li {
+                    key = id.unsafeCast<Key>()
+                    className = ClassName(if (id == activePanel) "side-menu-panel side-menu-in" else "side-menu-panel")
+                    panelLink(id, title, current = id == active)
+                    props.sections[id]?.takeIf { it.isNotEmpty() }?.let { subs ->
+                        ul {
+                            subs.forEach { (sectionId, sectionTitle) ->
+                                li {
+                                    key = sectionId.unsafeCast<Key>()
+                                    val here = sectionId == active
+                                    className = ClassName(if (here) "side-menu-section side-menu-in" else "side-menu-section")
+                                    panelLink(sectionId, sectionTitle, current = here)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
