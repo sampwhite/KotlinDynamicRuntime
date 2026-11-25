@@ -2218,6 +2218,9 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
     font-size: .9rem;
 }
 .pending-edits-count { color: #fcd34d; font-weight: 600; }
+/* A sticky save bar -- the copy editor's -- holds the window's foot while its changes are pending: the bar goes to the
+   top instead, under the app bar, rather than covering its Save. */
+body:has(.save-bar-sticky) .pending-edits-bar { top: 72px; bottom: auto; }
 /* Inside a long panel (issue #1891): its sections' links under its heading, and at each section's end a link back up. */
 .panel-section-links { font-size: .9rem; color: var(--text-muted); }
 .section-back-link { font-size: .85rem; color: var(--text-muted); text-align: right; }
@@ -2245,14 +2248,16 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 .panel > :is(h2, h3, .what-is-this-heading) + .heading-subline { margin-top: 4px; }
 /* Consecutive hints stay a tight group inside a panel and its More options, as they do on a card. */
 .panel > .type-hint + .type-hint, .disclosure > .type-hint + .type-hint { margin-top: 2px; }
+/* "Unsaved changes" beside a panel's heading: amber, as the side menu's list and dots and the bar at the window's foot
+   say it (issue #1922), apart from the accent that marks where the reader is. */
 .heading-marker {
     margin-left: 10px;
     padding: 1px 8px;
-    border: 1px solid var(--accent-bright);
+    border: 1px solid #f59e0b;
     border-radius: 999px;
     font-size: .75rem;
     font-weight: 500;
-    color: var(--accent-bright);
+    color: #fcd34d;
     vertical-align: middle;
 }
 /* The definition's groups, side by side where there is room, each a block of label and value rows. */

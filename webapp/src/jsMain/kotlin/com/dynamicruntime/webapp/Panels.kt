@@ -462,14 +462,26 @@ private fun ChildrenBuilder.unsavedMark() {
     }
 }
 
-/** A link to [edit]'s editor (issue #1922), scrolled to the middle of the window -- the edit, not its panel's top. */
+/**
+ * A link to [edit]'s editor (issue #1922), scrolled to the middle of the window -- the edit, not its panel's top -- and
+ * any section folded around it opened first.
+ */
 private fun ChildrenBuilder.goToEdit(edit: PendingEdit) {
     a {
         className = ClassName("wf-cell-link")
         href = "#"
         onClick = { e ->
             e.preventDefault()
-            document.getElementById(edit.anchorId)?.asDynamic()?.scrollIntoView(js("({ block: 'center', behavior: 'smooth' })"))
+            val target = document.getElementById(edit.anchorId)
+            // An edit folded inside a closed section is opened to first: the section's `details`, each that holds it.
+            var at = target?.asDynamic()?.parentElement
+            var depth = 0
+            while (at != null && depth < SMENU.maxDepth) {
+                if ((at.tagName as String).equals("details", ignoreCase = true) && at.open != true) at.open = true
+                at = at.parentElement
+                depth++
+            }
+            target?.asDynamic()?.scrollIntoView(js("({ block: 'center', behavior: 'smooth' })"))
         }
         +edit.label
     }
@@ -518,11 +530,12 @@ val PendingEditsGuard = FC<PendingEditsGuardProps> { props ->
     val anyPending = props.pending.any()
     useEffect(anyPending) {
         if (!anyPending) return@useEffect
-        LeaveGuard.arm(props.stays) { LeaveGuard.confirmLeave(pendingLeavePrompt(props.pending.all)) }
+        val token = LeaveGuard.arm(props.stays) { LeaveGuard.confirmLeave(pendingLeavePrompt(props.pending.all)) }
         try {
             awaitCancellation()
         } finally {
-            LeaveGuard.disarm()
+            // Its own arm only: cancelled late, as an effect's coroutine is, it must not clear the next page's.
+            LeaveGuard.disarm(token)
         }
     }
 }
@@ -601,15 +614,20 @@ external interface DisclosureProps : PropsWithChildren {
 }
 
 /**
- * A section of the page shown on request (issue #1397), its contents drawn only once opened: the menu's editor,
+ * A section of the page shown on request (issue #1397), its contents drawn only once opened -- and kept once they have
+ * been, folded away rather than dropped, so an editor inside keeps its unsaved work (issue #1922): the menu's editor,
  * whose table is the page's longest and rarely changed, reads nothing until somebody asks for it. Closed to start
  * unless [DisclosureProps.initiallyOpen], and opened by [DisclosureProps.openWhen] as [MoreOptions] uses it.
  */
 val Disclosure = FC<DisclosureProps> { props ->
     var expanded by useState(props.initiallyOpen == true || props.openWhen == true)
+    // Once opened, its contents stay drawn, folded away by the `details` element (issue #1922): an editor inside keeps
+    // its unsaved work when the section is folded, rather than losing it unasked.
+    var opened by useState(expanded)
     useEffect(props.openWhen) {
         if (props.openWhen == true) expanded = true
     }
+    if (expanded && !opened) opened = true
     details {
         className = ClassName("disclosure")
         this.open = expanded
@@ -621,7 +639,7 @@ val Disclosure = FC<DisclosureProps> { props ->
                 else -> +props.summaryText
             }
         }
-        if (expanded) +props.children
+        if (expanded || opened) +props.children
     }
 }
 

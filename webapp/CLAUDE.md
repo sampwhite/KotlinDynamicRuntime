@@ -450,8 +450,9 @@ all of them.
    structure — the person's address, their users (each by what tells it apart from the others), this user's access —
    before any field.
 
-Disclosures are `Disclosure`, its contents drawn only once opened: closed to start unless `initiallyOpen`, and opened
-by `openWhen`, which is how `MoreOptions` opens itself.
+Disclosures are `Disclosure`, its contents drawn only once opened, and kept once they have been, folded away rather
+than dropped, so an editor inside keeps its unsaved work (issue #1922): closed to start unless `initiallyOpen`, and
+opened by `openWhen`, which is how `MoreOptions` opens itself.
 
 ## Times in tables (issue #1141)
 
