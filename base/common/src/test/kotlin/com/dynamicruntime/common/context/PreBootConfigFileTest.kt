@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.context
 
+import io.kotest.core.annotation.Isolate
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.stringSpec
 import io.kotest.matchers.shouldBe
@@ -16,7 +17,11 @@ import java.nio.file.Files
  *
  * Also, since issue #1738, the tests that were `AppPathsTest`: finding the workspace directory itself, by walking up to
  * the ancestor holding `settings.gradle.kts`, which every lookup here starts from.
+ *
+ * Isolated, so it never runs beside another spec (issue #1925): it sets the workspace's system property and reads
+ * [KdrInstanceConfig.lastLoadReport], which are the whole JVM's.
  */
+@Isolate
 class PreBootConfigFileTest : StringSpec({
     include(preBootConfigFileTests())
     include(appPathsTests())

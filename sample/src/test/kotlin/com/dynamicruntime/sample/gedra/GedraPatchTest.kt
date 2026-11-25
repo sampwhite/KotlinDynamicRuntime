@@ -24,7 +24,6 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Changing stored entries: the patch, end to end (issue #337).
@@ -71,6 +70,10 @@ class GedraPatchTest : StringSpec({
         user.getItem(GEP.formDoc, mapOf(GDF.gedraId to gedraId))[GDF.entries].toJsonListOfMaps()
             .associateBy { it[GE.traitId].toOptStr().orEmpty() }
 
+    /** Long enough that a stamp made after it differs from one made before, stamps being in milliseconds. A real wait, since
+     *  the instance is shared and its clock may not be moved. */
+    fun letTimePass() = Thread.sleep(5)
+
     fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     var docId = ""
@@ -94,7 +97,7 @@ class GedraPatchTest : StringSpec({
     // and only the `updated` half moves. That is the whole reason both pairs are stored (issue #325).
     "an edited entry keeps its creation half and moves its updated half" {
         val before = entriesOf(alice, docId).getValue(GT.name)
-        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        letTimePass()
         alice.postItems(
             GEP.patch,
             patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "Again")))),
@@ -111,7 +114,7 @@ class GedraPatchTest : StringSpec({
     // "changed anything", the gap #592 recorded.
     "an identical replace changes nothing and reports not applied" {
         val before = entriesOf(alice, docId).getValue(GT.name)
-        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        letTimePass()
         val results = alice.postItems(
             // The stored name is "Again" from the previous edit; replacing it with "Again" is a no-op.
             GEP.patch,
@@ -133,7 +136,7 @@ class GedraPatchTest : StringSpec({
             mapOf(GE.traitId to ST.questionnaire, GE.data to mapOf(ST.topic to "Travel", ST.notes to "only note")),
         )
         val before = entriesOf(alice, id).getValue(ST.questionnaire)
-        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        letTimePass()
         val results = alice.postItems(
             // Merging `{topic: "Travel"}` over stored `{topic: "Travel", notes: "only note"}` changes nothing.
             GEP.patch,
@@ -151,7 +154,7 @@ class GedraPatchTest : StringSpec({
         val visit = mapOf(ST.address to mapOf(ST.country to "gb"), ST.visitedOn to "2026-01-15")
         val id = create(alice, mapOf(GE.traitId to ST.siteVisit, GE.data to visit))
         val before = entriesOf(alice, id).getValue(ST.siteVisit)
-        cxt.instanceConfig.clock.advanceBy(2.seconds)
+        letTimePass()
         val results = alice.postItems(
             GEP.patch,
             patch(id to listOf(edit(GedraEditAction.addOrReplace, ST.siteVisit, visit))),

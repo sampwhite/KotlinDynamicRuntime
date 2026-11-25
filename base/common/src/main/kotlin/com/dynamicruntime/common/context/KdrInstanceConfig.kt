@@ -30,26 +30,44 @@ import kotlin.time.Instant
 class InstanceClock {
     private var frozenBase: Instant? = null
     private var offset: Duration = Duration.ZERO
+    private var refusal: String? = null
+
+    /**
+     * Keeps this clock at real time from here on: every call that would move it fails, with [why] as the message. For an
+     * instance several specs share (issue #1925), where one spec's time travel signs out the users of the others.
+     */
+    fun refuseTravel(why: String): Unit = synchronized(this) { refusal = why }
+
+    /** Fails if travel is refused; every mutator asks it first, holding the lock. */
+    private fun checkMayTravel() {
+        refusal?.let { throw IllegalStateException(it) }
+    }
 
     /** The instance's current time: the frozen base (or the live wall clock) shifted by the accumulated offset. */
     fun instanceNow(): Instant = synchronized(this) { (frozenBase ?: Clock.System.now()) + offset }
 
     /** Advance the clock by [delta] (negative rewinds), keeping any freeze -- the way to step a frozen clock. */
-    fun advanceBy(delta: Duration): Unit = synchronized(this) { offset += delta }
+    fun advanceBy(delta: Duration): Unit = synchronized(this) {
+        checkMayTravel()
+        offset += delta
+    }
 
     /** Make `instanceNow()` read [target] now. **Not** a freeze: an unfrozen clock keeps ticking from there. */
     fun setAbsolute(target: Instant): Unit = synchronized(this) {
+        checkMayTravel()
         offset = target - (frozenBase ?: Clock.System.now())
     }
 
     /** Pin the clock at its current value, so it no longer advances with the wall clock. */
     fun freeze(): Unit = synchronized(this) {
+        checkMayTravel()
         frozenBase = (frozenBase ?: Clock.System.now()) + offset
         offset = Duration.ZERO
     }
 
     /** Resume ticking from the current value -- seamless, no jump. A no-op when not frozen. */
     fun unfreeze(): Unit = synchronized(this) {
+        checkMayTravel()
         val base = frozenBase ?: return@synchronized
         offset = base + offset - Clock.System.now()
         frozenBase = null
@@ -57,6 +75,7 @@ class InstanceClock {
 
     /** Back to real time: drop any freeze and offset. */
     fun reset(): Unit = synchronized(this) {
+        checkMayTravel()
         frozenBase = null
         offset = Duration.ZERO
     }

@@ -142,7 +142,11 @@ A spec on a shared instance (`TestInstances`) has to hold when other specs run b
 - **Use clients of your own.** A demo provisioned by its simulation takes a suffix (`provisionDesignDemo(cxt,
   "edit984")`); the unsuffixed one belongs to the spec testing the simulation.
 - **Never change instance-wide state** -- caching switched off, a swapped service, the clock. That takes an instance
-  of your own (`TestInstances`' rule), with a comment saying why.
+  of your own (`TestInstances`' rule), with a comment saying why. The clock is enforced: a shared instance's refuses to
+  be moved (issue #1925). The rest is not.
+- **Never change what is the whole JVM's beside other specs** -- a system property, a static another spec sets. An
+  instance of your own does not help; mark the spec `@Isolate` (Kotest's), and it runs alone. `PreBootConfigFileTest`
+  is the example.
 - **Check content, not identity, against live stores.** A reload replaces every schema store; compare what a
   context holds with itself, not with the service's current one.
 - **Ask about your own write.** `SqlTableCache.markChanged()` returns the write's number and `hasCovered(it)` says
@@ -536,8 +540,8 @@ This is the endpoint's real purpose: driving a **browser** session forward to wa
 you would otherwise have to wait a month for. `freeze` is the one to reach for when an assertion is
 duration-sensitive — it holds the clock so repeated reads are identical instead of racing.
 
-In a **unit test**, skip the endpoint and move the clock directly — `cxt.instanceConfig.clock.advanceBy(…)`.
-Same clock, one less round trip. Whichever you use, in a flow test the clock only ever moves **forward** (see
+In a **unit test**, skip the endpoint and move the clock directly — `cxt.instanceConfig.clock.advanceBy(…)` — on an
+instance of the spec's own, since a shared one refuses. Same clock, one less round trip. Whichever you use, in a flow test the clock only ever moves **forward** (see
 the conventions above): `now()` also stamps persisted `createdAt`/`touchedAt`, so a rewind future-dates rows
 already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
 

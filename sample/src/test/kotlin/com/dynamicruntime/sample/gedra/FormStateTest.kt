@@ -435,7 +435,11 @@ private fun gedraStateSurfaceTests() = stringSpec {
  * point. Its own client, like `gedraStateTests` above.
  */
 private fun gedraStatesCacheTests() = stringSpec {
-    val cxt = SampleTestInstances.default("gedraStatesCache")
+    // Its own instance (issue #1075): a case freezes the instance clock, which is instance-wide.
+    val cxt = Startup.mkTestBootCxt(
+        "gedraStatesCache", "gedraStatesCacheTest", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
+        additionalComponents = listOf(SampleComponent()),
+    )
 
     val client = "gstatecacheclient"
     val amyId = 90101L

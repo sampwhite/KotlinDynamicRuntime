@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.context
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlin.math.abs
@@ -63,6 +64,17 @@ class InstanceClockTest : StringSpec({
         clock.advanceBy(100.days)
         clock.freeze()
         clock.reset()
+        near(clock.instanceNow(), Clock.System.now()) shouldBe true
+    }
+
+    "a clock that refuses travel stays at real time, whatever is asked of it" {
+        val clock = InstanceClock()
+        clock.refuseTravel("Not this one.")
+        val moves: List<() -> Unit> = listOf(
+            { clock.advanceBy(1.hours) }, { clock.setAbsolute(Clock.System.now() + 1.hours) },
+            { clock.freeze() }, { clock.unfreeze() }, { clock.reset() },
+        )
+        for (move in moves) shouldThrow<IllegalStateException> { move() }.message shouldBe "Not this one."
         near(clock.instanceNow(), Clock.System.now()) shouldBe true
     }
 })

@@ -448,7 +448,9 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 - **Persisted `createdAt`/`updatedAt` use `instanceNow()`** — so aging stored data means moving the instance
   clock.
 - **The consequence for the shared-instance technique:** instance-wide travel moves time for **every** client at
-  once. A test that ages data has to either take its own instance/DB or run the travel serially and `reset`.
+  once. A test that ages data takes an instance of its own: the shared ones (`TestInstances`, `SampleTestInstances`)
+  refuse to have their clock moved (`InstanceClock.refuseTravel`, issue #1925), since a jump signs out the users of every
+  spec running beside it. One that only needs two stamps to differ can wait a few milliseconds instead.
 - **Per-client time travel is a documented but unbuilt seam:** `KdrCxt.nowTimeOffsetInSeconds`
   (`now() = instanceNow() + offset`) is called out in its own KDoc as "the seam a future client-scoped clock
   would layer on," idle today. It would move a client's `now()` cheaply, but **not** its persisted timestamps
