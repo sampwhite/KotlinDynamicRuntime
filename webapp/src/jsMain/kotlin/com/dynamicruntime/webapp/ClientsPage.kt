@@ -394,11 +394,12 @@ private fun ChildrenBuilder.clientDetail(
     // links to each. The panel draws exactly these.
     val formsSections = formsDataSections(configEditable, hasOverview = row != null)
     val formsSectionTitles = formsSections.toMap()
+    // A page of panels (issue #1919): the card, and beside it -- on a screen wide enough, for a page long enough -- a side
+    // menu of its panels and Forms and data's sections, from the lists the links at the card's top draw.
     // Every child of the card is keyed (issue #1397), so each panel keeps its state by what it is, not by how many
     // elements happen to be drawn above it: mending a file ref clears an issue (issue #1176), and the issues coming
     // and going must not tear down and remake the editors below, losing what was half typed in them.
-    div {
-        className = ClassName("card wide")
+    panelPage(panels, mapOf(panelFormsData to formsSections), cardKey = "clientCard") {
         div {
             key = "header".unsafeCast<Key>()
             className = ClassName("client-header")
