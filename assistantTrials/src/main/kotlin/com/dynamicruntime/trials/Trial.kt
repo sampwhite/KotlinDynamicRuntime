@@ -55,8 +55,8 @@ class Expectation(val name: String, val check: (TrialResult) -> Outcome)
 /**
  * A named, repeatable piece of work for the assistant: a [goal], the [variants] it may be phrased in, and the
  * [expectations] each is held to. A trial's client is created fresh, as a self-serve client called [clientName], and the
- * assistant configures its sandbox. A new capability extends one trial or starts another, so a trial stays small enough
- * to run on its own.
+ * assistant configures its sandbox. What it configured is then used, in the ways [walk] names (issue #1915), each an
+ * expectation too. A new capability extends one trial or starts another, so a trial stays small enough to run on its own.
  */
 class Trial(
     val name: String,
@@ -64,6 +64,7 @@ class Trial(
     val clientName: String,
     val variants: List<TrialVariant>,
     val expectations: List<Expectation>,
+    val walk: List<WalkStep> = emptyList(),
 ) {
     init {
         require(variants.isNotEmpty()) { "Trial '$name' has no variants." }

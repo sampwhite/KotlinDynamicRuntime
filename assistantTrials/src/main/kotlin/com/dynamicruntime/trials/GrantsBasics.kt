@@ -151,6 +151,7 @@ object GrantsBasics {
             Expectation("A report grouped by category, totaling the amount") { r -> Checks.reportTotals(r, categoryTerms, amountTerms) },
             Expectation("The report is made whole by create_report, not patched afterward") { r -> Checks.reportMadeWhole(r) },
         ),
+        WalkStep.entries,
     )
 
 }

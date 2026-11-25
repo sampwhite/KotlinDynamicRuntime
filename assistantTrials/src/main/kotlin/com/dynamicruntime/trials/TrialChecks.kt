@@ -51,6 +51,12 @@ class FieldView(val traitId: String, val name: String, val schema: Map<String, A
     /** Whether any of [terms] appears in its [words]. */
     fun mentions(terms: List<String>): Boolean = terms.any { words.contains(it.lowercase()) }
 
+    /** Whether the report path [path] reads this field: its trait, with a keyed one's selector after it, then it, however deep. */
+    fun isReadBy(path: String): Boolean {
+        val rest = path.removePrefix("${ReportSource.form.name}.$traitId")
+        return rest != path && (rest.startsWith('.') || rest.startsWith('[')) && rest.endsWith(".$name")
+    }
+
     /** What kind of field it is, in a few words. */
     val kind: String get() = when {
         options.isNotEmpty() -> "a choice of ${options.size}"
@@ -258,7 +264,7 @@ object Checks {
     )
 
     /** The pages [card] opens, by name: its button's, its links', and those its words link. */
-    private fun cardOpens(card: Map<String, Any?>): List<String> {
+    fun cardOpens(card: Map<String, Any?>): List<String> {
         fun named(item: Map<String, Any?>, label: String): String? =
             (item[UIB.action] as? String)?.takeIf { !item[label].toOptStr().isNullOrBlank() && ClientPages.forName(it) != null }
         val text = card[HCARD.text].toOptStr().orEmpty()
@@ -356,12 +362,7 @@ object Checks {
     fun reportTotals(r: TrialResult, categoryTerms: List<String>, amountTerms: List<String>): Outcome {
         fun reads(column: Map<String, Any?>, terms: List<String>, wanted: (FieldView) -> Boolean): Boolean {
             val path = column[RDEF.path].toOptStr().orEmpty()
-            return r.view.fields.any { field ->
-                // The trait, with a keyed one's selector after it, then the field, however deep.
-                val rest = path.removePrefix("${ReportSource.form.name}.${field.traitId}")
-                rest != path && (rest[0] == '.' || rest[0] == '[') && rest.endsWith(".${field.name}") &&
-                    field.mentions(terms) && wanted(field)
-            }
+            return r.view.fields.any { it.isReadBy(path) && it.mentions(terms) && wanted(it) }
         }
         class Held(val report: Map<String, Any?>) {
             val columns = report[RDEF.columns].toJsonListOfMaps()

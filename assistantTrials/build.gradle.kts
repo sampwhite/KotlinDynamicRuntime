@@ -54,6 +54,14 @@ tasks.register<JavaExec>("recheckTrials") {
     providers.gradleProperty("run").orNull?.let { args("--run", it) }
 }
 
+// `./gradlew :assistantTrials:walkTrials -Prun=20261119-093707` uses what a run configured, as an applicant, a reviewer, and
+// an administrator, on the run's node, which must be running. It costs nothing: no call reaches the model.
+tasks.register<JavaExec>("walkTrials") {
+    description = "Walks through what a trial run configured, on its running node (-Prun=<runId>)."
+    harness("walk")
+    providers.gradleProperty("run").orNull?.let { args("--run", it) }
+}
+
 // `./gradlew :assistantTrials:restartTrials -Prun=20261119-093707` starts a run's node again, on its port and database and
 // from the run's own copy of the jars, after a reboot or anything else that stopped it.
 tasks.register<JavaExec>("restartTrials") {
