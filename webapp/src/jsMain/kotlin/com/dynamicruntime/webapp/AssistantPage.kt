@@ -370,6 +370,9 @@ val AssistantPage = FC<Props> {
     // top links and its side menu (issue #1924) name the same ones as it draws.
     val view = assistantViewOf(status, statusError != null)
     val onPanels = status?.takeIf { view == AssistantView.on }?.let { assistantPanels(it.hasSandbox) }.orEmpty()
+    // Each panel's heading from the same list, so a heading and its link cannot say different things -- but the
+    // drafts', whose link is the short "Drafts" and whose heading says whose they are.
+    val titles = onPanels.toMap()
     panelPage(onPanels, cardKey = "assistant") {
         h1 { +"Configuration assistant" }
         p {
@@ -442,7 +445,7 @@ val AssistantPage = FC<Props> {
                 panelLinks(onPanels)
                 if (!current.hasSandbox) {
                     // Turned on here for a client defined in code too (issue #1677), as an overlay of its definition.
-                    panel(panelSandbox, "Sandbox", kind = PanelKind.live) {
+                    panel(panelSandbox, titles.getValue(panelSandbox), kind = PanelKind.live) {
                         p {
                             +(
                                 "The assistant drafts in ${current.clientName}'s sandbox, which ${current.clientName} has not got yet. " +
@@ -466,7 +469,7 @@ val AssistantPage = FC<Props> {
                         panelNote(sandboxError, null, "Couldn't turn on the sandbox.")
                     }
                 }
-                panel(panelConversation, "Conversation", kind = PanelKind.live) {
+                panel(panelConversation, titles.getValue(panelConversation), kind = PanelKind.live) {
                     // What its New form asks for is the code's for a client defined there (issue #1569).
                     if (current.definedInCode) {
                         p {
@@ -569,7 +572,7 @@ val AssistantPage = FC<Props> {
                         panelNote(tryError, null, "Couldn't open the sandbox.")
                     }
                 }
-                panel(panelAllowance, "Allowance") {
+                panel(panelAllowance, titles.getValue(panelAllowance)) {
                     div {
                         className = ClassName("allowance-bar")
                         div {
@@ -735,8 +738,9 @@ private fun ChildrenBuilder.draftList(drafts: List<AssistantDraft>, status: Assi
 
 /**
  * The assistant's panels once it is on (issue #1924), `id to heading` in their order -- what its top links and its side
- * menu name: the Sandbox panel only for a client with no sandbox of its own, then the conversation, its drafts, and
- * the allowance. Pure; `jsNodeTest`.
+ * menu name, and the headings its panels draw: the Sandbox panel only for a client with no sandbox of its own, then the
+ * conversation, its drafts, and the allowance. The drafts' panel alone heads itself longer, "Drafts from this
+ * conversation", where its link stays short. Pure; `jsNodeTest`.
  */
 fun assistantPanels(hasSandbox: Boolean): List<Pair<String, String>> = listOfNotNull(
     (panelSandbox to "Sandbox").takeIf { !hasSandbox },

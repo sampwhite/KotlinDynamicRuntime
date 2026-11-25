@@ -813,8 +813,16 @@ val Users = FC<Props> {
     val keysShown = editing != null && config?.user?.let { mayCreateForOthers(it) } != false
     val dangerShown = editing != null && !self
     val editorPanels = userEditorPanels(
-        inEditor && !denied, editing != null, editing?.deleted == true, readOnly, mailOffer, keysShown, dangerShown,
+        inEditor = inEditor && !denied,
+        open = editing != null,
+        deleted = editing?.deleted == true,
+        readOnly = readOnly,
+        mailOffer = mailOffer,
+        keysShown = keysShown,
+        dangerShown = dangerShown,
     )
+    // Each panel's heading, from the same list, so a heading and its link cannot say different things.
+    val titles = editorPanels.toMap()
 
     // The list, or a user's editor: a page of panels (issue #1924), so a long editor gets a side menu.
     panelPage(editorPanels, cardKey = "users", cardClass = "card full") {
@@ -887,7 +895,7 @@ val Users = FC<Props> {
                 // way (loadEditableUser), so this is a courtesy over an enforced rule. The login identity is
                 // obfuscated; the name and organization are kept so the record stays recognizable to somebody
                 // debugging what the account owned.
-                panel(panelUser, "User") {
+                panel(panelUser, titles.getValue(panelUser)) {
                     readOnlyField("Email address", draftEmail)
                     readOnlyField("Id", open.userId.toString())
                     readOnlyField(if (open.isEntity) "Business name" else "Full name", open.name?.takeIf { it.isNotBlank() } ?: "—")
@@ -901,8 +909,8 @@ val Users = FC<Props> {
             } else if (readOnly) {
                 // An editor's view (issue #1432): the same panels, with nothing to save or press.
                 open?.let { user ->
-                    panel(panelUser, "User") { userDetails(user) }
-                    panel(panelActivity, "Activity") {
+                    panel(panelUser, titles.getValue(panelUser)) { userDetails(user) }
+                    panel(panelActivity, titles.getValue(panelActivity)) {
                         for ((label, value) in identitySummary(null, user)) readOnlyField(label, value)
                     }
                 }
@@ -912,7 +920,7 @@ val Users = FC<Props> {
             // ---- User: the draft, saved together -----------------------------
             val editorShown = openedNote == null && draftLevel != ROLE.admin && editorOffered
             val allClientsShown = openedNote == null && config?.user?.roles?.contains(ROLE.allClients) == true
-            panel(panelUser, "User", kind = PanelKind.draft, dirty = draftDirty) {
+            panel(panelUser, titles.getValue(panelUser), kind = PanelKind.draft, dirty = draftDirty) {
             if (creating && creatingForSelf) {
                 // Locked: the point of this form is that the address is the caller's own.
                 readOnlyField("Email address", draftEmail)
@@ -1226,7 +1234,7 @@ val Users = FC<Props> {
                 // at the create, a user created disabled and enabled since. The backend refuses a claimed or disabled
                 // one, so the panel is shown only where it can succeed.
                 if (mailOffer == UserMailOffer.invitation) {
-                    panel(panelInvitation, "Invitation", kind = PanelKind.live) {
+                    panel(panelInvitation, titles.getValue(panelInvitation), kind = PanelKind.live) {
                         p {
                             className = ClassName("type-hint")
                             +"Nobody has claimed this account yet. Sending an invitation mails a fresh link, good for seven days."
@@ -1247,7 +1255,7 @@ val Users = FC<Props> {
                 //
                 // For a claimed user, whom an invitation is refused for: its link would sign in whoever held the mail.
                 if (mailOffer == UserMailOffer.reminder) {
-                    panel(panelInvitation, "Sign-in reminder", kind = PanelKind.live) {
+                    panel(panelInvitation, titles.getValue(panelInvitation), kind = PanelKind.live) {
                         p {
                             className = ClassName("type-hint")
                             +("This person has already claimed the account. A reminder mails them where to sign in, " +
@@ -1266,7 +1274,7 @@ val Users = FC<Props> {
                 }
 
                 // ---- Activity: read-only (issue #770) ------------------------
-                panel(panelActivity, "Activity") {
+                panel(panelActivity, titles.getValue(panelActivity)) {
                     for ((label, value) in identitySummary(identity, open)) readOnlyField(label, value)
                 }
 
@@ -1276,7 +1284,7 @@ val Users = FC<Props> {
                 // where a self-administrator manages their own keys on their profile and the administrator's surface
                 // refuses them.
                 if (keysShown) {
-                    panel(panelKeys, "API keys", kind = PanelKind.live) {
+                    panel(panelKeys, titles.getValue(panelKeys), kind = PanelKind.live) {
                         ApiKeysSection {
                             key = "keys-${open.userId}".unsafeCast<Key>()
                             // One's own keys are managed as on Profile, through the self endpoints.
@@ -1290,7 +1298,7 @@ val Users = FC<Props> {
                 // Deliberately *only* the irreversible delete: the recoverable "delete" is the Enabled box under
                 // More options, so offering it a second time here as a plain disable would be the same action twice.
                 if (dangerShown) {
-                    panel(panelDanger, "Danger zone", kind = PanelKind.danger) {
+                    panel(panelDanger, titles.getValue(panelDanger), kind = PanelKind.danger) {
                         p {
                             className = ClassName("type-hint")
                             +("Delete permanently: the email is obfuscated and freed for reuse, and the account cannot " +

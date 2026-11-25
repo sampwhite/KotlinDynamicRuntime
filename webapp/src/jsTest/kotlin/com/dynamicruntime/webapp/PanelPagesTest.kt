@@ -35,6 +35,22 @@ class PanelPagesTest {
     }
 
     @Test
+    fun theProfileNamesItsPanelsThroughItsCopy() {
+        val dflt: (String, String, String) -> String = { _, _, d -> d }
+        assertEquals(
+            listOf("Your account", "Your name", "API keys"),
+            headings(profilePanels(usersShown = false, signInShown = false, dflt)),
+        )
+        assertEquals(
+            listOf("Your account", "Your users", "Your name", "Sign-in", "API keys"),
+            headings(profilePanels(usersShown = true, signInShown = true, dflt)),
+        )
+        // A client's copy rewords a heading, for the panel and its link alike.
+        val reworded: (String, String, String) -> String = { ns, key, d -> if (ns == "profile" && key == "keysTitle") "Keys" else d }
+        assertEquals("Keys", profilePanels(usersShown = false, signInShown = false, reworded).toMap()[PRFP.keys])
+    }
+
+    @Test
     fun theAssistantNamesItsSandboxPanelOnlyWithoutASandbox() {
         assertEquals(listOf("Sandbox", "Conversation", "Drafts", "Allowance"), headings(assistantPanels(hasSandbox = false)))
         assertEquals(listOf("Conversation", "Drafts", "Allowance"), headings(assistantPanels(hasSandbox = true)))

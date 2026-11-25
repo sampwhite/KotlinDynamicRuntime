@@ -517,14 +517,10 @@ val Profile = FC<Props> {
     // Its panels (issue #1479), worked out before the card so its top links and its side menu (issue #1924) name the
     // same ones as it draws -- once the users are in, as the panels are.
     val profilePanels = config?.takeIf { it.user != null && usersLoaded }?.let { cfg ->
-        buildList {
-            add(PRFP.account to t(PRFA.account, "title", "Your account"))
-            if (showsUsersTable(myUsers)) add(PRFP.users to t("users", "title", "Your users"))
-            add(PRFP.name to t("profile", "nameTitle", "Your name"))
-            if (cfg.features.canSetPassword) add(PRFP.signIn to t("password", "title", "Sign-in"))
-            add(PRFP.keys to t("profile", "keysTitle", "API keys"))
-        }
+        profilePanels(showsUsersTable(myUsers), cfg.features.canSetPassword, ::t)
     }.orEmpty()
+    // Each panel's heading, from the same list, so a heading and its link cannot say different things.
+    val titles = profilePanels.toMap()
     // Wide for its tables (issues #1330, #1402): the person's users, and their API keys, which every profile shows -- a
     // sandbox's too (issue #1453) -- so the card is always wide. A page of panels (issue #1924), so a long one gets a
     // side menu.
@@ -545,7 +541,7 @@ val Profile = FC<Props> {
             panelLinks(profilePanels)
 
             // ---- Your account: read-only (issue #1479) ---------------------
-            panel(PRFP.account, t(PRFA.account, "title", "Your account")) {
+            panel(PRFP.account, titles.getValue(PRFP.account)) {
                 // A removal that leaves one ordinary user takes the users panel away with it, so its note is said here.
                 if (!usersShown) panelNote(null, usersNote)
                 // What the shell says of the caller, only once it is about this user: before it has been told, or for a
@@ -586,7 +582,7 @@ val Profile = FC<Props> {
             // Shown when there is more than one user, or a `public` one to remove; a person with one ordinary user has
             // nothing to choose, and the account panel says where they are.
             if (usersShown) {
-                panel(PRFP.users, t("users", "title", "Your users"), copy.explanation("users"), PanelKind.live) {
+                panel(PRFP.users, titles.getValue(PRFP.users), copy.explanation("users"), PanelKind.live) {
                     usersTable(roles)
                 }
             }
@@ -596,7 +592,7 @@ val Profile = FC<Props> {
             // Its own panel, not among the password controls: what you are called is not a credential, which is also
             // why saving it needs no emailed code.
             val nameDirty = nameSeededFrom == storedName && draftName.trim() != storedName
-            panel(PRFP.name, t("profile", "nameTitle", "Your name"), kind = PanelKind.draft, dirty = nameDirty) {
+            panel(PRFP.name, titles.getValue(PRFP.name), kind = PanelKind.draft, dirty = nameDirty) {
                 p {
                     className = ClassName("subtitle")
                     +t(
@@ -637,7 +633,7 @@ val Profile = FC<Props> {
             if (signInShown) {
                 val drafting = token != null
                 panel(
-                    PRFP.signIn, t("password", "title", "Sign-in"),
+                    PRFP.signIn, titles.getValue(PRFP.signIn),
                     kind = if (drafting) PanelKind.draft else PanelKind.live,
                     dirty = drafting && password.isNotEmpty(),
                 ) {
@@ -649,7 +645,7 @@ val Profile = FC<Props> {
             //
             // For programs that act as the person -- in a sandbox too (issue #1453), where a key acts with the standing
             // the sandbox's rules give this user, as a session does, and stays in the sandbox.
-            panel(PRFP.keys, t("profile", "keysTitle", "API keys"), kind = PanelKind.live) {
+            panel(PRFP.keys, titles.getValue(PRFP.keys), kind = PanelKind.live) {
                 ApiKeysSection {}
             }
         }
