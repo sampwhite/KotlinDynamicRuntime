@@ -1612,3 +1612,15 @@ A field marked `g-unique: "owner"` (issue #1851) is held for the forms of one ow
   two values, while a symbol in it, such as ★, is punctuation and makes none. Telling them alike needs Unicode's categories
   for every character, which Kotlin's common code lacks. Trigger: a person reports two names that look the same, or a name
   of symbols they cannot use.
+
+## When people lose unsaved edits to a reload or a closed tab
+
+A page of editors keeps their unsaved edits in a register (`PendingEdits`, issue #1922), marks and lists them, and asks
+before the page is left -- a reload and a closed tab included, through the browser's own prompt. An edit lives only in
+its editor's state, so leaving anyway loses it.
+
+- **Keeping drafts across a reload** *(#1922, deferred here 2026-11-25).* Each editor's draft kept in browser storage
+  under its client and what it edits, and offered back when the editor opens again. The rules to settle first: when a
+  kept draft is stale -- the configuration it was made against has changed since, by this person or another -- and
+  whether it is offered, merged, or dropped then; and how long one is kept. Trigger: a person who loses work to a crash
+  or a forced reload, which the prompt cannot stop.

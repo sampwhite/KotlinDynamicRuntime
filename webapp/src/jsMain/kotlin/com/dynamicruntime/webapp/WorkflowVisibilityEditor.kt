@@ -21,6 +21,7 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.ul
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val visibilityScope = MainScope()
 
@@ -64,6 +65,8 @@ val WorkflowVisibilityEditor = FC<WorkflowVisibilityEditorProps> { props ->
     var pendingUnset by useState(false)
     val zone = entryZone(props.zone)
     val changed = draft != baseline
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit("Who sees ${props.workflow.workflowId}", changed)
 
     // Null [visibility] unsets it, so it follows the fallback again.
     fun save(visibility: WfVisibility?, acknowledge: Boolean) {
@@ -90,6 +93,7 @@ val WorkflowVisibilityEditor = FC<WorkflowVisibilityEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 {
             +"Who sees "
             code { +props.workflow.workflowId }

@@ -407,6 +407,14 @@ all of them.
      something new, or taking an existing record's fields back to what is stored and staying on it, as the Users
      editor does. The form view and edit pages keep their own rule (Buttons and links, issue #726), where Done and
      Cancel are buttons in the header.
+   - **A page of several editors keeps their unsaved edits together** (issue #1922): `usePendingEdits()` is its
+     register, `panelPage(pending = …, stays = …)` provides it, and an editor with changes puts itself in it with
+     `usePendingEdit(label, dirty)`, the id it returns on the editor's root. `panel()` tells what it holds which panel it
+     is in (`PendingPlaceContext`; a section of a panel adds its own). The page then marks each panel holding an edit
+     ("Unsaved changes" beside its heading, `dirty = pending.inPanel(id)`), the side menu lists the edits and dots their
+     panels and sections, a bar at the window's foot lists them where the menu is not shown, and `PendingEditsGuard`
+     arms `LeaveGuard` once for all of them. An editor on such a page never arms `LeaveGuard` itself: its one slot is the
+     page's. The Clients page keeps one.
 3. **Results show where the action was taken.** Each panel draws its own failure and note (`panelNote`), never one
    line shared by the page.
 4. **A longer page, or tabs.** The default is one scrolling page of panels, with links to them at the top

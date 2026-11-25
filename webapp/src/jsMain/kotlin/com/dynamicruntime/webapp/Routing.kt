@@ -698,7 +698,9 @@ fun restoreUrl(url: String) {
  * What counts as "still here" is the armed page's to say, through the `stays` predicate it arms with: the core details
  * editor answers true for an address naming its page *and its form*, so a task switch or Back between tasks is never a
  * leave, while a move to another form's core details workflow -- the same page, whose keyed remount would drop the
- * edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work.
+ * edits just as surely -- is one. One slot, not a list: only the page on screen can hold unsaved work. A page of several
+ * editors arms it once for all of them, through its register of unsaved edits ([PendingEditsGuard], issue #1922), never
+ * an editor for itself -- one editor's disarm would drop the guard another's edits still need.
  *
  * Arming also sets `onbeforeunload`, so a reload, a closed tab or a typed address get the browser's own
  * "leave site?" prompt -- the one exit the app cannot see. A permitted in-app leave clears both.

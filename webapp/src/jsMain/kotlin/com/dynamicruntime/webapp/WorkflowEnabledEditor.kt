@@ -18,6 +18,7 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.ul
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val enabledScope = MainScope()
 
@@ -58,6 +59,8 @@ val WorkflowEnabledEditor = FC<WorkflowEnabledEditorProps> { props ->
     var pending by useState<Boolean?>(null)
     val zone = entryZone(props.zone)
     val workflowId = props.workflow.workflowId
+    // An unsaved change is the page's to show and guard (issue #1922).
+    val anchor = usePendingEdit("On/off of $workflowId", draft != baseline)
 
     // Null [on] unsets it, so it follows the fallback again.
     fun save(on: Boolean?, acknowledge: Boolean) {
@@ -80,6 +83,7 @@ val WorkflowEnabledEditor = FC<WorkflowEnabledEditorProps> { props ->
 
     div {
         className = ClassName("trait-designer")
+        id = ElementId(anchor)
         h4 {
             +"Whether "
             code { +workflowId }

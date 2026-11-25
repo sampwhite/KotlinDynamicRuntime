@@ -27,6 +27,7 @@ import react.useMemo
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val traitsScope = MainScope()
 
@@ -122,7 +123,12 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     }
     val types = useMemo(catalog) { catalog?.let { parseSchemaTypes(it.defs) } ?: emptyMap() }
 
+    // An unsaved change to which traits are included is the page's to show and guard (issue #1922): worked out before
+    // the catalog is known, since a hook may not wait on it, and so with nothing to compare against until it is.
+    val traitsDirty = catalog?.let { includedTraitsAfter(baseline, draft, it.traits, it.byTemplate) != baseline } == true
+    val anchor = usePendingEdit("Included traits", traitsDirty)
     p {
+        id = ElementId(anchor)
         className = ClassName("subtitle")
         +traitsIntro
     }

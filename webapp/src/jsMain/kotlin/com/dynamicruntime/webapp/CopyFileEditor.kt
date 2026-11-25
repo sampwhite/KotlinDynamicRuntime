@@ -22,13 +22,12 @@ import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 
 private val copyFileScope = MainScope()
 
 external interface CopyFileEditorProps : Props {
     var clientId: String
-    /** Whether [clientId] is the client the Clients page opens with none named (issue #1082), so that address is its page too. */
-    var inPlace: Boolean
     /** The copy the client's configuration sets, from the overrides report: who set each key, and the orphans. */
     var overrides: List<CopyOverrideView>
     /** Whether a save is a draft, as the page last read the client (`savesAsDraft`): said under the bar, and sent with it. */
@@ -54,7 +53,8 @@ external interface CopyFileEditorProps : Props {
  * refusal is shown under the bar in the backend's words, the keys it names marked, and the changes kept to correct.
  * The bar says how the save will take effect ([saveEffectText]) and the save sends that ([expectedMode]); one
  * refused for no longer taking effect so ([saveConflict]) re-reads the page, the changes kept to save again.
- * While anything is pending, leaving the client's page asks first ([LeaveGuard]).
+ * While anything is pending, it is in the page's unsaved edits ([usePendingEdit], issue #1922): marked, listed, and
+ * leaving the client's page asks first.
  */
 val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     val generation = useRefreshGeneration()
@@ -129,20 +129,10 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         }
     }
 
-    // The leave guard (issue #700): armed while changes are pending, so leaving the client's page -- in the app, or
-    // by reload or a closed tab -- warns first. Moving within the page (the same client) is not a leave.
-    val dirty = pending.isNotEmpty()
-    useEffect(dirty, props.clientId, props.inPlace) {
-        if (dirty) {
-            val client = props.clientId
-            val inPlace = props.inPlace
-            LeaveGuard.arm({ h -> staysOnClientPage(h, client, inPlace) }) {
-                LeaveGuard.confirmLeave("You have unsaved copy changes for this client. Leave the page and lose them?")
-            }
-        } else {
-            LeaveGuard.disarm()
-        }
-    }
+    // Pending changes are the page's to show and guard (issues #700, #1922): leaving the client's page -- in the app, or
+    // by reload or a closed tab -- warns first, for these and every other editor's together, which the page's register
+    // arms the one leave guard for.
+    val anchor = usePendingEdit("Copy: ${pendingCopyFile(pending).orEmpty()}", pending.isNotEmpty())
 
     when {
         keysError != null -> {
@@ -201,6 +191,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     }
 
     div {
+        id = ElementId(anchor)
         className = ClassName("row copy-view-controls")
         val files = copyViewFiles(rows)
         Select {
