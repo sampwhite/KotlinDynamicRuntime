@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.uniqueFieldsOf
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.failure
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -22,8 +23,8 @@ import react.useState
 
 private val uniqueScope = MainScope()
 
-/** A unique field's value to ask about (issue #1851): the trait, the field, and what it holds. */
-data class UniqueAsk(val traitId: String, val field: String, val value: String)
+/** A unique field's value to ask about (issue #1851): the trait, the field, its type, and what it holds. */
+data class UniqueAsk(val traitId: String, val field: String, val fieldType: SchType, val value: String)
 
 /**
  * What to ask of [field] of a trait [traitId] of data type [type] holding [data] (issue #1851), or null when nothing: the
@@ -32,7 +33,7 @@ data class UniqueAsk(val traitId: String, val field: String, val value: String)
 fun uniqueAskOf(traitId: String, type: SchType, field: String, data: Map<String, Any?>): UniqueAsk? {
     if (field !in uniqueFieldsOf(type)) return null
     val value = data[field].toOptStr()?.takeIf { normalizeUnique(it).isNotEmpty() } ?: return null
-    return UniqueAsk(traitId, field, value)
+    return UniqueAsk(traitId, field, type.properties.getValue(field).valueType, value)
 }
 
 private val entryFieldPath = Regex("""([A-Za-z]+)\[(\d+)\]\.${GE.data}\.([^.\[]+)""")
@@ -59,12 +60,15 @@ data class UniqueAsked(val owner: String, val path: String, val value: String)
 
 /**
  * The failures to show of [answers] -- what each ask was told, null for a value that is free -- on a form of [owner]: those
- * of a field that still holds the value asked about, which [askAt] says. Pure, and covered under `jsNodeTest`.
+ * of a field that still holds the value asked about, which [askAt] says. Each is a failure of its field, so the schema's and
+ * the layout's messages for [SchFailCode.valueTaken] reword it. Pure, and covered under `jsNodeTest`.
  */
 fun takenFailures(answers: Map<UniqueAsked, String?>, owner: String, askAt: (String) -> UniqueAsk?): List<SchFailure> =
     answers.mapNotNull { (asked, message) ->
-        message?.takeIf { asked.owner == owner && askAt(asked.path)?.value == asked.value }
-            ?.let { SchFailure(asked.path, SchFailCode.badValue, it) }
+        val ask = askAt(asked.path)?.takeIf { asked.owner == owner && it.value == asked.value }
+        if (ask == null || message == null) return@mapNotNull null
+        // Made under the field's own name, which a message may give, and then shown where the page has it.
+        ask.fieldType.failure(ask.field, SchFailCode.valueTaken, message, value = ask.value).copy(path = asked.path)
     }
 
 /** What [useUniqueChecks] answers: [left] is called as a field is left, and [failures] are those to show now. */

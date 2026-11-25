@@ -50,9 +50,8 @@ enum class SchFailCode(val meaning: String, val raisedBy: List<String>) {
      *  not a recognizable date, boolean, number, or JSON structure. */
     badValue(
         "The value was read and found wrong: text that is not a date, a number, or a yes or no where one is " +
-            "expected, a character that does not show, spaces at the ends of text that refuses them, or a unique value " +
-            "with no letter or digit.",
-        listOf(SCH.type, SCH.format, SCH.visibleOnly, SCH.outerWhitespace, SCH.unique, SCH.schemaDocument),
+            "expected, a character that does not show, or spaces at the ends of text that refuses them.",
+        listOf(SCH.type, SCH.format, SCH.visibleOnly, SCH.outerWhitespace, SCH.schemaDocument),
     ),
 
     invalidOption("The value is not one of the field's choices.", listOf(SCH.options)),
@@ -109,6 +108,21 @@ enum class SchFailCode(val meaning: String, val raisedBy: List<String>) {
      * a `g-primaryKey` share one key (issue #1521).
      */
     duplicateItem("A list holds the same item twice, or two items with the same key.", listOf(SCH.uniqueItems, SCH.primaryKey)),
+
+    /**
+     * A unique field's text has no letter or digit, so nothing to be compared by (issue #1851). Its own code rather than
+     * [badValue], so its wording lands on no other failure.
+     */
+    noLetterOrDigit("A unique value has no letter or digit, so it has nothing to be compared by.", listOf(SCH.unique)),
+
+    /**
+     * Another form of the same owner holds a unique field's value (issue #1851). It spans rows, so the validator never
+     * raises it: a form's page reports it, having asked. The refusal of a save is the write's own.
+     */
+    valueTaken(
+        "Another form of the same owner holds the value. A form's page reports it as the field is left, not a request's check.",
+        listOf(SCH.unique),
+    ),
 }
 
 /**
@@ -1424,14 +1438,14 @@ fun checkPattern(type: SchType, value: Any?, path: String, failures: MutableList
 }
 
 /**
- * What of `g-unique` one value can be judged by (issue #1851): a [SchFailCode.badValue] for a string with no letter or
+ * What of `g-unique` one value can be judged by (issue #1851): a [SchFailCode.noLetterOrDigit] for a string with no letter or
  * digit, which has nothing to be compared by ([lacksUniqueText]). Whether another form holds the value spans rows, and is
  * the write's to judge.
  */
 @KdrPrivate
 fun checkUniqueText(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
     if (type.unique == null || value !is String || !lacksUniqueText(value)) return
-    failures.add(type.failure(path, SchFailCode.badValue, "Value must have at least one letter or digit.", value = value))
+    failures.add(type.failure(path, SchFailCode.noLetterOrDigit, "Value must have at least one letter or digit.", value = value))
 }
 
 /**

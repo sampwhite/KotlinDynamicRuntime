@@ -70,6 +70,15 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
      */
     fun duplicateItem(message: String) = set(SchFailCode.duplicateItem, message)
 
+    /** Shown when a unique field's text has no letter or digit to be compared by (issue #1851). */
+    fun noLetterOrDigit(message: String) = set(SchFailCode.noLetterOrDigit, message)
+
+    /**
+     * Shown on a form's page when another of the owner's forms holds a unique field's value (issue #1851). A save that is
+     * refused says so in the platform's words.
+     */
+    fun valueTaken(message: String) = set(SchFailCode.valueTaken, message)
+
     /**
      * Shown for any failure this block does not name. Not itself a failure code — the fallback *after* the
      * specific ones and *before* the validator's built-in wording.

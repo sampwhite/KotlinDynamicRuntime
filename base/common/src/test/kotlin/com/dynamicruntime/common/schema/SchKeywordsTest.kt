@@ -119,7 +119,11 @@ private fun schCounterTests() = stringSpec {
         uniqueFieldsOf(parse { unique = UNQ.owner }) shouldBe mapOf("number" to UNQ.owner)
         // A value with nothing to compare is refused, and blank text is no answer; so is a choice or default that has nothing.
         val held = parse { unique = UNQ.owner }
-        validate(held, mapOf("number" to "!!!")).map { it.path to it.code } shouldContainExactly listOf("number" to SchFailCode.badValue)
+        validate(held, mapOf("number" to "!!!")).map { it.path to it.code } shouldContainExactly
+            listOf("number" to SchFailCode.noLetterOrDigit)
+        // Reworded by its own code, as any failure is.
+        validate(parse { unique = UNQ.owner; errors { noLetterOrDigit("Say more.") } }, mapOf("number" to "!!!"))
+            .map { it.userMessage } shouldContainExactly listOf("Say more.")
         for (fine in listOf("A!", "", "  ")) validate(held, mapOf("number" to fine)).shouldBeEmpty()
         refusal { option("-"); unique = UNQ.owner } shouldContain "no letter or digit"
         refusal { default = "?"; unique = UNQ.owner } shouldContain "no letter or digit"

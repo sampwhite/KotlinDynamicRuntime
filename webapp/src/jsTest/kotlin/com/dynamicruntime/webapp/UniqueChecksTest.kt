@@ -21,19 +21,28 @@ class UniqueChecksTest {
             "c.Budget" to mapOf(
                 SCH.type to SCT.kObject,
                 SCH.properties to mapOf(
-                    "title" to mapOf(SCH.type to SCT.string, SCH.unique to UNQ.owner),
+                    "title" to mapOf(
+                        SCH.type to SCT.string, SCH.unique to UNQ.owner,
+                        SCH.errors to mapOf("noLetterOrDigit" to "Say something."),
+                    ),
+                    "code" to mapOf(
+                        SCH.type to SCT.string, SCH.unique to UNQ.owner,
+                        SCH.errors to mapOf("valueTaken" to $$"You have a ${field} '${value}'."),
+                    ),
                     "note" to mapOf(SCH.type to SCT.string),
                 ),
             ),
         ),
     ).getValue("c.Budget")
 
+    private fun fieldType(field: String): SchType = budget.properties.getValue(field).valueType
+
     private val typeOf: (String) -> SchType? = { if (it == "budget") budget else null }
 
     @Test
     fun onlyAUniqueFieldHoldingSomethingToCompareIsAskedAbout() {
         val data = mapOf("title" to "Q3 Budget", "note" to "n")
-        assertEquals(UniqueAsk("budget", "title", "Q3 Budget"), uniqueAskOf("budget", budget, "title", data))
+        assertEquals(UniqueAsk("budget", "title", fieldType("title"), "Q3 Budget"), uniqueAskOf("budget", budget, "title", data))
         assertNull(uniqueAskOf("budget", budget, "note", data))
         assertNull(uniqueAskOf("budget", budget, "title", emptyMap()))
         assertNull(uniqueAskOf("budget", budget, "title", mapOf("title" to " !!! ")))
@@ -45,7 +54,7 @@ class UniqueChecksTest {
             mapOf(GE.traitId to "other", GE.data to mapOf("title" to "x")),
             mapOf(GE.traitId to "budget", GE.data to mapOf("title" to "Q3")),
         )
-        val ask = UniqueAsk("budget", "title", "Q3")
+        val ask = UniqueAsk("budget", "title", fieldType("title"), "Q3")
         assertEquals(ask, uniqueAskInEntries(mapOf(GDF.entries to entries), "${GDF.entries}[1].data.title", typeOf))
         // A patch's edits are entries too.
         assertEquals(ask, uniqueAskInEntries(mapOf(GPF.edits to entries), "${GPF.edits}[1].data.title", typeOf))
@@ -62,7 +71,7 @@ class UniqueChecksTest {
             UniqueAsked("theirs", "title", "Q4") to "Theirs.",
         )
         fun shown(owner: String, title: String) =
-            takenFailures(answers, owner) { if (it == "title") UniqueAsk("budget", it, title) else null }.map { it.message }
+            takenFailures(answers, owner) { if (it == "title") UniqueAsk("budget", it, fieldType("title"), title) else null }.map { it.message }
         assertEquals(listOf("Taken."), shown("mine", "Q3"))
         assertEquals(emptyList(), shown("mine", "Q4"))
         assertEquals(emptyList(), shown("theirs", "Q3"))
@@ -70,8 +79,20 @@ class UniqueChecksTest {
     }
 
     @Test
+    fun aTakenValueIsItsOwnCodeWhichTheSchemaMayReword() {
+        fun shown(field: String) = takenFailures(mapOf(UniqueAsked("me", "budget/$field", "K1") to "Taken."), "me") {
+            UniqueAsk("budget", field, fieldType(field), "K1")
+        }.single()
+        assertEquals(SchFailCode.valueTaken, shown("title").code)
+        // A message for text with nothing to compare is not one for a taken value.
+        assertNull(shown("title").userMessage)
+        assertEquals("You have a code 'K1'.", shown("code").userMessage)
+        assertEquals("budget/code", shown("code").path)
+    }
+
+    @Test
     fun aTakenValueIsShownBesideWhatTheFormHasFound() {
-        val taken = listOf(SchFailure("title", SchFailCode.badValue, "Taken."))
+        val taken = listOf(SchFailure("title", SchFailCode.valueTaken, "Taken."))
         val missing = listOf(SchFailure("note", SchFailCode.missingRequired, "Missing."))
         assertEquals(missing + taken, withTaken(missing, taken))
         assertEquals(taken, withTaken(null, taken))

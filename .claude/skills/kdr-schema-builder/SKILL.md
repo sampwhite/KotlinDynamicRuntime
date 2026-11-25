@@ -335,8 +335,8 @@ value, compared after `normalizeUnique`: lowercase, each run of characters that 
 trimmed, so "Q3 Budget" and "q3-budget " are one value. A mark is part of its letter, and a character outside the basic
 plane (an emoji, a rare letter) counts as one.
 
-- **A value needs a letter or digit.** "!!!" has nothing to be compared by, so the schema refuses it (`badValue`), and a
-  choice or default like it is refused when the type is parsed. Blank text is no answer, as anywhere.
+- **A value needs a letter or digit.** "!!!" has nothing to be compared by, so the schema refuses it (`noLetterOrDigit`),
+  and a choice or default like it is refused when the type is parsed. Blank text is no answer, as anywhere.
 - **The rest is not validation.** Whether another form holds a value spans rows. The write holds it (`UniqueClaims`,
   through `UniqueClaimHook`): a create, a patch, or an import storing a value another of the owner's forms holds is
   refused (400), naming that form in `extraData`. Changing the value, or deleting the form, frees it.

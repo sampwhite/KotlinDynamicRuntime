@@ -74,7 +74,8 @@ does not name.
 **Which message a reader sees.** On a form, the form's own message for the code, then its `$${SCH.errorDefault}`; then
 the schema's message for the code, then its `$${SCH.errorDefault}`; then the platform's. A request's refusal always
 carries the platform's message in `$${EP.failureMessage}`, and the schema's in `$${EP.failureUserMessage}` when there is
-one, so a program can show either.
+one, so a program can show either. A message for `$${SchFailCode.valueTaken.name}` is a page's alone: a save refused
+because another form holds the value is not one of the failures listed, and says so in the platform's words.
 
 **What a message may hold.** Plain text, and the parameters above. Neither kind may pull its wording from a fragment
 file, as a layout's labels can, since a message is filled in wherever the failure is shown. A message whose parameter
