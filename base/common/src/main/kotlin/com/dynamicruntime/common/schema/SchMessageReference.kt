@@ -4,6 +4,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.UNQ
 
 /**
  * The **validation messages reference** (issue #1559): every code a refused value is reported with, what it means,
@@ -95,6 +96,8 @@ private fun refusalFieldsTable(): String = table(
             "shows these in place of the platform's.",
         GE.traitId to "When a write is refused for what its entries would hold: the trait of the entry, which the path starts " +
             "from (`data.title`).",
+        EP.failureEntryKey to "The key of that entry, each key field with its value, for a trait that may have several.",
+        UNQ.value to "For a value that is taken (`${SchFailCode.valueTaken.name}`), the value as it was sent.",
         EP.failureOptions to "For a choice refused, the choices there are, each a value and its label.",
         EP.failureFormRequirement to "Present and true when the data is valid but the form asks for more: a field its layout " +
             "requires, or a choice it does not offer.",

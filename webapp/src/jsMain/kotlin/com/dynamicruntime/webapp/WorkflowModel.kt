@@ -81,7 +81,11 @@ class WfSaveView(val id: String, val label: String, val kind: String)
  * wording to show -- the schema author's `userMessage` when the field declares one, else the validator's
  * `message`, the same rule a reported failure is read by anywhere else.
  */
-class WfProblem(val traitId: String, val path: String, val message: String)
+class WfProblem(val failure: RefusedFailure) {
+    val traitId: String get() = failure.traitId
+    val path: String get() = failure.path
+    val message: String get() = failure.userMessage ?: failure.message
+}
 
 /**
  * A task's status for the task rail (issue #700), as the view computed it: presence ([complete], [missingTraits])
@@ -327,11 +331,7 @@ private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
         // Each problem is the kernel's own failure wire map (`SchFailure.toWireMap`) plus the trait it belongs to,
         // read by the same constants every other reported failure is.
         problems = s[WVF.problems].toJsonListOfMaps().map {
-            WfProblem(
-                traitId = it[GE.traitId].toOptStr() ?: "",
-                path = pathInData(it[EP.failurePath].toOptStr().orEmpty()),
-                message = it[EP.failureUserMessage].toOptStr() ?: it[EP.failureMessage].toOptStr() ?: "",
-            )
+            WfProblem(refusedFailure(it[GE.traitId].toOptStr().orEmpty(), it))
         },
     )
 }
@@ -719,8 +719,9 @@ fun localTaskStatus(
         if (!trait.required && comparableValues(working).isEmpty()) continue
         val failures = checkFormInput(trait.type, working, layouts, givenAtSave(trait)).failures
         if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
-        failures.filter { it.code != SchFailCode.missingRequired }
-            .forEach { problems.add(WfProblem(trait.traitId, it.path, it.userMessage ?: it.message)) }
+        failures.filter { it.code != SchFailCode.missingRequired }.forEach {
+            problems.add(WfProblem(RefusedFailure(trait.traitId, it.path, it.code.name, it.message, it.userMessage, it.options)))
+        }
     }
     return WfTaskStatus(
         complete = missing.isEmpty(),

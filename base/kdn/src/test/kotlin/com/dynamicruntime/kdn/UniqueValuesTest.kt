@@ -60,6 +60,7 @@ import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import java.util.Collections
 import java.util.concurrent.Executors
 
 /**
@@ -183,9 +184,15 @@ class UniqueValuesTest : StringSpec({
         val client = "unq1851d"
         setUnique(client, true)
         val mine = owner(client)
+        val refusals = Collections.synchronizedList(mutableListOf<Pair<Any?, Any?>>())
         val pool = Executors.newFixedThreadPool(4)
         val outcomes = try {
-            fun post(): Int = (mine.client.sendJsonPostRequest(GEP.formDocCreate, body("Race"))[EP.status] as? Number)?.toInt() ?: 200
+            fun post(): Int {
+                val answer = mine.client.sendJsonPostRequest(GEP.formDocCreate, body("Race"))
+                answer[EP.extraData].toJsonMapOrEmpty()[EP.failures].toJsonListOfMaps()
+                    .forEach { refusals.add(it[EP.failureCode] to it[EP.failurePath]) }
+                return (answer[EP.status] as? Number)?.toInt() ?: 200
+            }
             (1..4).map { pool.submit<Int> { post() } }
                 .map {
                     @Suppress("BlockingMethodInNonBlockingContext")
@@ -196,6 +203,9 @@ class UniqueValuesTest : StringSpec({
         }
         outcomes.count { it == 200 } shouldBe 1
         outcomes.filter { it != 200 }.toSet() shouldBe setOf(EXC.badInput)
+        // Each refusal says which field, the one settled by the table's key too, so its page can show it there (issue #1918).
+        refusals.toSet() shouldBe setOf(SchFailCode.valueTaken.name to "data.title")
+        refusals.size shouldBe 3
     }
 
     "turned on over forms that share a value, they are kept and reported, and the value is taken until all let it go" {

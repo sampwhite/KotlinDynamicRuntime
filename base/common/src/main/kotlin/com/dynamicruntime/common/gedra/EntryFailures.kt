@@ -3,15 +3,44 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.toWireMap
+import com.dynamicruntime.common.util.fmt
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 
-/** A failure of the entry of trait [traitId] a write would store (issue #1918), its path from the entry (`data.title`). */
-class EntryFailure(val traitId: String, val failure: SchFailure, val more: Map<String, Any?> = emptyMap()) {
-    /** The failure on the wire: a reported failure's shape, with its trait, as a workflow's problems have it. */
-    fun toWireMap(): Map<String, Any?> = failure.toWireMap() + (GE.traitId to traitId) + more
+/**
+ * A failure of the entry of trait [traitId] a write would store (issue #1918), its path from the entry (`data.title`). [key]
+ * is the entry's, each key field with its value, for a trait that may have several.
+ */
+class EntryFailure(
+    val traitId: String,
+    val failure: SchFailure,
+    val key: Map<String, Any?> = emptyMap(),
+    val more: Map<String, Any?> = emptyMap(),
+) {
+    /** The failure on the wire: a reported failure's shape, with its trait, as a workflow's problems have it, and its key. */
+    fun toWireMap(): Map<String, Any?> = buildMap {
+        putAll(failure.toWireMap())
+        put(GE.traitId, traitId)
+        if (key.isNotEmpty()) put(EP.failureEntryKey, key)
+        putAll(more)
+    }
 
-    /** The failure for a reader with no form in front of them: the trait, where in its entry, and what is wrong. */
-    val text: String get() = "$traitId, ${failure.path}: ${failure.message}"
+    /** The failure for a reader with no form in front of them: the trait and its key, where in its entry, and what is wrong. */
+    val text: String get() {
+        val which = if (key.isEmpty()) "" else key.values.joinToString(", ", " (", ")") { it.fmt() }
+        return "$traitId$which, ${failure.path}: ${failure.message}"
+    }
+
+    companion object {
+        /** [failure] of [entry], a stored entry, its key read by the types of [union]. */
+        fun of(union: SchType?, entry: Map<String, Any?>, failure: SchFailure): EntryFailure {
+            val traitId = entry[GE.traitId].toOptStr().orEmpty()
+            val data = entry[GE.data].toJsonMapOrEmpty()
+            return EntryFailure(traitId, failure, traitKeyIn(union, traitId).associateWith { data[it] }.filterValues { it != null })
+        }
+    }
 }
 
 /**

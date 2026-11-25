@@ -1993,7 +1993,7 @@ class GedraDataService : ServiceInitializer {
         val union = clientUnion(cxt, kind) ?: return
         val failures = entries.flatMapIndexed { i, entry ->
             validate(union, entry).filterNot { it.code == SchFailCode.missingRequired && (i to it.path) in excused }
-                .map { EntryFailure(entry[GE.traitId].toOptStr().orEmpty(), it) }
+                .map { EntryFailure.of(union, entry, it) }
         }
         if (failures.isNotEmpty()) {
             throw entryFailuresException("The patch would leave ${failures.size} problem(s) in the stored entries:", failures)

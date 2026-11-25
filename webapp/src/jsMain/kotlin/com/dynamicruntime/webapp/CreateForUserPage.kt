@@ -65,7 +65,10 @@ val CreateForUserPage = FC<Props> {
     // A unique field (issue #1851): asked about as it is left, of the picked user's forms.
     val uniqueChecks = useUniqueChecks(
         client = picked?.client, userRef = picked?.primaryId,
-        pathOf = { traitId, field -> entryFieldPath(values, GDF.entries, traitId, field) },
+        pathOf = { traitId, field ->
+            val type = catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }
+            drawnEntryField(type, values, GDF.entries, traitId, field, catalog?.formOpts(entryLabel) ?: FormOpts())
+        },
     ) { path ->
         uniqueAskInEntries(values, path) { entryDataType(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, GDF.entries, it) }
     }
@@ -187,6 +190,7 @@ val CreateForUserPage = FC<Props> {
                             } else {
                                 running = true
                                 runError = null
+                                uniqueChecks.saving()
                                 val launched = routeParams()
                                 createForUserScope.launch {
                                     try {
@@ -206,14 +210,9 @@ val CreateForUserPage = FC<Props> {
                                         formsCreateReturn(launched, routeParams(), newId, givenIds = givenIds)?.let { navigate(it) }
                                     } catch (e: Throwable) {
                                         runError = if (uniqueChecks.refused(e)) {
-                                            refusedAtField
+                                            null
                                         } else {
-                                            saveError(e) {
-                                                val opts = FormOpts(
-                                                    friendly = true, fieldLayouts = cat.fieldLayouts, entryLabel = entryLabel,
-                                                )
-                                                entryFailureLabel(inputType, values, GDF.entries, it, opts)
-                                            }
+                                            saveError(e) { entryFailureText(inputType, values, GDF.entries, it, cat.formOpts(entryLabel)) }
                                         }
                                         running = false
                                     }
@@ -240,7 +239,7 @@ val CreateForUserPage = FC<Props> {
                 }
 
                 counterIds.error?.let { errorText("Couldn't get this form's id.", it) }
-                runError?.let { errorText("Couldn't create the form.", it) }
+                (runError ?: refusedAtField.takeIf { uniqueChecks.refusedShown })?.let { errorText("Couldn't create the form.", it) }
             }
         }
     }

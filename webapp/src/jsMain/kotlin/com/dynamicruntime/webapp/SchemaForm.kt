@@ -1453,7 +1453,7 @@ private fun ChildrenBuilder.renderObjectList(
         // A failure against the element *itself* rather than one of its fields -- an element that is not an
         // object at all, say. Its fields each have a row; until now the element did not, so this was the one
         // failure inside a list with nowhere of its own to appear.
-        val elementMessages = errors.messagesAt(elementPath)
+        val elementMessages = errors.messagesAt(elementPath).map { it.called(fieldLabel(name, prop, opts, copy)) }
         val header = headers[i]
         div {
             className = ClassName("nested")
@@ -1538,7 +1538,7 @@ private fun ChildrenBuilder.renderScalarList(
     val fileKeys = if (elementType?.isDataFile() == true) elementKeys(elements) else null
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
-        val elementMessages = errors.messagesAt(elementPath)
+        val elementMessages = errors.messagesAt(elementPath).map { it.called(fieldLabel(name, prop, opts, copy)) }
         fun replace(newValue: Any?) {
             errors.noteEdit(elementPath)
             emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })

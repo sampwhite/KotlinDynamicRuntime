@@ -19,6 +19,7 @@ import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.useEffect
+import react.useRef
 import react.useState
 
 private val uniqueScope = MainScope()
@@ -72,15 +73,21 @@ fun takenFailures(answers: Map<UniqueAsked, String?>, owner: String, askAt: (Str
     }
 
 /**
- * What [useUniqueChecks] answers: [left] is called as a field is left, and [failures] are those to show now. [refused] is
- * called with a save's failure, and answers whether it is a refusal of values that are taken, each now shown under its field
- * (issue #1918), so the page has only to point there.
+ * What [useUniqueChecks] answers: [left] is called as a field is left, and [failures] are those to show now. A page calls
+ * [saving] as a save starts, and [refused] with its failure (issue #1918): it answers whether that was a refusal of values
+ * that are taken, each now shown under its field. [refusedShown] says whether one still is, for the page to point there.
  */
-class UniqueChecks(val left: (String) -> Unit, val failures: List<SchFailure>, val refused: (Throwable) -> Boolean)
+class UniqueChecks(
+    val left: (String) -> Unit,
+    val failures: List<SchFailure>,
+    val saving: () -> Unit,
+    val refused: (Throwable) -> Boolean,
+    val refusedShown: Boolean,
+)
 
 /**
  * The answers a save refused with [refused] gives a form of [owner] (issue #1918), as though each field had asked: when it is
- * a refusal of taken values and nothing else, and each is in a field of the form ([pathOf]) that still holds it. Null
+ * a refusal of taken values and nothing else, and each is in a field the form draws ([pathOf]) that still holds it. Null
  * otherwise, for the page to show the refusal itself. Pure, and covered under `jsNodeTest`.
  */
 fun refusedAnswers(
@@ -98,17 +105,14 @@ fun refusedAnswers(
     return placed.toMap().takeIf { it.size == refused.size }
 }
 
-/** The path, in a form whose [values] hold a [list] of entries, of [field] of the entry of [traitId]; null when it has none. */
-fun entryFieldPath(values: Map<String, Any?>, list: String, traitId: String, field: String): String? =
-    values[list].toJsonListOfMaps().indexOfFirst { it[GE.traitId] == traitId }.takeIf { it >= 0 }?.let { "$list[$it].${GE.data}.$field" }
-
 /**
  * Asks, as each unique field of a form is left, whether another of the owner's forms holds its value (issue #1851), and
  * shows the answer under the field for as long as the field holds that value. [askAt] is what to ask of the field at a
  * path, null for one not unique. The owner is the form's named by [gedraId], or the caller's own, or [userRef]'s for a form
  * made for someone; [client] names another client's copy of the endpoint. A change of any of them asks again about the
  * fields already left, and an answer about the one before is not shown. An ask that fails says nothing: the save's own
- * check is the one that holds the value, and its refusal is shown under the field too, which [pathOf] finds.
+ * check is the one that holds the value, and its refusal is shown under the field too, which [pathOf] finds: null for one
+ * the form does not draw.
  */
 fun useUniqueChecks(
     client: String? = null,
@@ -127,6 +131,7 @@ fun useUniqueChecks(
     val answersState = useState<Map<UniqueAsked, String?>>(emptyMap())
     val answers by answersState
     val updateAnswers = answersState.component2()
+    var refusedAsked by useState<Set<UniqueAsked>>(emptySet())
     useEffect(owner) { if (leftPaths.isNotEmpty()) updatePending { it + leftPaths } }
     // After the render that holds the value just left, as the form's other checks wait for it (`onFieldCommit`).
     useEffect(pending) {
@@ -155,13 +160,26 @@ fun useUniqueChecks(
         updateLeft { it + path }
         if (askAt(path) != null) updatePending { it + path }
     }
+    // A save's refusal comes back to a form that may have changed since it was sent, so it is judged by the latest render's.
+    val latest = useRef<Triple<String, (String, String) -> String?, (String) -> UniqueAsk?>>(null)
+    latest.current = Triple(owner, pathOf, askAt)
     fun refused(e: Throwable): Boolean {
-        val found = refusedAnswers(refusedFailures(e), owner, pathOf, askAt) ?: return false
+        val (nowOwner, nowPathOf, nowAskAt) = latest.current ?: return false
+        if (nowOwner != owner) return false
+        val found = refusedAnswers(refusedFailures(e), owner, nowPathOf, nowAskAt) ?: return false
         updateLeft { it + found.keys.map { asked -> asked.path } }
         updateAnswers { it + found }
+        refusedAsked = found.keys
         return true
     }
-    return UniqueChecks(::left, takenFailures(answers, owner, askAt), ::refused)
+    // What the last save was refused for is asked of this one again, so it does not outlive a save that stores it.
+    fun saving() {
+        val gone = refusedAsked
+        refusedAsked = emptySet()
+        if (gone.isNotEmpty()) updateAnswers { it - gone }
+    }
+    val refusedShown = refusedAsked.any { it.owner == owner && askAt(it.path)?.value == it.value }
+    return UniqueChecks(::left, takenFailures(answers, owner, askAt), ::saving, ::refused, refusedShown)
 }
 
 /** [failures] with [taken] beside them, for a form; null -- nothing checked yet -- stays so when none is taken. */

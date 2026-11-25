@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
+import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
@@ -35,6 +36,7 @@ class FieldFailuresTest {
                 SCH.type to SCT.kObject,
                 SCH.properties to mapOf(
                     "talkTitle" to text("Talk title"),
+                    "code" to text("Code") + (SCH.errors to mapOf("belowMinimum" to $$"${label} is short.")),
                     "venue" to mapOf(SCH.dRef to $$"#/$defs/c.Place"),
                     "speakers" to listOfObjects("email" to text("Email")),
                     "lines" to listOfObjects("amount" to text()),
@@ -59,6 +61,7 @@ class FieldFailuresTest {
 
     private val values = mapOf(
         "talkTitle" to "x",
+        "code" to "c1",
         "speakers" to listOf(mapOf("email" to "a"), mapOf("email" to "b")),
         "lines" to listOf(emptyMap<String, Any?>(), emptyMap()),
         "years" to listOf(mapOf("year" to "2024"), mapOf("year" to "2025")),
@@ -107,14 +110,37 @@ class FieldFailuresTest {
         assertEquals(listOf("talkTitle", ""), refusedFailures(e).map { it.path })
         assertEquals(
             "Title: Value must be at least 3 characters. Value must be an object.",
-            saveError(e) { failureLabel(talk, values, it.path, opts(field("talkTitle", "Title"))) }.text,
+            saveError(e) { words(it, opts(field("talkTitle", "Title"))) }.text,
         )
         // A refusal that says no failures, or a request's, which have no trait, reads as it did.
         assertEquals("Raw.", saveError(refusal()) { "Never" }.text)
         assertEquals("Raw.", saveError(refusal(mapOf(EP.failurePath to "a", EP.failureMessage to "b"))) { "Never" }.text)
-        // The schema author's words, when there are some.
-        val worded = refusal(failed("talk", "data.talkTitle", SchFailCode.belowMinimum, "m") + (EP.failureUserMessage to "Say more."))
-        assertEquals("Title: Say more.", saveError(worded) { "Title" }.text)
+    }
+
+    private fun words(f: RefusedFailure, opts: FormOpts) =
+        labeledMessage(failureLabel(talk, values, f.path, opts), failureWords(talk, values, f, opts))
+
+    private fun one(failure: Map<String, Any?>) = refusedFailures(refusal(failure)).single()
+
+    @Test
+    fun aListedFailureIsWordedAsItIsUnderItsField() {
+        val short = failed("talk", "data.code", SchFailCode.belowMinimum, "Platform's.") + (EP.failureUserMessage to "The code is short.")
+        // The schema's message with this form's label, not the one the server filled in with its own.
+        assertEquals("Ticket: Ticket is short.", words(one(short), opts(field("code", "Ticket"))))
+        // The layout's own message first.
+        val worded = SchLayoutField(
+            "code", label = "Ticket", description = null, hint = null,
+            errors = mapOf("belowMinimum" to $$"No ${lower(label)} like '${value}'."),
+        )
+        assertEquals("Ticket: No ticket like 'c1'.", words(one(short), opts(worded)))
+        // A layout message needing a value this form does not have gives way to the next that can be filled in.
+        assertEquals("Ticket is short.", failureWords(talk, emptyMap(), one(short), opts(worded)))
+        // A refused choice says the choices, as it does under a field.
+        val choice = failed("talk", "data.talkTitle", SchFailCode.invalidOption, "'x' is not one of the choices.") +
+            (EP.failureOptions to listOf(mapOf(SCH.value to "a", SCH.label to "Apples")))
+        assertEquals("'x' is not one of the choices. Valid options: a — Apples.", failureWords(talk, values, one(choice), opts()))
+        // A code from a newer server reads as it came.
+        assertEquals("Newer.", failureWords(talk, values, RefusedFailure("talk", "talkTitle", "later", "Newer."), opts()))
     }
 
     @Test
@@ -136,12 +162,80 @@ class FieldFailuresTest {
         assertFalse(shown.message.contains("Title"))
     }
 
+    private val entryTypes = parseSchemaTypes(
+        mapOf(
+            "c.Yearly" to mapOf(
+                SCH.type to SCT.kObject, SCH.primaryKey to listOf("year"), SCH.required to listOf("year"),
+                SCH.properties to mapOf(
+                    "year" to text(), "amount" to mapOf(SCH.type to SCT.integer), "lines" to listOfObjects("cost" to text()),
+                ),
+            ),
+            "c.TalkEntry" to entry("talk", "c.Talk"),
+            "c.YearlyEntry" to entry("yearly", "c.Yearly"),
+            "c.Form" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    GDF.entries to mapOf(
+                        SCH.type to SCT.array,
+                        SCH.items to mapOf(
+                            SCH.oneOf to listOf(mapOf(SCH.dRef to $$"#/$defs/c.TalkEntry"), mapOf(SCH.dRef to $$"#/$defs/c.YearlyEntry")),
+                            SCH.discriminator to mapOf(SCH.propertyName to GE.traitId),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        types,
+    )
+
+    private fun entry(traitId: String, type: String) = mapOf(
+        SCH.type to SCT.kObject, SCH.required to listOf(GE.traitId),
+        SCH.properties to mapOf(GE.traitId to mapOf(SCH.const to traitId), GE.data to mapOf(SCH.dRef to $$"#/$defs/$$type")),
+    )
+
+    private val formType = entryTypes.getValue("c.Form")
+    private val form = mapOf(
+        GDF.entries to listOf(
+            mapOf(GE.traitId to "yearly", GE.data to mapOf("year" to "2023", "lines" to listOf(mapOf("cost" to "1")))),
+            mapOf(
+                GE.traitId to "yearly",
+                GE.data to mapOf("year" to "2024", "lines" to listOf(mapOf("cost" to "1"), mapOf("cost" to "2"))),
+            ),
+            mapOf(GE.traitId to "talk", GE.data to values),
+        ),
+    )
+
     @Test
-    fun anEntrysFieldIsFoundAndNamedInAForm() {
-        val form = mapOf(GDF.entries to listOf(mapOf(GE.traitId to "other"), mapOf(GE.traitId to "talk", GE.data to values)))
-        assertEquals("${GDF.entries}[1].data.talkTitle", entryFieldPath(form, GDF.entries, "talk", "talkTitle"))
-        assertNull(entryFieldPath(form, GDF.entries, "absent", "talkTitle"))
+    fun anEntryIsNamedAsTheFormHeadsIt() {
+        fun told(f: Map<String, Any?>, opts: FormOpts = opts()) = entryFailureText(formType, form, GDF.entries, one(f), opts)
+        assertEquals(
+            "Talk, Title: Value must be at least 3 characters.",
+            told(
+                failed("talk", "data.talkTitle", SchFailCode.belowMinimum, "Value must be at least 3 characters."),
+                opts(field("talkTitle", "Title")),
+            ),
+        )
+        // One of several entries of a keyed trait, found by its key, so its own lists are read.
+        val keyed = failed("yearly", "data.lines[1].cost", SchFailCode.wrongType, "Value must be text.") +
+            (EP.failureEntryKey to mapOf("year" to "2024"))
+        assertEquals("Yearly — 2024, Lines, Entry 2, Cost: Value must be text.", told(keyed))
+        // One that is not on the page is still told apart.
+        val elsewhere = failed("yearly", "data.amount", SchFailCode.wrongType, "No.") + (EP.failureEntryKey to mapOf("year" to "2020"))
+        assertEquals("Yearly — 2020, Amount: No.", told(elsewhere))
         // With no type to read it by, the trait and the path as they are.
-        assertEquals("talk, talkTitle", entryFailureLabel(null, form, GDF.entries, refusedFailures(refusal(taken)).single(), opts()))
+        assertEquals("talk, talkTitle: Value 'x' is already used.", entryFailureText(null, form, GDF.entries, one(taken), opts()))
+    }
+
+    @Test
+    fun aFieldIsPointedAtOnlyWhereTheFormDrawsIt() {
+        fun path(field: String, opts: FormOpts = opts()) = drawnEntryField(formType, form, GDF.entries, "talk", field, opts)
+        assertEquals("${GDF.entries}[2].data.talkTitle", path("talkTitle"))
+        assertNull(path("gone"))
+        assertNull(drawnEntryField(formType, form, GDF.entries, "absent", "talkTitle", opts()))
+        // A layout that chooses the fields leaves this one out, and so there is no field to mark.
+        val layout = SchLayout(
+            fragmentFileId = null, label = null, fields = listOf(field("venue", null)), mode = SchLayoutMode.authoritative,
+        )
+        assertNull(path("talkTitle", FormOpts(friendly = true, fieldLayouts = mapOf("c.Talk" to layout))))
     }
 }

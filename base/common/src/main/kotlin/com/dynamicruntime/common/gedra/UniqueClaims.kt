@@ -255,7 +255,7 @@ object UniqueClaims {
         val union = GedraDataService.get(cxt).entryUnion(cxt, row.client, row.kind)
         val failure = traitDataTypeIn(union, slot.traitId)?.properties?.get(slot.field)?.valueType
             ?.failure(path, SchFailCode.valueTaken, message, value = slot.value) ?: SchFailure(path, SchFailCode.valueTaken, message)
-        return entryFailuresException("", listOf(EntryFailure(slot.traitId, failure, mapOf(UNQ.value to slot.value)))).also {
+        return entryFailuresException("", listOf(EntryFailure(slot.traitId, failure, more = mapOf(UNQ.value to slot.value)))).also {
             it.extraData[UNQ.traitId] = slot.traitId
             it.extraData[UNQ.field] = slot.field
             heldBy?.let { id -> it.extraData[GDF.gedraId] = id }

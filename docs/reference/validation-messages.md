@@ -17,6 +17,8 @@ refused value. A form shows the same failures beside its fields. Each failure ho
 | `message` | The platform's own words for the failure, written for whoever is reading the data. |
 | `userMessage` | The schema's own words for the failure, from its `g-errors`, when it gives some. A form shows these in place of the platform's. |
 | `traitId` | When a write is refused for what its entries would hold: the trait of the entry, which the path starts from (`data.title`). |
+| `entryKey` | The key of that entry, each key field with its value, for a trait that may have several. |
+| `value` | For a value that is taken (`valueTaken`), the value as it was sent. |
 | `options` | For a choice refused, the choices there are, each a value and its label. |
 | `formRequirement` | Present and true when the data is valid but the form asks for more: a field its layout requires, or a choice it does not offer. |
 

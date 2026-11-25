@@ -68,6 +68,10 @@ fun counterSlotsToFill(
 fun fieldsGivenAtSave(type: SchType, values: Map<String, Any?>, opts: FormOpts): Set<String> =
     editedFieldPlan(type, values, opts).filter { it.hidden == FieldHidden.givenAtSave }.map { it.name }.toSet()
 
+/** Whether an edited form section of [type] holding [values] draws [field], as [opts] has it (issue #1918). Pure. */
+fun drawsField(type: SchType, values: Map<String, Any?>, field: String, opts: FormOpts): Boolean =
+    editedFieldPlan(type, values, opts).any { it.name == field && it.hidden == null }
+
 /** What an edited form section of [type] does with each field, as [SchemaForm] plans it at its root. */
 private fun editedFieldPlan(type: SchType, values: Map<String, Any?>, opts: FormOpts): List<PlannedField> =
     formFieldPlan(type, values, "", true, type.condition?.let { it.forbiddenWhen(it.holds(values)) }.orEmpty(), opts)

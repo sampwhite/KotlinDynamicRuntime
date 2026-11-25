@@ -259,7 +259,7 @@ object ConfigImpact {
             if (failures.isNotEmpty() && (now == null || !knownNow || validate(now, entry).isEmpty())) {
                 // A trait newly supported counts too: its entries were never checked, and every edit now checks them. For
                 // each field and failure (issue #1918), so forms that fail for different reasons are told apart.
-                for ((field, code) in failures.map { fieldAnywhere(it.path) to it.code }.distinct()) {
+                for ((field, code) in failures.map { fieldAnywhere(next.variants?.select(traitId), it.path) to it.code }.distinct()) {
                     report.add(ImpactKind.dataInvalid, row, traitId = traitId, field = field, code = code)
                 }
             } else if (recomputes(cxt, entry, now?.variants?.select(traitId)?.takeIf { knownNow }, next.variants?.select(traitId))) {
@@ -269,13 +269,31 @@ object ConfigImpact {
     }
 
     /**
-     * The field a failure at [path] of an entry is about (issue #1918), wherever it is in a list: `lines[].amount`, for
-     * `data.lines[3].amount`. Empty for the data as a whole.
+     * The field of an entry of [entryType] a failure at [path] is about (issue #1918), by the type and not by what the entry
+     * holds, so a report has a finding for each field and not for each row: `lines[].amount` for `data.lines[3].amount`,
+     * `extra.*` for a map's entry, and, for a key the type does not declare, the object that holds it. Empty for the data
+     * as a whole.
      */
-    private fun fieldAnywhere(path: String): String =
-        path.removePrefix(GE.data).removePrefix(".").replace(elementIndex, "[]")
+    internal fun fieldAnywhere(entryType: SchType?, path: String): String {
+        val out = StringBuilder()
+        var type = entryType
+        for (step in pathStep.findAll(path)) {
+            val name = step.groupValues[1]
+            if (name.isEmpty()) {
+                out.append("[]")
+                type = type?.itemType
+                continue
+            }
+            // A union's branch is the entry's own business: which one it is in is not known from here.
+            val prop = type?.properties?.get(name)
+            val shown = if (prop != null) name else if (type?.additionalValueType != null) "*" else break
+            type = prop?.valueType ?: type.additionalValueType
+            out.append(if (out.isEmpty()) shown else ".$shown")
+        }
+        return out.toString().removePrefix(GE.data).removePrefix(".")
+    }
 
-    private val elementIndex = Regex("""\[\d+\]""")
+    private val pathStep = Regex("""([^.\[\]]+)|\[\d+\]""")
 
     /**
      * Whether the `g-onWrite` functions of [next]'s data type would store other values for [entry] than the running
