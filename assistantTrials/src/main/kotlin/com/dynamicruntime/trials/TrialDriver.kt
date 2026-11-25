@@ -50,11 +50,25 @@ class ProbeCaller(private val session: ProbeSession) : TrialCaller {
         envelope(path, session.sendPostRequest(path, data))[EP.results].toJsonMapOrEmpty()
 }
 
+/** The people a walk acts as, each a [ProbeSession] of their own on the node at [url]; closed together. */
+class ProbePeople(private val url: String) : TrialPeople, AutoCloseable {
+    private val sessions = mutableListOf<ProbeSession>()
+
+    override fun become(email: String, client: String, name: String): TrialCaller {
+        val session = ProbeSession("walk-$name", url).also { sessions.add(it) }
+        session.becomeUser(email, client = client, name = name)
+        return ProbeCaller(session)
+    }
+
+    override fun close() = sessions.forEach { it.close() }
+}
+
 /**
  * Runs one trial as one person (issue #1859): creates their self-serve client, switches the assistant on for it, opens
  * its sandbox, sends the variant's prompts there one after another, each waiting for its turn to end, and reads back the
- * conversations and the client's configuration. What goes wrong is recorded in the result's problems, and the run goes on
- * as far as it can: a report of a partial run says more than an exception.
+ * conversations and the client's configuration. Then, given [people], it walks through what was configured ([TrialWalk],
+ * issue #1915). What goes wrong is recorded in the result's problems, and the run goes on as far as it can: a report of a
+ * partial run says more than an exception.
  */
 class TrialDriver(
     private val caller: TrialCaller,
@@ -63,6 +77,8 @@ class TrialDriver(
     /** How often a running turn is polled. */
     private val pollEvery: Duration = 2.seconds,
     private val log: (String) -> Unit = ::println,
+    /** Who makes the people a walk acts as; null to walk nothing. */
+    private val people: TrialPeople? = null,
 ) {
     fun run(trial: Trial, variant: TrialVariant, runId: String): TrialResult {
         val startedAt = Clock.System.now()
@@ -106,9 +122,15 @@ class TrialDriver(
         val conversations = conversationIds.mapNotNull { id ->
             runCatching { readConversation(id) }.onFailure { problems.add("Could not read conversation $id: ${it.message}") }.getOrNull()
         }
-        val config = runCatching { readConfig() }.onFailure { problems.add("Could not read the configuration: ${it.message}") }
+        val config = runCatching { readConfig(caller) }.onFailure { problems.add("Could not read the configuration: ${it.message}") }
             .getOrDefault(emptyMap())
-        return TrialResult(trial, variant, client, sandbox, conversations, config, problems, startedAt, Clock.System.now())
+        val walk = if (people != null && sandbox != null && trial.walk.isNotEmpty()) {
+            log("  ${trial.name}/${variant.name}: walking through it")
+            TrialWalk(caller, people, sandbox, ConfigView(config), trial.walk, addressOf(trial, variant, runId)).walk()
+        } else {
+            null
+        }
+        return TrialResult(trial, variant, client, sandbox, conversations, config, problems, startedAt, Clock.System.now(), walk)
     }
 
     /** Waits for [turnId] to end; answers why it did not, or null when it did. */
@@ -143,7 +165,14 @@ class TrialDriver(
         return TrialConversation(id, read[ACNV.turns].toJsonListOfMaps(), read[ACNV.messages].toJsonListOfMaps())
     }
 
-    /** Every configuration bundle the sandbox's client stores, by name, in portable form so runs compare. */
-    private fun readConfig(): Map<String, Map<String, Any?>> = caller.getItems(CFEP.bundles).mapNotNull { it[CFEP.name].toOptStr() }
-        .associateWith { name -> caller.getItem(CFEP.bundle, mapOf(CFEP.name to name, PORT.portableField to true)) }
+    companion object {
+        /** Every configuration bundle the sandbox's client stores, by name, in portable form so runs compare. */
+        fun readConfig(caller: TrialCaller): Map<String, Map<String, Any?>> =
+            caller.getItems(CFEP.bundles).mapNotNull { it[CFEP.name].toOptStr() }
+                .associateWith { name -> caller.getItem(CFEP.bundle, mapOf(CFEP.name to name, PORT.portableField to true)) }
+
+        /** The address of the person who runs [trial] as [variant] in the run [runId]: its client's administrator. */
+        fun addressOf(trial: Trial, variant: TrialVariant, runId: String): String =
+            "${trial.name}-${variant.name}-$runId@trials.test".lowercase()
+    }
 }

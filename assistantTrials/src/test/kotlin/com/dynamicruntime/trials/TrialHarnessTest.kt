@@ -10,12 +10,17 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.workflow.RCF
 import com.dynamicruntime.common.gedra.workflow.ULH
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -23,10 +28,14 @@ import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -42,10 +51,23 @@ import java.nio.file.Files
 
 /** A test's user as a [TrialCaller]: the same calls, in-process. */
 class TestUserCaller(private val user: TestUser) : TrialCaller {
-    override fun getData(path: String, args: Map<String, Any?>?) = user.getData(path, args)
-    override fun getItems(path: String, args: Map<String, Any?>?) = user.getItems(path, args)
-    override fun getItem(path: String, args: Map<String, Any?>?) = user.getItem(path, args)
-    override fun postData(path: String, data: Map<String, Any?>) = user.postData(path, data)
+    // A test's user fails its test when a call is refused; a caller says so, as one over HTTP does.
+    private fun <T> call(path: String, send: () -> T): T = try {
+        send()
+    } catch (e: AssertionError) {
+        throw TrialCallRefused(path, EXC.badInput, e.message.orEmpty().lines().first())
+    }
+
+    override fun getData(path: String, args: Map<String, Any?>?) = call(path) { user.getData(path, args) }
+    override fun getItems(path: String, args: Map<String, Any?>?) = call(path) { user.getItems(path, args) }
+    override fun getItem(path: String, args: Map<String, Any?>?) = call(path) { user.getItem(path, args) }
+    override fun postData(path: String, data: Map<String, Any?>) = call(path) { user.postData(path, data) }
+}
+
+/** [inner], whose posts to [dropped] are not sent. */
+class DroppingCaller(private val inner: TrialCaller, private val dropped: String) : TrialCaller by inner {
+    override fun postData(path: String, data: Map<String, Any?>): Map<String, Any?> =
+        if (path == dropped) emptyMap() else inner.postData(path, data)
 }
 
 /**
@@ -66,7 +88,9 @@ class TrialHarnessTest : StringSpec({
         "smoke", "Rewords Home's introduction.", "Smoke Grants",
         listOf(TrialVariant("explicit", "One request.", listOf(TrialPrompt("Say Riverbend on Home.")))),
         listOf(Expectation("Home's introduction names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, "Riverbend") }),
+        listOf(WalkStep.form, WalkStep.home),
     )
+    val people = TrialPeople { email, client, name -> TestUserCaller(TestUser.create(cxt, email, userClient = client, name = name)) }
 
     "a trial runs through the driver: its client, sandbox, turns, configuration, and report" {
         val intro = mapOf(
@@ -78,8 +102,8 @@ class TrialHarnessTest : StringSpec({
             { ScriptedModel.textResponse("Home now names Riverbend.") },
         )
         val person = TestUser.create(cxt, "smoke@trials1859.test")
-        val result = TrialDriver(TestUserCaller(person), turnTimeout = 30.seconds, pollEvery = 50.milliseconds, log = {})
-            .run(smoke, smoke.variants.single(), "t1")
+        val driver = TrialDriver(TestUserCaller(person), turnTimeout = 30.seconds, pollEvery = 50.milliseconds, log = {}, people = people)
+        val result = driver.run(smoke, smoke.variants.single(), "t1")
         result.problems.shouldBeEmpty()
         result.client.shouldNotBeNull()
         result.sandbox.shouldNotBeNull() shouldEndWith ":sandbox"
@@ -92,12 +116,16 @@ class TrialHarnessTest : StringSpec({
         outcomes["Home's introduction names the program"] shouldBe OutcomeKind.met
         outcomes[MethodChecks.readsMakingChanges.name] shouldBe OutcomeKind.info
         outcomes[MethodChecks.turnsEnded.name] shouldBe OutcomeKind.met
+        // Its walk: a new client's New form makes a form, and nothing on its Home opens it.
+        outcomes[WalkStep.form.title] shouldBe OutcomeKind.met
+        outcomes[WalkStep.home.title] shouldBe OutcomeKind.notMet
 
         val info = RunInfo("t1", "http://localhost:0", null, emptyMap(), null, Clock.System.now())
         val report = TrialReport.render(info, listOf(result to "smoke@trials1859.test"))
         report shouldContain "| met | Home's introduction names the program |"
         report shouldContain "1. `read_doc"
         report shouldContain "> Home now names Riverbend."
+        report shouldContain "- **The walk's applicant:** `applicant-smoke-explicit-t1@trials.test`"
         // The configuration is in the report whole.
         report shouldContain "\"${CCT.fragmentDef}\""
     }
@@ -541,7 +569,8 @@ class TrialHarnessTest : StringSpec({
                 seen.add(File(dir, "report.md").isFile)
                 if (v === second) error("no node")
                 val now = Clock.System.now()
-                TrialResult(t, v, "c", null, listOf(conversation), mapOf("main" to mapOf("name" to "main")), emptyList(), now, now)
+                val walk = WalkRecord(emptyList(), mapOf(WalkStep.home to Outcome.met("It does."))).takeIf { v === first }
+                TrialResult(t, v, "c", null, listOf(conversation), mapOf("main" to mapOf("name" to "main")), emptyList(), now, now, walk)
             }
             seen shouldBe listOf(false, true, true)
             results.map { it.first.problems } shouldBe listOf(emptyList(), listOf("The run failed: no node"), emptyList())
@@ -551,10 +580,171 @@ class TrialHarnessTest : StringSpec({
             back.map { it.variant.name } shouldBe listOf("first", "second", "third")
             back.first().calls.map { it.name } shouldBe listOf(ATOOL.setCopy)
             back.first().config.keys shouldBe setOf("main")
+            back.map { it.walk?.outcomes?.get(WalkStep.home)?.detail } shouldBe listOf("It does.", null, null)
             TrialReport.renderRecheck("t2", back) shouldContain "## pair, first"
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    // --- the walk (issue #1915) ---
+
+    /** What a walked client is configured with; each part as a grant program has it, unless a test breaks it. */
+    class Walked(
+        val amount: Map<String, Any?> = mapOf(SCH.type to "number", SCH.minimum to 1),
+        val more: Map<String, Any?> = emptyMap(),
+        val approval: Map<String, Any?> = mapOf(
+            WFD.prompt to "Approve it.", WFD.button to "Approve", WFD.approveWhen to "${WFC.reviewer},~${RCF.isOwner}",
+        ),
+        val highlight: Boolean = true,
+        val firstTask: Map<String, Any?>? = null,
+        val totaled: Boolean = true,
+        val card: Map<String, Any?> = mapOf(UIB.action to HMENU.pageNewForm, HCARD.actionLabel to "Apply"),
+    )
+
+    @Suppress("CanBeVal") var walks = 0
+
+    /** Configures a self-serve client's sandbox as [w] has it, in-process, and walks every step of it. */
+    fun walk(w: Walked, adminOf: (TrialCaller) -> TrialCaller = { it }): WalkRecord {
+        val address = "walk${++walks}@trials1915.test"
+        val person = TestUser.create(cxt, address)
+        val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Walked $walks"))[CLD.client].toOptStr().shouldNotBeNull()
+        person.postData(AEP.openSandbox, emptyMap())
+        person.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabels to listOf("reviewer")))
+        fun write(name: String, slots: Map<String, Any?>) = person.postData(
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to name, CFEP.namespaceField to clientNamespace(client), CFEP.slots to slots, CFEP.reloadField to true,
+            ),
+        )
+        val ask = mapOf(
+            CCT.traitId to "ask", CCT.typeName to "${clientNamespace(client)}.AskEntry", CCT.description to "What is asked for.",
+            CCT.appliesTo to listOf("formDoc"),
+            CCT.dataSchema to mapOf(
+                SCH.type to "object",
+                SCH.properties to mapOf(
+                    "amount" to w.amount,
+                    "starts" to mapOf(SCH.type to "string", SCH.format to "date"),
+                    "area" to mapOf(
+                        SCH.type to "string",
+                        SCH.options to listOf("arts", "health").map { mapOf(SCH.value to it, SCH.label to it) },
+                    ),
+                    "about" to mapOf(SCH.type to "string", SCH.longText to true),
+                ) + w.more,
+                SCH.required to listOf("amount", "starts", "area", "about") + w.more.keys,
+            ),
+        )
+        write("trait_ask", mapOf(CCT.traitDef to listOf(ask)))
+        for ((id, template, task) in listOf(
+            Triple("newForm", WFT.createForm, "identify"), Triple("formDetails", WFT.coreDetails, "details"),
+        )) {
+            val traits = listOf(mapOf(WFD.traitId to "kdr:name"), mapOf(WFD.traitId to "ask", WFD.required to true))
+            val definition = mapOf(
+                WFD.workflowId to id, WFD.fromTemplate to template, WFD.tasks to listOf(mapOf(WFD.id to task, WFD.traits to traits)),
+            )
+            write("workflow_$id", mapOf(CCT.workflowDef to listOf(mapOf(CCT.workflowId to id, CCT.definition to definition))))
+        }
+        val approve = mapOf(
+            WFD.id to "approve", WFD.label to "Approve it", WFD.traits to emptyList<Any>(), WFD.saves to emptyList<Any>(),
+            WFD.approval to mapOf(WFD.cfact to "approved", WFD.showTraits to listOf("ask")) + w.approval,
+            WFD.functions to listOf(mapOf(WFD.fn to ULH.fn, ULH.label to "reviewer", ULH.cfact to WFC.reviewer)),
+        )
+        val review = mapOf(
+            WFD.workflowId to "review", WFD.entry to WfEntry.normal.name, WFD.label to "Review", WFD.highlightStart to w.highlight,
+            WFD.singletons to listOf(mapOf(WFD.cfact to "kdr:finished", WFD.kWhen to "approved")),
+            WFD.tasks to listOfNotNull(w.firstTask, approve),
+        )
+        val fact = mapOf("name" to "approved", "group" to "review", "description" to "Approved.", "toFrontend" to true)
+        write(
+            "review",
+            mapOf(
+                CCT.cfactDef to listOf(fact),
+                CCT.workflowDef to listOf(mapOf(CCT.workflowId to "review", CCT.definition to review)),
+            ),
+        )
+        val columns = listOfNotNull(
+            mapOf(RDEF.columnId to "area", RDEF.label to "Area", RDEF.path to "form.ask.area"),
+            mapOf(RDEF.columnId to "total", RDEF.label to "Total", RDEF.path to "form.ask.amount", RDEF.rollup to "sum")
+                .takeIf { w.totaled },
+        )
+        val report = mapOf(
+            RDEF.reportId to "byArea", RDEF.label to "By area", RDEF.columns to columns, RDEF.groupBy to listOf("area"),
+        )
+        write("areas", mapOf(CCT.reportDef to listOf(mapOf(CCT.reportId to "byArea", CCT.definition to report))))
+        val card = mapOf("id" to "apply", HCARD.title to "Apply", UIB.displayOrder to 50) + w.card
+        val cards = mapOf(CCT.blockId to HCARD.block, CCT.content to mapOf(HCARD.cards to listOf(card)))
+        write("cards", mapOf(CCT.uiBlockDef to listOf(cards)))
+        val admin = TestUserCaller(person)
+        return TrialWalk(
+            adminOf(admin), people, sandboxOf(client), ConfigView(TrialDriver.readConfig(admin)), WalkStep.entries, address,
+        ).walk()
+    }
+
+    /** [record]'s outcomes but the met ones, by step, with what each found. */
+    fun notMet(record: WalkRecord): Map<WalkStep, String> =
+        record.outcomes.filterValues { it.kind != OutcomeKind.met }.mapValues { (_, o) -> "${o.kind.name}: ${o.detail}" }
+
+    "a walk uses a whole client, as an applicant, a reviewer, and an administrator" {
+        val steps = listOf(
+            mapOf(WFD.id to "look", WFD.label to "Looked at", WFD.prompt to "Look.", WFD.button to "Seen", WFD.approveWhen to WFC.reviewer),
+            mapOf(
+                WFD.id to "agree", WFD.label to "Agreed", WFD.prompt to "Agree.", WFD.button to "Agree",
+                WFD.approveWhen to CFACTS.hasAdminLevel,
+            ),
+        )
+        val more = mapOf(
+            "pledges" to mapOf(SCH.type to "array", SCH.items to mapOf(SCH.type to "integer", SCH.minimum to 1000), SCH.minItems to 2),
+            "agreed" to mapOf(SCH.type to "boolean"),
+        )
+        val record = walk(Walked(approval = mapOf(WFD.steps to steps), more = more))
+        notMet(record) shouldBe emptyMap()
+        record.outcomes.keys.toList() shouldBe WalkStep.entries
+        record.people.map { it.role } shouldBe listOf(TrialWalk.applicantRole, TrialWalk.reviewerRole)
+        record.people.map { it.email } shouldBe listOf("applicant-walk1@trials1915.test", "reviewer-walk1@trials1915.test")
+        val given = record.outcomes.getValue(WalkStep.review).detail
+        given shouldContain "'Approve it: Looked at' by the reviewer"
+        given shouldContain "'Approve it: Agreed' by the administrator"
+        record.outcomes.getValue(WalkStep.report).detail shouldContain "'total' rose by 500.0"
+        // What it says is kept, and read back, as the run's own expectations.
+        val back = WalkRecord.fromJsonMap(record.toJsonMap())
+        back.people.map { it.email } shouldBe record.people.map { it.email }
+        back.outcomes.mapValues { it.value.detail } shouldBe record.outcomes.mapValues { it.value.detail }
+    }
+
+    "a walk says what is broken, and goes on with the rest" {
+        // Home's card opens nothing, as every run's did until the guide said how (issue #1869), and nobody is pointed at the
+        // form until someone starts its review (issue #1895). The report counts, and totals nothing.
+        val plain = notMet(walk(Walked(highlight = false, totaled = false, card = mapOf(UIB.action to "/forms/new"))))
+        plain.keys shouldBe setOf(WalkStep.start, WalkStep.report, WalkStep.home)
+        plain.getValue(WalkStep.start) shouldContain "varied: It waited on nobody; the reviewer started it all the same."
+        plain.getValue(WalkStep.report) shouldContain "varied: 'By area' counts the form, and totals no field it gave."
+        plain.getValue(WalkStep.home) shouldContain "none opens it"
+        // A reviewer with the label alone sees no form but their own (issue #1911).
+        val labelOnly = notMet(walk(Walked()) { DroppingCaller(it, UADEP.userSetRoles) })
+        labelOnly.keys shouldBe setOf(WalkStep.start, WalkStep.review)
+        labelOnly.getValue(WalkStep.start) shouldContain "notMet: Stopped: "
+        // An approval nobody walked as may give, and one the applicant could give themselves.
+        val nobody = mapOf(WFD.prompt to "Approve it.", WFD.button to "Approve", WFD.approveWhen to CFACT.neverName)
+        notMet(walk(Walked(approval = nobody))).getValue(WalkStep.review) shouldContain
+            "notMet: 'approve' waits on none of those walked as. Nothing was given."
+        val anyone = mapOf(WFD.prompt to "Approve it.", WFD.button to "Approve", WFD.approveWhen to CFACT.alwaysName)
+        notMet(walk(Walked(approval = anyone))).getValue(WalkStep.review) shouldContain
+            "varied: The applicant could approve their own form at 'Approve it'."
+        // A form that cannot be made, for a field no value can be made for, leaves nothing to review or to count.
+        val code = mapOf("code" to mapOf(SCH.type to "string", SCH.pattern to "^[A-Z]{3}-[0-9]{4}$"))
+        val unmade = notMet(walk(Walked(more = code)))
+        unmade.keys shouldBe setOf(WalkStep.form, WalkStep.start, WalkStep.review, WalkStep.report)
+        unmade.getValue(WalkStep.start) shouldBe "notMet: There is no form to review."
+    }
+
+    "a walk saves a step of the review that asks for something, as whoever it waits on" {
+        val task = mapOf(
+            WFD.id to "budget", WFD.label to "Say more", WFD.traits to listOf(mapOf(WFD.traitId to "ask")),
+            WFD.saves to listOf(mapOf(WFD.id to "save", WFD.label to "Save", WFD.kind to "edit")),
+        )
+        val record = walk(Walked(firstTask = task, highlight = false))
+        notMet(record) shouldBe emptyMap()
+        record.outcomes.getValue(WalkStep.start).detail shouldContain "It begins with the applicant's own step"
     }
 
     "copy for one file in two bundles is merged, not replaced" {

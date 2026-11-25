@@ -100,6 +100,8 @@ class TrialResult(
     val problems: List<String>,
     val startedAt: Instant,
     val endedAt: Instant,
+    /** What walking through the client found (issue #1915); null when it was not walked. */
+    val walk: WalkRecord? = null,
 ) {
     val view: ConfigView by lazy { ConfigView(config) }
     val calls: List<ToolCall> by lazy { conversations.flatMap { it.calls } }
@@ -112,10 +114,11 @@ class TrialResult(
     /** The model that answered, when every turn names the same one. */
     val model: String? get() = models.singleOrNull()
 
-    /** Each expectation of the trial, its variant's own, and those every trial is held to, with its outcome. */
+    /** Each expectation of the trial, its variant's own, its walk's, and those every trial is held to, with its outcome. */
     fun outcomes(): List<Pair<Expectation, Outcome>> = buildList {
         addAll(trial.expectations)
         addAll(variant.expectations)
+        addAll(trial.walk.map { it.expectation })
         addAll(MethodChecks.all)
     }.map { expectation ->
         expectation to try {

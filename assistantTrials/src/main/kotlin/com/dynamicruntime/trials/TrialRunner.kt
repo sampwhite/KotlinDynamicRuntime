@@ -3,7 +3,11 @@ package com.dynamicruntime.trials
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.context.AppPaths
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.sql.SecretsUtil
+import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.script.ProbeSession
 import java.io.File
 import java.time.LocalDateTime
@@ -27,6 +31,7 @@ object Trials {
  * - `stop [--port <port>|all]` lists the trial nodes still running, or stops the ones named.
  * - `restart --run <runId>` starts a run's node again, on its port and database, as the run left it.
  * - `recheck --run <runId>|all` holds saved runs to the checks as they are now.
+ * - `walk --run <runId>` walks through what a run configured, on its node, which must be running.
  *
  * A run never fails on what the assistant did -- that is the report's to say. It exits non-zero only when the harness
  * itself could not run: no API key, no free port, a node that would not start.
@@ -70,7 +75,7 @@ object TrialRunner {
         val (report, results) = runAll(runs, runDir, info) { trial, variant, email ->
             ProbeSession("trial-${trial.name}-${variant.name}", url).use { session ->
                 session.becomeUser(email, client = CL.public)
-                TrialDriver(ProbeCaller(session)).run(trial, variant, runId)
+                ProbePeople(url).use { TrialDriver(ProbeCaller(session), people = it).run(trial, variant, runId) }
             }
         }
         println()
@@ -102,7 +107,7 @@ object TrialRunner {
     ): Pair<File, List<Pair<TrialResult, String>>> {
         val results = mutableListOf<Pair<TrialResult, String>>()
         for ((trial, variant) in runs) {
-            val email = "${trial.name}-${variant.name}-${info.runId}@trials.test".lowercase()
+            val email = TrialDriver.addressOf(trial, variant, info.runId)
             val startedAt = Clock.System.now()
             val result = try {
                 runOne(trial, variant, email)
@@ -143,6 +148,38 @@ object TrialRunner {
             if (results.isNotEmpty()) File(dir, "recheck.md").writeText(TrialReport.renderRecheck(dir.name, results))
         }
     }
+
+    /**
+     * Walks through what a run configured (issue #1915), on its node, as its client is now: what the run's own walk did, for
+     * a run from before there was one, or after a person changed the client by hand. Costs nothing. The run's report is left
+     * as it was; `walk.md` is written beside it, and a recheck reads this walk in place of the one before.
+     */
+    fun walk(args: Map<String, String>) {
+        val runId = args["run"] ?: throw IllegalArgumentException("Name the run to walk through: -Prun=<runId>.")
+        val node = TrialNode.running(runsDir).firstOrNull { it.runId == runId } ?: throw IllegalArgumentException(
+            "Run '$runId' has no node running. Start it again with ./gradlew :assistantTrials:restartTrials -Prun=$runId",
+        )
+        val runDir = File(runsDir, runId)
+        val walked = TrialReport.read(runDir, Trials.all).filter { it.trial.walk.isNotEmpty() }.map { result ->
+            val email = TrialDriver.addressOf(result.trial, result.variant, runId)
+            println("Walking through ${result.trial.name}/${result.variant.name} on ${node.url}")
+            val record = ProbeSession("walk-${result.variant.name}", node.url).use { session ->
+                session.becomeUser(email)
+                val admin = ProbeCaller(session)
+                if (!isSandboxClient(clientOf(admin))) admin.postData(AEP.openSandbox, emptyMap())
+                ProbePeople(node.url).use { people ->
+                    TrialWalk(admin, people, clientOf(admin), ConfigView(TrialDriver.readConfig(admin)), result.trial.walk, email).walk()
+                }
+            }
+            for ((step, outcome) in record.outcomes) println("  ${outcome.kind.name}: ${step.title} -- ${outcome.detail}")
+            TrialReport.writeWalk(runDir, result, record)
+            result to record
+        }
+        if (walked.isEmpty()) println("$runId: no transcript of a trial that is walked through.")
+        if (walked.isNotEmpty()) File(runDir, "walk.md").writeText(TrialReport.renderWalks(runId, walked))
+    }
+
+    private fun clientOf(caller: TrialCaller): String = caller.getData(AEP.selfInfo)[UPF.client].toOptStr().orEmpty()
 
     private fun list() {
         for (trial in Trials.all) {
@@ -206,7 +243,7 @@ object TrialRunner {
     }.getOrNull()
 }
 
-/** `run …`, `stop …`, `restart …`, or `recheck …`; see [TrialRunner]. */
+/** `run …`, `stop …`, `restart …`, `recheck …`, or `walk …`; see [TrialRunner]. */
 fun main(args: Array<String>) {
     val command = args.firstOrNull()
     val options = args.drop(1).chunked(2).filter { it.size == 2 && it[0].startsWith("--") }.associate { it[0].removePrefix("--") to it[1] }
@@ -216,8 +253,10 @@ fun main(args: Array<String>) {
             "stop" -> TrialRunner.stop(options)
             "restart" -> TrialRunner.restart(options)
             "recheck" -> TrialRunner.recheck(options)
+            "walk" -> TrialRunner.walk(options)
             else -> throw IllegalArgumentException(
-                "Usage: run --trials <names> | stop [--port <port>|all] | restart --run <runId> | recheck --run <runId>|all",
+                "Usage: run --trials <names> | stop [--port <port>|all] | restart --run <runId> | recheck --run <runId>|all | " +
+                    "walk --run <runId>",
             )
         }
     } catch (e: Exception) {

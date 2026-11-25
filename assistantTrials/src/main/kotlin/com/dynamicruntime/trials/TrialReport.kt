@@ -55,15 +55,27 @@ object TrialReport {
                 result.conversations.map { mapOf("conversationId" to it.conversationId, "turns" to it.turns, "messages" to it.messages) }
                     .toJsonStr() + "\n",
             )
+            result.walk?.let { writeWalk(runDir, result, it) }
         }
         val report = File(runDir, "report.md")
         report.writeText(render(info, results))
         return report
     }
 
-    /** The directories of a run holding each trial's transcript, and its configuration by bundle. */
+    /** The directories of a run holding each trial's transcript, its configuration by bundle, and what its walk found. */
     const val transcriptsDir = "transcripts"
     private const val configDir = "config"
+    private const val walksDir = "walks"
+
+    private fun walkFile(runDir: File, r: TrialResult) = walkFile(runDir, slug(r))
+    private fun walkFile(runDir: File, slug: String) = File(runDir, "$walksDir/$slug.json")
+
+    /** Writes what walking through [r]'s client found, in place of an earlier walk's. */
+    fun writeWalk(runDir: File, r: TrialResult, walk: WalkRecord) {
+        val file = walkFile(runDir, r)
+        file.parentFile.mkdirs()
+        file.writeText(walk.toJsonMap().toJsonStr() + "\n")
+    }
 
     fun slug(r: TrialResult): String = slug(r.trial, r.variant)
 
@@ -71,7 +83,7 @@ object TrialReport {
 
     /**
      * The results [runDir] holds, of the variants of [trials] there are now, read back from what [write] wrote: the
-     * conversations and the configuration, which are all a check reads. What else a result says -- its client, its problems,
+     * conversations, the configuration, and the walk, which are all a check reads. What else a result says -- its client, its problems,
      * its times -- is the run's own report's.
      */
     fun read(runDir: File, trials: List<Trial>): List<TrialResult> =
@@ -88,7 +100,24 @@ object TrialReport {
         val config = File(runDir, "$configDir/$slug").listFiles { f -> f.name.endsWith(".json") }.orEmpty().sortedBy { it.name }
             .associate { it.name.removeSuffix(".json") to it.readText().jsonMap().orEmpty() }
         val at = Instant.fromEpochMilliseconds(transcript.lastModified())
-        return TrialResult(trial, variant, null, null, conversations, config, emptyList(), at, at)
+        val walk = walkFile(runDir, slug).takeIf { it.isFile }?.let { WalkRecord.fromJsonMap(it.readText().jsonMap().orEmpty()) }
+        return TrialResult(trial, variant, null, null, conversations, config, emptyList(), at, at, walk)
+    }
+
+    /** What walking through a saved run's clients found, in place of what its own walk did. */
+    fun renderWalks(runId: String, walked: List<Pair<TrialResult, WalkRecord>>): String = buildString {
+        appendLine("# Assistant trials: run $runId, walked through")
+        appendLine()
+        appendLine("What the run configured, used as an applicant, a reviewer, and an administrator would, as it was when this was")
+        appendLine("written.")
+        for ((r, walk) in walked) {
+            appendLine()
+            appendLine("## ${r.trial.name}, ${r.variant.name}")
+            appendLine()
+            walk.people.forEach { appendLine("- **The ${it.role}:** `${it.email}`") }
+            appendLine()
+            renderOutcomes(walk.outcomes.map { (step, outcome) -> step.expectation to outcome })
+        }
     }
 
     /** A saved run held to the checks as they are now: each result's expectations, as the report gives them. */
@@ -130,6 +159,11 @@ object TrialReport {
         appendLine("The assistant's drafts are in the client's sandbox (open it from the bar if the session is not in it), and its")
         appendLine("conversations are on the Configuration assistant page, where you can go on with one and ask why it chose what")
         appendLine("it did.")
+        if (results.any { (r, _) -> r.walk != null }) {
+            appendLine()
+            appendLine("Each trial's client was also walked through, as an applicant and a reviewer in its sandbox. Become one of them, by")
+            appendLine("the address under the trial, to see what they see.")
+        }
         info.port?.let {
             appendLine()
             appendLine("Stop the node when you are done: `./gradlew :assistantTrials:stopTrials -Pport=$it`.")
@@ -145,6 +179,7 @@ object TrialReport {
         appendLine()
         appendLine("- **Variant:** ${r.variant.description}")
         appendLine("- **Administrator:** `$email`")
+        r.walk?.people?.forEach { appendLine("- **The walk's ${it.role}:** `${it.email}`") }
         appendLine("- **Client:** `${r.client ?: "none"}`, sandbox `${r.sandbox ?: "none"}`")
         appendLine("- **Model:** ${r.models.joinToString().ifEmpty { "unknown" }}")
         appendLine("- **Took:** ${r.endedAt - r.startedAt}; ${r.weighted} weighted tokens, about ${cost(r.weighted, r.model) ?: "?"}")
@@ -201,10 +236,12 @@ object TrialReport {
         }
     }
 
-    private fun StringBuilder.renderExpectations(r: TrialResult) {
+    private fun StringBuilder.renderExpectations(r: TrialResult) = renderOutcomes(r.outcomes())
+
+    private fun StringBuilder.renderOutcomes(outcomes: List<Pair<Expectation, Outcome>>) {
         appendLine("| Outcome | Expectation | Found |")
         appendLine("| --- | --- | --- |")
-        for ((expectation, outcome) in r.outcomes()) {
+        for ((expectation, outcome) in outcomes) {
             appendLine("| ${label(outcome.kind)} | ${cell(expectation.name)} | ${cell(outcome.detail)} |")
         }
     }

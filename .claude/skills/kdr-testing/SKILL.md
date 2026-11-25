@@ -487,6 +487,7 @@ that configure a fresh client through prompts alone and report what came of it.
 ./gradlew :assistantTrials:stopTrials                                     # the nodes still running; -Pport=<port>|all
 ./gradlew :assistantTrials:restartTrials -Prun=<runId>                    # a run's node again, as the run left it
 ./gradlew :assistantTrials:recheckTrials -Prun=<runId>                    # a saved run under the checks as they are now; or all
+./gradlew :assistantTrials:walkTrials -Prun=<runId>                       # use what a run configured again, on its running node
 ```
 
 - **A run costs money, so ask before starting one** -- name the trials and variants -- unless the person asked for the
@@ -507,6 +508,12 @@ that configure a fresh client through prompts alone and report what came of it.
   weighted tokens; and the client's whole configuration, also written a file per bundle under `config/`. It is written
   again as each variant ends, so a later one's failure loses nothing. `recheckTrials` holds saved runs to the checks as
   they are now, free, writing `recheck.md` beside the report.
+- **The walk** (`TrialWalk`, issue #1915) then uses what was configured, at no cost: people made in the sandbox -- an
+  applicant, and a reviewer given the review's label and the `editor` role -- make a form through the New form, take it
+  through its review from "Waiting on you", and look at Home, and the administrator runs the report. Each step a trial
+  names in its `walk` is an expectation, saying what stopped it, and the report gives the people's addresses, to become.
+  `walkTrials` walks a saved run again, as its client is now, writing `walk.md`. A form is filled from the workflow's view
+  by the kernel's own form rules, so nothing depends on the names the model chose.
 - **A trial** is a Kotlin object (`GrantsBasics` is the first): a goal, its variants -- the same requests phrased
   `explicit`, `loose`, or in the organization's `ownWords` -- and its expectations, which match by meaning (a field
   about an amount, typed as a number) because the model chooses its own names. A variant that names something exactly has
