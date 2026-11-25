@@ -90,7 +90,12 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   - a line saying how a save takes effect here (`clientSaveEffectLine`);
   - a banner, linking down to publishing, while any configuration could be published (`unpublishedBannerText`);
   - the issues, as a warning block;
-  - links to the panels, which scroll rather than set a hash.
+  - links to the panels, which scroll rather than set a hash. Forms and data's link has sub-links to its sections --
+    Traits, Listing columns (Forms listing where it is not edited), Workflows, and Form states, as the panel draws them
+    (issue #1891) -- which scroll the same way, to headings kept clear of the app bar (`.panel h3[id]`). The panel and
+    the sub-links read one list (`formsDataSections`, ids in `FDSEC`), so a section drawn always has its link. The panel
+    repeats those links under its heading (`sectionLinks`), and each section ends with "↑ Back to Forms and data"
+    (`backToFormsData`), so a reader deep in the panel need not scroll to the page's top.
 - **The panels**, in order:
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
   2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.
@@ -681,15 +686,27 @@ under the name starts past every revision it had. A bundle the editor added and 
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`
 (`ClientsApi.workflowCatalog`): the client's workflows -- for a client with a sandbox, as the sandbox runs them, its
 latest configuration with drafts in, so the list shows what a draft made or removed, as Files does -- then the
-deployment's **templates** -- the global workflows, which no client runs as they are. A workflow's **Steps** are its
+deployment's **templates** -- the global workflows, which no client runs as they are -- closed under a disclosure
+whose summary, an `h4` so the outline keeps it, says how many and how many are usable now (`templatesSummary`, issue
+#1891), since making a workflow is mostly a setup task: open to start for
+a client with no workflows, and opened whenever a Use… editor is. A workflow's **Steps** are its
 tasks' labels, an approval that names what it shows with that after it (`workflowTaskSummary`, issue #1875:
 "Approve it (shows Grant application)"). A template is greyed with the backend's reason when a workflow cannot be made
 from it now (a client has one creation and one core details workflow, and a plan limits workflows and their tasks); a
 workflow not made from a template says why its slots cannot be changed here. **Use…** and **Edit…** open
-`WorkflowSlotEditor` on the **slots** -- the kernel's `WfTemplateSlots`: the
-workflow's name, and per data-entry task its label and the traits it collects, each required or not, named as a form
-names it (the catalog's trait `name`, `catalogTraitName`, issue
-#1438) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
+`WorkflowSlotEditor` in a row of its own beneath the template's or the workflow's row (issue #1891), as the parameters'
+editors open, lifting the table's height cap while it is open (`.op-table-scroll.detail-open`), on the **slots** -- the
+kernel's `WfTemplateSlots`: the workflow's name, and per data-entry task its label and the traits it collects, each
+required or not, named as a form names it (the catalog's trait `name`, `catalogTraitName`, issue #1438). **Collects**
+(issue #1891) is a list, a row per trait: its name and description (`catalogTraitDescription`), **Required**, ↑ and ↓
+for its place in the step's order -- which a form draws its traits in where its layout names none
+(`withTraitMoved`) -- and **Remove**; then **Add a trait…**, a searchable single choice of only the traits the step
+does not collect yet (`traitsToAdd`), and a hint that a step may collect several -- or, with nothing else offered, that
+another is included under Traits first (`collectsHint`). Each row is a group named for its trait, and a move or a
+removal puts focus back where a keyboard user can go on -- the same arrow, the other at an end, the next row's Remove,
+or the picker (`collectsFocusAfterMove`, `collectsFocusAfterRemove`). It replaced a multiple choice, which read as a single choice
+with one trait chosen and as a wall of long tags past a few, beside a separate line of Required checkboxes -- and say
+in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
 patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a fix

@@ -35,6 +35,7 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.li
+import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
@@ -49,6 +50,7 @@ import react.useMemo
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import web.dom.ElementId
 import web.window.WindowTarget
 import web.window._blank
 import kotlin.time.Duration.Companion.milliseconds
@@ -388,6 +390,10 @@ private fun ChildrenBuilder.clientDetail(
         if (!overridesRefused) add(panelMenu to "Menu")
         if (acrossClients && row != null) add(panelRetirement to "Retirement")
     }
+    // Forms and data's sections (issue #1891): long enough that reaching one means scrolling, so the panel's link has
+    // links to each. The panel draws exactly these.
+    val formsSections = formsDataSections(configEditable, hasOverview = row != null)
+    val formsSectionTitles = formsSections.toMap()
     // Every child of the card is keyed (issue #1397), so each panel keeps its state by what it is, not by how many
     // elements happen to be drawn above it: mending a file ref clears an issue (issue #1176), and the issues coming
     // and going must not tear down and remake the editors below, losing what was half typed in them.
@@ -467,7 +473,7 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
             if (panels.size > 2) {
-                panelLinks(panels)
+                panelLinks(panels, mapOf(panelFormsData to formsSections))
             }
         }
         stepsLeft?.let { steps ->
@@ -547,27 +553,39 @@ private fun ChildrenBuilder.clientDetail(
         }
         if (workflowsShown) {
             panel(panelFormsData, "Forms and data", pageCopy.explanation(PFRAG.formsDataNs)) {
+                // Its sections' links (issue #1891), for a reader already in the panel, and at each section's end a way
+                // back up to them: the panel is long, and the page's links are far above.
+                nav {
+                    className = ClassName("panel-section-links")
+                    asDynamic()["aria-label"] = "Forms and data sections"
+                    sectionLinks(null, formsSections)
+                }
                 // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the
                 // definition editor, and offered where that editor is: a save lands in the same configuration under the
                 // same rules.
                 // An editable configuration is a stored one, so `stored` is there whenever this shows.
                 val stored = def?.stored
-                if (configEditable) {
-                    h3 { +"Traits" }
+                formsSectionTitles[FDSEC.traits]?.let { title ->
+                    h3 {
+                        id = ElementId(FDSEC.traits)
+                        +title
+                    }
                     ClientTraitsSection {
                         this.clientId = clientId
-                        this.stored = stored[CLD.includedTraits].toJsonListOfStrings()
+                        this.stored = stored?.get(CLD.includedTraits).toJsonListOfStrings()
                         this.savesDraft = savesDraft
                         formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                         this.onChanged = onChanged
                         previewExplanation = pageCopy.explanation(PFRAG.traitPreviewNs)
                     }
+                    backToFormsData()
                 }
                 // Its listing columns (issue #1491), after the traits each reads, offered where they are for the same reason.
                 if (configEditable) {
                     WhatIsThis {
-                        heading = "Listing columns"
+                        heading = formsSectionTitles.getValue(FDSEC.listing)
                         headingLevel = 3
+                        headingId = FDSEC.listing
                         text = pageCopy.explanation(PFRAG.listingColumnsNs)
                     }
                     ClientUsagesSection {
@@ -576,7 +594,10 @@ private fun ChildrenBuilder.clientDetail(
                         this.onChanged = onChanged
                     }
                 } else {
-                    h3 { +"Forms listing" }
+                    h3 {
+                        id = ElementId(FDSEC.listing)
+                        +formsSectionTitles.getValue(FDSEC.listing)
+                    }
                 }
                 // How the listing draws each row's workflows (issue #1599): for every client, one defined in code included,
                 // since a stored listing setting stands over the code's -- beside the columns where those are editable.
@@ -586,8 +607,12 @@ private fun ChildrenBuilder.clientDetail(
                     this.onChanged = onChanged
                     readOnly = !editing.editable
                 }
+                backToFormsData()
                 // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
-                h3 { +"Workflows" }
+                h3 {
+                    id = ElementId(FDSEC.workflows)
+                    +formsSectionTitles.getValue(FDSEC.workflows)
+                }
                 ClientWorkflowsSection {
                     this.clientId = clientId
                     this.savesDraft = savesDraft
@@ -598,15 +623,18 @@ private fun ChildrenBuilder.clientDetail(
                     newWorkflowNote = pageCopy.opt(PFRAG.workflowsNs, PFRAG.newWorkflowNote)
                     this.onChanged = onChanged
                 }
+                backToFormsData()
                 // Bringing its forms' stored state up to date with the configuration above now, rather than overnight
                 // (issue #1412). A sandbox's too: its forms are its own.
-                row?.let { overview ->
+                row?.takeIf { FDSEC.formStates in formsSectionTitles }?.let { overview ->
                     WhatIsThis {
-                        heading = "Form states"
+                        heading = formsSectionTitles.getValue(FDSEC.formStates)
                         headingLevel = 3
+                        headingId = FDSEC.formStates
                         text = pageCopy.explanation(PFRAG.formStatesNs)
                     }
                     FormStatesSection { this.row = overview }
+                    backToFormsData()
                 }
             }
         }
@@ -815,6 +843,18 @@ private fun ChildrenBuilder.summaryGroups(
                 }
             }
         }
+    }
+}
+
+/** At a Forms and data section's end (issue #1891): back up to the panel's top, where its sections' links are. */
+private fun ChildrenBuilder.backToFormsData() {
+    div {
+        className = ClassName("section-back-link")
+        span {
+            asDynamic()["aria-hidden"] = true
+            +"↑ "
+        }
+        panelLink(panelFormsData, "Back to Forms and data")
     }
 }
 

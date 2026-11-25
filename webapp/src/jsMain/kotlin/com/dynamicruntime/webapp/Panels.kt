@@ -9,6 +9,8 @@ import react.PropsWithChildren
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.details
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.h4
 import react.dom.html.ReactHTML.nav
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.section
@@ -105,22 +107,72 @@ fun ChildrenBuilder.panelLink(id: String, text: String) {
     }
 }
 
-/** The row of links at a page's top, one per panel -- [panels] as `id to heading` -- for a page long enough to want them. */
-fun ChildrenBuilder.panelLinks(panels: List<Pair<String, String>>) {
+/**
+ * The row of links at a page's top, one per panel -- [panels] as `id to heading` -- for a page long enough to want them.
+ * A panel long enough to want its own has links to its sections beside its link ([sections], by the panel's id, each
+ * `id to heading`; issue #1891), scrolled to the same way.
+ */
+fun ChildrenBuilder.panelLinks(panels: List<Pair<String, String>>, sections: Map<String, List<Pair<String, String>>> = emptyMap()) {
     nav {
         className = ClassName("panel-links")
+        // Named, since a page may have another: a long panel's own section links (issue #1891).
+        asDynamic()["aria-label"] = "Page sections"
         panels.forEach { (id, title) ->
             span {
                 key = id.unsafeCast<Key>()
                 panelLink(id, title)
+                sections[id]?.takeIf { it.isNotEmpty() }?.let { subs ->
+                    span {
+                        className = ClassName("panel-sublinks")
+                        sectionLinks("$title sections", subs, parenthesized = true)
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * Links to a panel's sections (issue #1891) -- [sections] as `id to heading` -- scrolled to as a [panelLink] is: the
+ * links separated by dots and, when [parenthesized], in parentheses, that punctuation hidden from a screen reader, which
+ * reads the links alone. Beside a panel's link at the page's top, a group named [label]; inside a long panel, in a `nav`
+ * that carries the name, so none ([label] null).
+ */
+fun ChildrenBuilder.sectionLinks(label: String?, sections: List<Pair<String, String>>, parenthesized: Boolean = false) {
+    span {
+        label?.let {
+            asDynamic()["role"] = "group"
+            asDynamic()["aria-label"] = it
+        }
+        if (parenthesized) punctuation("(")
+        sections.forEachIndexed { i, (id, title) ->
+            span {
+                key = id.unsafeCast<Key>()
+                if (i > 0) punctuation(" · ")
+                panelLink(id, title)
+            }
+        }
+        if (parenthesized) punctuation(")")
+    }
+}
+
+/** [text] that only separates what is around it, so a screen reader skips it. */
+private fun ChildrenBuilder.punctuation(text: String) {
+    span {
+        asDynamic()["aria-hidden"] = true
+        +text
     }
 }
 
 external interface DisclosureProps : PropsWithChildren {
     /** The line the closed disclosure shows, which opens it. */
     var summaryText: String
+
+    /**
+     * The summary as a heading of this level (3 or 4; issue #1891), for a disclosure that holds a section of the page, so
+     * the page's outline keeps it; plain text when unset.
+     */
+    var summaryLevel: Int?
 
     /** Open to start, as one just added is (issue #1460); closed when unset. */
     var initiallyOpen: Boolean?
@@ -146,7 +198,13 @@ val Disclosure = FC<DisclosureProps> { props ->
         className = ClassName("disclosure")
         this.open = expanded
         onToggle = { e -> expanded = e.currentTarget.asDynamic().open == true }
-        summary { +props.summaryText }
+        summary {
+            when (props.summaryLevel) {
+                3 -> h3 { +props.summaryText }
+                4 -> h4 { +props.summaryText }
+                else -> +props.summaryText
+            }
+        }
         if (expanded) +props.children
     }
 }
