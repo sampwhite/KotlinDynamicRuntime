@@ -26,6 +26,11 @@ val embedDocs = tasks.register<Copy>("embedDocs") {
         include("*.md")
         rename { "grants-demo-$it" }
     }
+    // The claims demo's pages (issue #1897), likewise: `claims-demo-<name>`.
+    from(layout.projectDirectory.dir("../../docs/claims-demo")) {
+        include("*.md")
+        rename { "claims-demo-$it" }
+    }
     // The walk-through a reference deployment links from a signed-in visitor's home page (issue #1429): its doc id is
     // its file name, `walk-through`.
     from(layout.projectDirectory.file("../../docs/walk-through.md"))

@@ -8,7 +8,8 @@ description: >-
   (page before DSL, append traits never insert, try the page's own steps on your own server). Use when adding a page
   for a new workflow, editing an existing page, extending the reference page, or changing `ConfDemo.kt` in a way that
   changes a bundle the pages show. Also the grants demo's pages in `docs/grants-demo/`, the client in its own words:
-  when a copy key gains or loses a location note, and `GrantsDemoDocsTest` fails until the demo and a page follow.
+  when a copy key gains or loses a location note, and `GrantsDemoDocsTest` fails until the demo and a page follow. And
+  the claims demo's pages in `docs/claims-demo/`.
   Expect to augment this skill as pages accumulate; it was written after the first four.
 ---
 
@@ -175,6 +176,16 @@ to name. The voice and the markers above hold for it; what differs:
 - **The assistant reads the pages** (`read_doc`, `grants-demo-README`), and its prompt points it there for a whole area
   of wording, so a page says what each key is for in words an assistant can pass on.
 
+## The claims demo (`docs/claims-demo/`)
+
+A third demo with its own pages (issue #1897): `claimsdemo`, a small insurer's claims, for what the others do not show --
+a counter that issues as the form is saved, with the day in its prefix; a field of files; and an approval whose approver
+depends on a computed value. The voice, the page shape, and the markers above hold for it. It links to the conference
+demo's pages for what they explain already, and never repeats a key table they have. `ClaimsDemoDocsTest` holds each
+JSON block to what the demo stores, and asks that every slot of `base` and every other bundle whole be on some page, so
+there is no page of every bundle. `ClaimsDemoTest` walks the process the pages describe. Stored, never in code, and
+provisioned as the grants demo is (`ClaimsDemo.provisionAtBootKey`).
+
 ## Files
 
 - `docs/demo-client/*.md` -- the pages. `README.md` first, `reference.md` for the shared material.
@@ -183,5 +194,7 @@ to name. The voice and the markers above hold for it; what differs:
 - `base/kdn/src/test/kotlin/com/dynamicruntime/kdn/ConfDemoDocsTest.kt` -- the maintenance test.
 - `docs/grants-demo/*.md`, `base/kdn/src/main/kotlin/com/dynamicruntime/kdn/grantsdemo/GrantsDemo.kt`, and
   `base/kdn/src/test/kotlin/com/dynamicruntime/kdn/GrantsDemoDocsTest.kt` -- the grants demo's pages, client, and test.
+- `docs/claims-demo/*.md`, `base/kdn/src/main/kotlin/com/dynamicruntime/kdn/claimsdemo/ClaimsDemo.kt`, and
+  `ClaimsDemoDocsTest.kt` and `ClaimsDemoTest.kt` beside the others' -- the claims demo's pages, client, and tests.
 - `kdr-docs/thoughts-client-and-wf-example.md` in the private Actions notes -- the design, the domain, and why the
   pages are ordered as they are.

@@ -322,6 +322,10 @@ provisioned by the `conf-demo` simulation on any test instance.
 fund's grant program that rewords every piece of copy a client is likely to reword (its site's name, its home page, the
 words of its process, and its mails), one theme a page. It is provisioned by the `grants-demo` simulation.
 
+[`docs/claims-demo/`](docs/claims-demo/README.md) shows the **claims demo**, a small insurer's claims: incidents numbered
+as their reports are filed, evidence, approval limits by role, and a register for the auditors. It is provisioned by the
+`claims-demo` simulation.
+
 ## Design documents
 
 [`docs/design/gedra/entry.md`](docs/design/gedra/entry.md) describes the **Gedra entry** — the universal stored entity
