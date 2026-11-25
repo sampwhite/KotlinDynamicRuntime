@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CLD
@@ -46,6 +47,7 @@ import com.dynamicruntime.common.job.JobRunMode
 import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -53,6 +55,7 @@ import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -117,8 +120,16 @@ class UniqueValuesTest : StringSpec({
         setUnique(client, true)
         val mine = owner(client)
         val held = mine.make("Q3 Budget")
-        mine.refused("q3-budget ") shouldContain "Title 'q3-budget' is already used by another of your forms, as 'Q3 Budget'"
-        mine.expectError(EXC.badInput, GEP.formDocCreate, body("Q3 budget"))[EP.extraData].toString() shouldContain held
+        mine.refused("q3-budget ") shouldContain
+            "budget, data.title: Value 'q3-budget' is already used by another of your forms, as 'Q3 Budget'"
+        // For the page that sent it: the field, the code, and the value, with no name for the field in its words (issue #1918).
+        val extra = mine.expectError(EXC.badInput, GEP.formDocCreate, body("Q3 budget "))[EP.extraData].toJsonMapOrEmpty()
+        extra[GDF.gedraId] shouldBe held
+        extra[EP.failures].toJsonListOfMaps().single() shouldBe mapOf(
+            EP.failurePath to "data.title", EP.failureCode to SchFailCode.valueTaken.name, GE.traitId to "budget",
+            UNQ.value to "Q3 budget ",
+            EP.failureMessage to "Value 'Q3 budget' is already used by another of your forms, as 'Q3 Budget'. Choose a different one.",
+        )
         owner(client, "other").make("Q3 Budget")
         // Accents are letters, so these differ, however the accent is written; no value claims nothing.
         mine.make("Caf\u00e9")
@@ -127,7 +138,10 @@ class UniqueValuesTest : StringSpec({
         repeat(2) { mine.make(null) }
         repeat(2) { mine.make(" ") }
         // Text with no letter or digit has nothing to be compared by, so it is refused on every write.
-        for (title in listOf("!!!", " - ", "\u2764\uFE0F")) mine.refused(title) shouldContain "at least one letter or digit"
+        for (title in listOf("!!!", " - ", "\u2764\uFE0F")) mine.refused(title) shouldContain
+            "budget, data.title: Value must have at least one letter or digit."
+        mine.expectError(EXC.badInput, GEP.formDocCreate, body("!!!"))[EP.extraData].toJsonMapOrEmpty()[EP.failures]
+            .toJsonListOfMaps().single().let { it[GE.traitId] to it[EP.failureCode] } shouldBe ("budget" to SchFailCode.noLetterOrDigit.name)
         mine.expectError(EXC.badInput, GEP.patch, patchBody(held, mapOf("title" to "?")))[EP.errorMessage].toString() shouldContain
             "at least one letter or digit"
     }
@@ -289,7 +303,7 @@ class UniqueValuesTest : StringSpec({
             client, UniqueClaims.kindOf("budget", "title"), mine.userId.toString(), UniqueClaims.keyOf("Before")!!, "Before", form,
             "budget", "title",
         )
-        sqlCxt.sqlDb.withSession(cxt) { ValueClaims.claim(cxt, sqlCxt, listOf(stale)) { _, _ -> "taken" } }
+        sqlCxt.sqlDb.withSession(cxt) { ValueClaims.claim(cxt, sqlCxt, listOf(stale)) { _, _ -> KdrException.mkInput("taken") } }
         mine.make("Before")
         mine.refused("now") shouldContain "already used"
     }
@@ -398,7 +412,8 @@ class UniqueValuesTest : StringSpec({
             EI.user to theirs.userId.toString(), GIF.data to mapOf(EP.items to titles.map { body(it) }),
             GIF.forgiveInvalidEntries to forgive,
         )
-        chief.expectError(EXC.badInput, GEP.formDocImport, import("Fresh", "HELD"))[EP.errorMessage].toString() shouldContain "already used"
+        chief.expectError(EXC.badInput, GEP.formDocImport, import("Fresh", "HELD"))[EP.errorMessage].toString() shouldContain
+            "trait 'budget' is invalid: data.title: Value 'HELD' is already used"
         // Two documents of one import collide as well.
         chief.expectError(EXC.badInput, GEP.formDocImport, import("Twin", "twin"))
         val done = chief.postData(GEP.formDocImport, import("Fresh", "HELD", "fresh", forgive = true))

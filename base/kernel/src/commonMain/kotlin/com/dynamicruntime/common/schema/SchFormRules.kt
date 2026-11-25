@@ -85,7 +85,7 @@ private fun collectFormFailures(
         val at = childPath(path, name)
         layout?.fieldFor(name)?.let { entry ->
             if (entry.required && name !in schemaRequires && name !in excused && isAbsentForForm(value)) {
-                out.add(vt.failure(at, SchFailCode.missingRequired, "'$name' is required on this form.").copy(formRequirement = true))
+                out.add(vt.failure(at, SchFailCode.missingRequired, "A value is required on this form.").copy(formRequirement = true))
             }
             // Blank is no answer, which `required` speaks to; only a given value can be one the form does not offer.
             val given = value.toOptStr()?.takeIf { it.isNotBlank() }

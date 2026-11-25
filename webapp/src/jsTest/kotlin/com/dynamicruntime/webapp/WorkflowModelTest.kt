@@ -446,6 +446,8 @@ class WorkflowModelTest {
         val bad = parseWorkflowView(coreDetailsView(status(true, false, problems = listOf("name" to "Too long.")), null,
             null))!!.tasks[0].status
         assertEquals("Too long.", railExplanation(bad, unsaved = false))
+        // With what the form calls the problem's field, as the rail has it (issue #1918).
+        assertEquals("text: Too long.", railExplanation(bad, unsaved = false, problemText = { labeledMessage(it.path, it.message) }))
         // Unsaved first, then what is missing, then each problem -- and no status at all reads as not started.
         val both = parseWorkflowView(coreDetailsView(status(false, false, listOf("name"), listOf("name" to "Too long.")), null,
             null))!!.tasks[0].status

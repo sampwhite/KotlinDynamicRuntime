@@ -55,6 +55,7 @@ import react.useEffect
 import web.cssom.ClassName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.schema.fieldLabelOf
 import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
@@ -270,13 +271,9 @@ internal fun layoutErrorMessage(copy: LayoutCopy?, prop: SchProperty, name: Stri
     return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options))
 }
 
-/**
- * The label a field shows: its schema title (or a humanized key) in friendly mode, else the raw wire key. The
- * title is the **property's**, never its value type's -- a `$ref` field's value type is shared, so a title from
- * there would label every field referencing that type alike (see [SchProperty.title]).
- */
-private fun fieldLabel(name: String, prop: SchProperty, opts: FormOpts): String =
-    if (opts.friendly) prop.title ?: humanizeFieldName(name) else name
+/** The label a field shows: what a person calls it in friendly mode ([fieldLabelOf]), else the raw wire key. */
+private fun fieldLabel(name: String, prop: SchProperty, opts: FormOpts, copy: LayoutCopy? = null): String =
+    if (opts.friendly) fieldLabelOf(name, prop, copy?.label) else name
 
 /**
  * The primary-key value(s) an array element carries, as a label, or null when the element's type is not keyed
@@ -1250,7 +1247,7 @@ private fun ChildrenBuilder.fieldFrame(
         tabIndex = -1
         className = ClassName(rowClass(messages))
         // The layout's `label` (issue #586) shadows the schema title/humanized key; absent, `fieldLabel` decides.
-        labelSpan(copy?.label ?: fieldLabel(name, prop, opts), required)
+        labelSpan(fieldLabel(name, prop, opts, copy), required)
         // A `filled` default not yet accepted wears a "Suggested" chip on the container, not inside the control,
         // so the mark reads the same across text / select / checkbox / date (issue #710).
         if (prefill?.mode == SLDM.filled && prefill.suggested) {
@@ -1585,7 +1582,7 @@ private fun ChildrenBuilder.renderScalarList(
 }
 
 /** What a list field's entries are headed with on a friendly form (issue #1714): its layout's `entryLabel`, else the form's. */
-private fun entryLabelFor(copy: LayoutCopy?, opts: FormOpts): String = copy?.entry?.entryLabel ?: opts.entryLabel
+internal fun entryLabelFor(copy: LayoutCopy?, opts: FormOpts): String = copy?.entry?.entryLabel ?: opts.entryLabel
 
 /**
  * The "add" affordance. It carries only the verb: it sits inside the block of the field it adds to, so position

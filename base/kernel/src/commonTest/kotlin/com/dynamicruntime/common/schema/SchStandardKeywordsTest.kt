@@ -108,7 +108,7 @@ class SchStandardKeywordsTest {
         val type = fieldType(patternField("^[0-9]{5}$"))
         val failure = validate(type, mapOf("v" to "1234")).single()
         assertEquals(SchFailCode.patternMismatch, failure.code)
-        assertEquals("This must match the pattern '^[0-9]{5}$'.", failure.message)
+        assertEquals("Value must match the pattern '^[0-9]{5}$'.", failure.message)
         // Endpoint input is trimmed before the pattern sees it.
         assertEquals(emptyList(), validate(type, mapOf("v" to " 12345 "), SchOpts(forInput = true)))
     }
@@ -123,7 +123,7 @@ class SchStandardKeywordsTest {
         assertEquals(emptyList(), codes(range, 0.5))
         assertEquals(emptyList(), codes(range, 9.99))
         val message = validate(fieldType(range), mapOf("v" to 0L)).single().message
-        assertEquals("This must be more than 0.", message)
+        assertEquals("Value must be more than 0.", message)
     }
 
     @Test

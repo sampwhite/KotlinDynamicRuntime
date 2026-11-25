@@ -3,6 +3,7 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.gedra.GE
 
 /**
  * The **validation messages reference** (issue #1559): every code a refused value is reported with, what it means,
@@ -74,8 +75,8 @@ does not name.
 **Which message a reader sees.** On a form, the form's own message for the code, then its `$${SCH.errorDefault}`; then
 the schema's message for the code, then its `$${SCH.errorDefault}`; then the platform's. A request's refusal always
 carries the platform's message in `$${EP.failureMessage}`, and the schema's in `$${EP.failureUserMessage}` when there is
-one, so a program can show either. A message for `$${SchFailCode.valueTaken.name}` is a page's alone: a save refused
-because another form holds the value is not one of the failures listed, and says so in the platform's words.
+one, so a program can show either. No platform message names the field it is about: a reader has the field in
+front of them, and a list of failures puts the field's label, or its path, before each.
 
 **What a message may hold.** Plain text, and the parameters above. Neither kind may pull its wording from a fragment
 file, as a layout's labels can, since a message is filled in wherever the failure is shown. A message whose parameter
@@ -92,6 +93,8 @@ private fun refusalFieldsTable(): String = table(
         EP.failureMessage to "The platform's own words for the failure, written for whoever is reading the data.",
         EP.failureUserMessage to "The schema's own words for the failure, from its `${SCH.errors}`, when it gives some. A form " +
             "shows these in place of the platform's.",
+        GE.traitId to "When a write is refused for what its entries would hold: the trait of the entry, which the path starts " +
+            "from (`data.title`).",
         EP.failureOptions to "For a choice refused, the choices there are, each a value and its label.",
         EP.failureFormRequirement to "Present and true when the data is valid but the form asks for more: a field its layout " +
             "requires, or a choice it does not offer.",

@@ -117,10 +117,10 @@ enum class SchFailCode(val meaning: String, val raisedBy: List<String>) {
 
     /**
      * Another form of the same owner holds a unique field's value (issue #1851). It spans rows, so the validator never
-     * raises it: a form's page reports it, having asked. The refusal of a save is the write's own.
+     * raises it: a form's page reports it, having asked, and the write that stores the value is refused with it.
      */
     valueTaken(
-        "Another form of the same owner holds the value. A form's page reports it as the field is left, not a request's check.",
+        "Another form of the same owner holds the value. A form's page reports it as the field is left, and a save is refused for it.",
         listOf(SCH.unique),
     ),
 }
@@ -601,7 +601,7 @@ fun validateValue(
     val constValue = type.constValue
     if (constValue != null && !constMatches(constValue, effective)) {
         failures.add(
-            type.failure(path, SchFailCode.invalidOption, "'$effective' is not '$constValue'.",
+            type.failure(path, SchFailCode.invalidOption, "Value must be '$constValue', not '$effective'.",
                 listOf(SchOption(constValue.toOptStr() ?: "", constValue.toOptStr() ?: "")), value = effective)
         )
         return effective
@@ -615,7 +615,9 @@ fun validateValue(
     if (options != null && !type.openOptions) {
         val choice = effective as? String
         if (choice == null || options.none { it.value == choice }) {
-            failures.add(type.failure(path, SchFailCode.invalidOption, "'$effective' is not a valid option.", options, value = effective))
+            failures.add(
+                type.failure(path, SchFailCode.invalidOption, "'$effective' is not one of the choices.", options, value = effective),
+            )
         }
         return effective
     }
@@ -672,8 +674,7 @@ fun validateVariant(
     if (raw == null) {
         failures.add(
             type.failure(
-                discriminatorPath, SchFailCode.missingRequired,
-                "Required property '${variants.discriminator}' is missing.",
+                discriminatorPath, SchFailCode.missingRequired, requiredMsg,
             ),
         )
         return value
@@ -684,7 +685,7 @@ fun validateVariant(
     if (branch == null) {
         failures.add(
             type.failure(
-                discriminatorPath, SchFailCode.invalidOption, "'$raw' is not a valid option.",
+                discriminatorPath, SchFailCode.invalidOption, "'$raw' is not one of the choices.",
                 variants.values.map { SchOption(it, it) }, value = raw,
             ),
         )
@@ -826,8 +827,8 @@ fun validateObject(
             // Resolved against the missing property's OWN type, not this object's: the failure is reported by
             // the parent's required loop, but the copy belongs to the field it is about.
             failures.add(
-                reqType?.failure(childPath(path, req), SchFailCode.missingRequired, "Required property '$req' is missing.")
-                    ?: SchFailure(childPath(path, req), SchFailCode.missingRequired, "Required property '$req' is missing."),
+                reqType?.failure(childPath(path, req), SchFailCode.missingRequired, requiredMsg)
+                    ?: SchFailure(childPath(path, req), SchFailCode.missingRequired, requiredMsg),
             )
         }
     }
@@ -869,10 +870,9 @@ fun checkCondition(
             // A field a counter fills is not asked of a request (issue #1852), as the plain `required` loop has it.
             if (opts.forInput && target?.counter != null) continue
             val at = childPath(path, name)
-            val message = "Required property '$name' is missing."
             failures.add(
-                target?.failure(at, SchFailCode.missingRequired, message)
-                    ?: SchFailure(at, SchFailCode.missingRequired, message),
+                target?.failure(at, SchFailCode.missingRequired, requiredMsg)
+                    ?: SchFailure(at, SchFailCode.missingRequired, requiredMsg),
             )
         }
     }
@@ -890,11 +890,14 @@ fun checkCondition(
             // `fmt`, not `toOptStr`: naming a value is not the same job as converting one. `toOptStr` still
             // answers null for anything that is not a primitive, and a rule quoted back as "empty" describes
             // itself as something nobody wrote.
+            //
+            // The one message that names a field, the other one (issue #1918), by its schema name: a form withdraws the
+            // field this is about, so a person filling one in does not meet it.
             val decider = condition.value?.fmt() ?: "empty"
             val message = if (holds) {
-                "'$name' is not allowed when '${condition.property}' is '$decider'."
+                "Value is not allowed when '${condition.property}' is '$decider'."
             } else {
-                "'$name' is only allowed when '${condition.property}' is '$decider'."
+                "Value is only allowed when '${condition.property}' is '$decider'."
             }
             failures.add(
                 target?.failure(at, SchFailCode.notAllowed, message, value = map[name])
@@ -1064,7 +1067,7 @@ fun coerceNumericString(
     }
     val parsed = parse(s)
     if (parsed == null) {
-        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not a valid ${type.jsonType}.", value = s))
+        failures.add(type.failure(path, SchFailCode.badValue, "'$s' is not ${typeWords(type.jsonType)}.", value = s))
         return value
     }
     return parsed
@@ -1128,7 +1131,7 @@ fun coerceStringToBool(type: SchType, value: Any?, path: String, coerce: Boolean
             type.failure(
                 path,
                 SchFailCode.badValue,
-                "'$s' is not a recognizable boolean. Use one of: " +
+                "'$s' is not recognized as true or false. Use one of: " +
                     "${trueSpellings.joinToString("/")} or ${falseSpellings.joinToString("/")}.",
                 value = s,
             ),
@@ -1159,7 +1162,7 @@ fun coerceStringToArray(
             is Parsed.Failed -> {
                 // The parse problem rides as the failure's cause, located, as a failed parse always has.
                 val cause = parsed.problems.first().toException()
-                val message = "The value is not a valid JSON array."
+                val message = "Value is not a valid JSON array."
                 failures.add(type.failure(path, SchFailCode.badValue, message, cause = cause, value = s))
                 return value
             }
@@ -1185,13 +1188,13 @@ fun coerceStringToObject(
         is Parsed.Ok -> parsed.value
         is Parsed.Failed -> {
             val cause = parsed.problems.first().toException()
-            val message = "The value is not a valid JSON object."
+            val message = "Value is not a valid JSON object."
             failures.add(type.failure(path, SchFailCode.badValue, message, cause = cause, value = s))
             return value
         }
     }
     if (map == null) {
-        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", value = s))
+        failures.add(type.failure(path, SchFailCode.badValue, "Value is not a valid JSON object.", value = s))
         return value
     }
     return validateValue(type, map, path, coerce, failures, opts)
@@ -1227,7 +1230,7 @@ fun validateSchemaDocument(
     // [validateValue], where the kObject type check has already established a map before the short-circuit.
     val body = value as? Map<*, *>
     if (body == null) {
-        failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object).", value = value))
+        failures.add(type.failure(path, SchFailCode.wrongType, "Value must be a schema definition (an object).", value = value))
         return value
     }
     // Its shape first (issue #1056): every keyword at fault, each by its path, where the parse below stops at the
@@ -1246,7 +1249,7 @@ fun validateSchemaDocument(
         failures.add(
             type.failure(
                 path, SchFailCode.badValue,
-                "This is not a valid schema definition: ${e.message ?: "the parser refused it"}", cause = e, value = value,
+                "Value is not a valid schema definition: ${e.message ?: "the parser refused it"}", cause = e, value = value,
             ),
         )
     }
@@ -1302,15 +1305,16 @@ fun validateDate(
             }
         }
         is LocalDate -> if (lenient) value.toStartOfDay(zone) else {
-            failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day.", value = value))
+            failures.add(type.failure(path, SchFailCode.wrongType, "Value must be a date and a time, not a day alone.", value = value))
             return value
         }
         is Instant -> if (lenient) value.toDay(zone) else {
-            failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp.", value = value))
+            failures.add(type.failure(path, SchFailCode.wrongType, "Value must be a day, with no time.", value = value))
             return value
         }
         else -> {
-            failures.add(type.failure(path, SchFailCode.wrongType, "This must be a date string.", value = value))
+            val message = "Value must be a date${if (dayOnly) "" else " and a time"}, as text."
+            failures.add(type.failure(path, SchFailCode.wrongType, message, value = value))
             return value
         }
     }
@@ -1348,8 +1352,29 @@ fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
 /** Whether [value] has no fraction and is a number at all: not NaN, not an infinity. Always true of a JVM `Int`. */
 private fun isWhole(value: Number): Boolean = value.toDouble().let { it.isFinite() && it == floor(it) }
 
+/**
+ * The built-in wording for a value that is required and absent. Like every message here (issue #1918), it names no field:
+ * its path says which, to a program, and where it is shown says so to a person, or the place listing it puts the field's
+ * label in front.
+ */
 @KdrPrivate
-fun wrongTypeMsg(type: SchType): String = "This must be of type '${type.jsonType ?: "any"}'."
+const val requiredMsg: String = "A value is required."
+
+@KdrPrivate
+fun wrongTypeMsg(type: SchType): String = "Value must be ${typeWords(type.jsonType)}."
+
+/** What a value of [jsonType] is, in words for whoever gave it rather than the schema's own. */
+@KdrPrivate
+fun typeWords(jsonType: String?): String = when (jsonType) {
+    SCT.string -> "text"
+    SCT.integer -> "a whole number"
+    SCT.number -> "a number"
+    SCT.boolean -> "true or false"
+    SCT.array -> "a list"
+    SCT.kObject -> "an object"
+    SCT.kNull -> "empty"
+    else -> "of the field's type"
+}
 
 /**
  * Checks [value] against the field's declared bounds, reporting [SchFailCode.belowMinimum] and
@@ -1433,7 +1458,7 @@ fun checkPattern(type: SchType, value: Any?, path: String, failures: MutableList
     val pattern = type.pattern ?: return
     if (value !is String || pattern.matches(value)) return
     failures.add(
-        type.failure(path, SchFailCode.patternMismatch, "This must match the pattern '${pattern.source}'.", value = value),
+        type.failure(path, SchFailCode.patternMismatch, "Value must match the pattern '${pattern.source}'.", value = value),
     )
 }
 
@@ -1586,7 +1611,7 @@ fun codePointLength(s: String): Int {
 
 /**
  * The built-in wording for a bound. The code is shared across the four pairs, but the message is not: what the
- * bound means differs by type, and "This must be at least 3." would be a poor way to say a name needs three
+ * bound means differs by type, and "Value must be at least 3." would be a poor way to say a name needs three
  * characters.
  */
 @KdrPrivate
@@ -1599,10 +1624,10 @@ fun boundMsg(jsonType: String?, bound: Double, atLeast: Boolean, exclusive: Bool
     }
     val one = bound == 1.0
     return when (jsonType) {
-        SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
-        SCT.array -> "This must have $side $n item${if (one) "" else "s"}."
-        SCT.kObject -> "This must have $side $n propert${if (one) "y" else "ies"}."
-        else -> "This must be $side $n."
+        SCT.string -> "Value must be $side $n character${if (one) "" else "s"}."
+        SCT.array -> "Value must have $side $n item${if (one) "" else "s"}."
+        SCT.kObject -> "Value must have $side $n propert${if (one) "y" else "ies"}."
+        else -> "Value must be $side $n."
     }
 }
 

@@ -133,6 +133,7 @@ object SchemaCatalogApi {
                 status = (map[EP.status] as? Number)?.toInt() ?: (response.response.status as? Number)?.toInt(),
                 errorCode = map[EP.errorCode] as? String,
                 traceId = traceId,
+                extraData = map[EP.extraData].toJsonMapOrEmpty(),
             )
         }
         return map

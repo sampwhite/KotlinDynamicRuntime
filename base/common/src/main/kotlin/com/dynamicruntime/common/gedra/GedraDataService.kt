@@ -1227,7 +1227,7 @@ class GedraDataService : ServiceInitializer {
                     if (!opts.forgiveInvalidEntries) {
                         throw KdrException.mkInput(
                             "An imported entry for trait '$traitId' is invalid: " +
-                                UniqueClaims.takenText(cxt, cxt.client, cxt.userId, shared.first(), null),
+                                shared.first().let { "${GE.data}.${it.field}: " + UniqueClaims.takenText(cxt, cxt.userId, it, null) },
                         )
                     }
                     discard(GIF.invalidEntry, traitId)
@@ -1993,12 +1993,10 @@ class GedraDataService : ServiceInitializer {
         val union = clientUnion(cxt, kind) ?: return
         val failures = entries.flatMapIndexed { i, entry ->
             validate(union, entry).filterNot { it.code == SchFailCode.missingRequired && (i to it.path) in excused }
+                .map { EntryFailure(entry[GE.traitId].toOptStr().orEmpty(), it) }
         }
         if (failures.isNotEmpty()) {
-            throw KdrException.mkInput(
-                "The patch would leave ${failures.size} problem(s) in the stored entries: " +
-                    failures.joinToString("; ") { f -> "${f.path}: ${f.message}" },
-            )
+            throw entryFailuresException("The patch would leave ${failures.size} problem(s) in the stored entries:", failures)
         }
     }
 

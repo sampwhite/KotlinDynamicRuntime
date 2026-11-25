@@ -71,8 +71,36 @@ fun takenFailures(answers: Map<UniqueAsked, String?>, owner: String, askAt: (Str
         ask.fieldType.failure(ask.field, SchFailCode.valueTaken, message, value = ask.value).copy(path = asked.path)
     }
 
-/** What [useUniqueChecks] answers: [left] is called as a field is left, and [failures] are those to show now. */
-class UniqueChecks(val left: (String) -> Unit, val failures: List<SchFailure>)
+/**
+ * What [useUniqueChecks] answers: [left] is called as a field is left, and [failures] are those to show now. [refused] is
+ * called with a save's failure, and answers whether it is a refusal of values that are taken, each now shown under its field
+ * (issue #1918), so the page has only to point there.
+ */
+class UniqueChecks(val left: (String) -> Unit, val failures: List<SchFailure>, val refused: (Throwable) -> Boolean)
+
+/**
+ * The answers a save refused with [refused] gives a form of [owner] (issue #1918), as though each field had asked: when it is
+ * a refusal of taken values and nothing else, and each is in a field of the form ([pathOf]) that still holds it. Null
+ * otherwise, for the page to show the refusal itself. Pure, and covered under `jsNodeTest`.
+ */
+fun refusedAnswers(
+    refused: List<RefusedFailure>,
+    owner: String,
+    pathOf: (traitId: String, field: String) -> String?,
+    askAt: (String) -> UniqueAsk?,
+): Map<UniqueAsked, String>? {
+    if (refused.isEmpty() || refused.any { it.code != SchFailCode.valueTaken.name }) return null
+    val placed = refused.mapNotNull { f ->
+        val path = pathOf(f.traitId, f.path) ?: return@mapNotNull null
+        val ask = askAt(path)?.takeIf { normalizeUnique(it.value) == normalizeUnique(f.value.orEmpty()) } ?: return@mapNotNull null
+        UniqueAsked(owner, path, ask.value) to f.message
+    }
+    return placed.toMap().takeIf { it.size == refused.size }
+}
+
+/** The path, in a form whose [values] hold a [list] of entries, of [field] of the entry of [traitId]; null when it has none. */
+fun entryFieldPath(values: Map<String, Any?>, list: String, traitId: String, field: String): String? =
+    values[list].toJsonListOfMaps().indexOfFirst { it[GE.traitId] == traitId }.takeIf { it >= 0 }?.let { "$list[$it].${GE.data}.$field" }
 
 /**
  * Asks, as each unique field of a form is left, whether another of the owner's forms holds its value (issue #1851), and
@@ -80,12 +108,13 @@ class UniqueChecks(val left: (String) -> Unit, val failures: List<SchFailure>)
  * path, null for one not unique. The owner is the form's named by [gedraId], or the caller's own, or [userRef]'s for a form
  * made for someone; [client] names another client's copy of the endpoint. A change of any of them asks again about the
  * fields already left, and an answer about the one before is not shown. An ask that fails says nothing: the save's own
- * check is the one that holds the value.
+ * check is the one that holds the value, and its refusal is shown under the field too, which [pathOf] finds.
  */
 fun useUniqueChecks(
     client: String? = null,
     gedraId: String? = null,
     userRef: String? = null,
+    pathOf: (traitId: String, field: String) -> String? = { _, _ -> null },
     askAt: (String) -> UniqueAsk?,
 ): UniqueChecks {
     val owner = listOf(client, gedraId, userRef).joinToString("/") { it.orEmpty() }
@@ -126,7 +155,13 @@ fun useUniqueChecks(
         updateLeft { it + path }
         if (askAt(path) != null) updatePending { it + path }
     }
-    return UniqueChecks(::left, takenFailures(answers, owner, askAt))
+    fun refused(e: Throwable): Boolean {
+        val found = refusedAnswers(refusedFailures(e), owner, pathOf, askAt) ?: return false
+        updateLeft { it + found.keys.map { asked -> asked.path } }
+        updateAnswers { it + found }
+        return true
+    }
+    return UniqueChecks(::left, takenFailures(answers, owner, askAt), ::refused)
 }
 
 /** [failures] with [taken] beside them, for a form; null -- nothing checked yet -- stays so when none is taken. */

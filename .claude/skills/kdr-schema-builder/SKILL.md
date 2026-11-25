@@ -187,7 +187,7 @@ the other standard keywords read more closely than a shape -- is in the schema d
   with `^…$`, since a pattern matches anywhere. There are no flags; write `[Aa]`. The default message quotes the
   pattern, so say what it is *for* in `g-errors`. `SchPattern` translates it for the JVM and the browser alike, and
   its KDoc lists each construct refused and why.
-- **`exclusiveMinimum` / `exclusiveMaximum`** share `belowMinimum` / `aboveMaximum` with the inclusive pair ("This
+- **`exclusiveMinimum` / `exclusiveMaximum`** share `belowMinimum` / `aboveMaximum` with the inclusive pair ("Value
   must be more than 0.").
 - **`uniqueItems`** fails as `duplicateItem` ("Item 3 repeats item 1…"), comparing elements as validated values, so
   `"5"` coerced to an integer equals `5`.

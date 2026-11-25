@@ -89,7 +89,7 @@ class SummarizeTableTest : StringSpec({
         problems(summarizeTable("total", "lines", ReportCombine.max, "receipt")).single() shouldContain "boolean column"
         // A report's other rollups are not a column's.
         problems(mapOf("fn" to STF.fn, STF.target to "total", STF.table to "lines", STF.combine to "list")).single() shouldContain
-            "combine: 'list' is not a valid option"
+            "combine: 'list' is not one of the choices"
     }
 
     "the target must be derived and hold what the combine gives" {

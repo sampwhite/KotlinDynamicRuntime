@@ -9,7 +9,10 @@ import com.dynamicruntime.common.job.JobRunCxt
 import com.dynamicruntime.common.job.JobSchedule
 import com.dynamicruntime.common.job.JobTaskResult
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.failure
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlSession
@@ -115,7 +118,7 @@ object UniqueClaims {
         for (kind in changed) {
             val slot = after[kind] ?: continue
             holderOf(cxt, sqlCxt, row.client, scopeOf(row), slot, row.gedraId.fullId)?.let { held ->
-                throw taken(cxt, row, slot, held)
+                throw taken(cxt, row, slot, held.gedraId, held.value)
             }
             claim(cxt, sqlCxt, row, slot, slot.key)
         }
@@ -156,7 +159,7 @@ object UniqueClaims {
         val claim = ValueClaim(
             row.client, slot.claimKind, scopeOf(row), valueKey, slot.value, row.gedraId.fullId, slot.traitId, slot.field,
         )
-        ValueClaims.claim(cxt, sqlCxt, listOf(claim)) { _, _ -> takenText(cxt, row.client, row.userId, slot, null) }
+        ValueClaims.claim(cxt, sqlCxt, listOf(claim)) { _, holder -> taken(cxt, row, slot, holder, null) }
     }
 
     /** Another gedra holding a value: its id, and the value as it holds it. */
@@ -239,24 +242,33 @@ object UniqueClaims {
         return keyOf(value)?.let { UniqueSlot(traitId, field, value, it) }
     }
 
-    /** The refusal of a write storing [slot], held by [held]: a 400, the other gedra in its extra data. */
-    private fun taken(cxt: KdrCxt, row: GedraDataRow, slot: UniqueSlot, held: Holder): KdrException =
-        KdrException.mkInput(takenText(cxt, row.client, row.userId, slot, held.value)).also {
+    /**
+     * The refusal of a write storing [slot]: a 400, the field and the value in its failure, so the page that sent it shows it
+     * under that field (issue #1918), and the form that holds the value ([heldBy], when it is known) in its extra data.
+     */
+    private fun taken(cxt: KdrCxt, row: GedraDataRow, slot: UniqueSlot, heldBy: String?, heldAs: String?): KdrException {
+        val path = "${GE.data}.${slot.field}"
+        val message = takenText(cxt, row.userId, slot, heldAs)
+        val union = GedraDataService.get(cxt).entryUnion(cxt, row.client, row.kind)
+        val failure = traitDataTypeIn(union, slot.traitId)?.properties?.get(slot.field)?.valueType
+            ?.failure(path, SchFailCode.valueTaken, message, value = slot.value) ?: SchFailure(path, SchFailCode.valueTaken, message)
+        return entryFailuresException("", listOf(EntryFailure(slot.traitId, failure, mapOf(UNQ.value to slot.value)))).also {
             it.extraData[UNQ.traitId] = slot.traitId
             it.extraData[UNQ.field] = slot.field
-            it.extraData[GDF.gedraId] = held.gedraId
+            heldBy?.let { id -> it.extraData[GDF.gedraId] = id }
         }
+    }
 
     /**
      * That [slot]'s value is taken by another of [owner]'s forms, in words for the person who typed it; [heldAs] is it as
-     * the other form holds it, if known.
+     * the other form holds it, if known. It does not name the field (issue #1918): a write does not know which of its
+     * labels the page that sent it shows.
      */
-    fun takenText(cxt: KdrCxt, client: String, owner: Long?, slot: UniqueSlot, heldAs: String?): String {
-        val label = formFieldLabel(cxt, client, slot.traitId, slot.field)
+    fun takenText(cxt: KdrCxt, owner: Long?, slot: UniqueSlot, heldAs: String?): String {
         val typed = slot.value.trim()
         val spelled = heldAs?.trim()?.takeIf { it != typed }?.let { ", as '$it'" }.orEmpty()
         val whose = if (owner == cxt.userProfile.userId) "another of your forms" else "another of their forms"
-        return "$label '$typed' is already used by $whose$spelled. Choose a different one."
+        return "Value '$typed' is already used by $whose$spelled. Choose a different one."
     }
 
     // --- filling in ------------------------------------------------------------------------------------------------

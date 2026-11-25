@@ -13,6 +13,7 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.offeredChoices
 import com.dynamicruntime.common.schema.orderedFieldNames
 import com.dynamicruntime.common.util.fmtD
+import com.dynamicruntime.common.schema.fieldLabelOf
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.gedra.headingLine
 import com.dynamicruntime.common.gedra.traitNameOf
@@ -536,7 +537,7 @@ private fun choicesText(options: List<SchOption>): String =
 private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: SchLayoutField?) {
     val prop = target.prop
     val vt = prop.valueType
-    h2 { +(layout?.label ?: prop.title ?: humanizeFieldName(target.name)) }
+    h2 { +fieldLabelOf(target.name, prop, layout?.label) }
     target.hidden?.let {
         p {
             className = ClassName("dv-callout")

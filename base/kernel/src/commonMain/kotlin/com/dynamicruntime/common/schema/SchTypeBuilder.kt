@@ -74,8 +74,8 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     fun noLetterOrDigit(message: String) = set(SchFailCode.noLetterOrDigit, message)
 
     /**
-     * Shown on a form's page when another of the owner's forms holds a unique field's value (issue #1851). A save that is
-     * refused says so in the platform's words.
+     * Shown when another of the owner's forms holds a unique field's value (issue #1851): under the field as it is left,
+     * and when a save is refused for it.
      */
     fun valueTaken(message: String) = set(SchFailCode.valueTaken, message)
 

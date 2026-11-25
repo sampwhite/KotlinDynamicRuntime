@@ -85,7 +85,7 @@ data class ValueClaim(
 object ValueClaims {
     /**
      * Inserts [claims], in key order, on [sqlCxt]'s transaction. A value already held is refused with
-     * [refusal]'s words, given the claim and the gedra holding it (null when a write racing this one holds it, not yet
+     * [refusal], given the claim and the gedra holding it (null when a write racing this one holds it, not yet
      * committed): a 400 the caller can act on, never a database error.
      *
      * In key order, so that two writes claiming the same values -- the same tokens sent twice, in another order -- take
@@ -93,12 +93,12 @@ object ValueClaims {
      * primary key is what decides when two writes race, the second insert waiting for the first to commit and then
      * failing as a duplicate, which is refused here in the same words.
      */
-    fun claim(cxt: KdrCxt, sqlCxt: SqlCxt, claims: List<ValueClaim>, refusal: (ValueClaim, String?) -> String) {
+    fun claim(cxt: KdrCxt, sqlCxt: SqlCxt, claims: List<ValueClaim>, refusal: (ValueClaim, String?) -> KdrException) {
         if (claims.isEmpty()) return
         val table = table(cxt)
         for (claim in claims.sortedBy { it.sortKey }) {
             val held = sqlCxt.sqlDb.queryOneStatement(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), claim.keyMap())
-            if (held != null) throw KdrException.mkInput(refusal(claim, held[VCL.gedraId].toOptStr()))
+            if (held != null) throw refusal(claim, held[VCL.gedraId].toOptStr())
             val row = LinkedHashMap<String, Any?>(claim.keyMap())
             row[VCL.claimedValue] = claim.value
             row[VCL.gedraId] = claim.gedraId
@@ -108,7 +108,7 @@ object ValueClaims {
             try {
                 sqlCxt.sqlDb.executeStatement(cxt, SqlTopicUtil.mkTableInsertStmt(sqlCxt, table), row)
             } catch (e: KdrException) {
-                if (isIntegrityViolation(e)) throw KdrException.mkInput(refusal(claim, null))
+                if (isIntegrityViolation(e)) throw refusal(claim, null)
                 throw e
             }
         }

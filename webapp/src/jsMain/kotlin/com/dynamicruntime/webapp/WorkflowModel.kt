@@ -329,7 +329,7 @@ private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
         problems = s[WVF.problems].toJsonListOfMaps().map {
             WfProblem(
                 traitId = it[GE.traitId].toOptStr() ?: "",
-                path = it[EP.failurePath].toOptStr() ?: "",
+                path = pathInData(it[EP.failurePath].toOptStr().orEmpty()),
                 message = it[EP.failureUserMessage].toOptStr() ?: it[EP.failureMessage].toOptStr() ?: "",
             )
         },
@@ -623,14 +623,15 @@ fun nextTaskAfter(tasks: List<WfTaskView>, shownId: String?, shownMark: RailMark
 /**
  * What a rail mark means, in words, for the entry's tooltip and screen-reader label (issue #700): unsaved edits,
  * the required traits still missing (named by [nameOf] -- the rail passes the same heading the panel uses, so
- * the two agree; the default humanizes the id), each friendly problem, or -- when nothing else applies --
- * [satisfied], that the step asks nothing more (issue #1694: never "Complete", since it can still be changed). One line
- * each, in that order.
+ * the two agree; the default humanizes the id), each friendly problem as [problemText] has it -- with the label its form
+ * gives the field, for the rail -- or, when nothing else applies, [satisfied], that the step asks nothing more (issue
+ * #1694: never "Complete", since it can still be changed). One line each, in that order.
  */
 fun railExplanation(
     status: WfTaskStatus?,
     unsaved: Boolean,
     satisfied: String = WorkflowCellWords().stepSatisfied,
+    problemText: (WfProblem) -> String = { it.message },
     nameOf: (String) -> String = ::humanizeFieldName,
 ): String {
     val lines = buildList {
@@ -639,7 +640,7 @@ fun railExplanation(
             val missing = status?.missingTraits.orEmpty()
             add(if (missing.isEmpty()) "Not started" else "Needs information: " + missing.joinToString(", ") { nameOf(it) })
         }
-        status?.problems?.forEach { add(it.message) }
+        status?.problems?.forEach { add(problemText(it)) }
         if (isEmpty()) add(satisfied)
     }
     return lines.joinToString("\n")

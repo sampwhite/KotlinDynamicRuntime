@@ -93,8 +93,11 @@ val NewFormPage = FC<Props> {
 
     useFocusOnFailure(focusRequest, failures)
 
+    val entryLabel = useShellFacts().entryLabel
     // A unique field (issue #1851): asked about as it is left, for whoever the form is being made for.
-    val uniqueChecks = useUniqueChecks(userRef = pickedUser?.primaryId) { path ->
+    val uniqueChecks = useUniqueChecks(
+        userRef = pickedUser?.primaryId, pathOf = { traitId, field -> entryFieldPath(values, GDF.entries, traitId, field) },
+    ) { path ->
         uniqueAskInEntries(values, path) { entryDataType(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, GDF.entries, it) }
     }
 
@@ -214,7 +217,14 @@ val NewFormPage = FC<Props> {
                             } catch (e: Throwable) {
                                 // Only the failure path stays on the page, so re-enable the button here
                                 // rather than in a finally that would run after a create has navigated away.
-                                runError = userFacingError(e)
+                                runError = if (uniqueChecks.refused(e)) {
+                                    refusedAtField
+                                } else {
+                                    saveError(e) {
+                                        val opts = FormOpts(friendly = true, fieldLayouts = cat.fieldLayouts, entryLabel = entryLabel)
+                                        entryFailureLabel(inputType, sending, GDF.entries, it, opts)
+                                    }
+                                }
                                 running = false
                             }
                         }

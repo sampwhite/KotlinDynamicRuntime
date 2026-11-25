@@ -69,7 +69,7 @@ class ValidateOutputTest : StringSpec({
             // The 500 the flag gives: it names the endpoint and says what did not conform.
             // Each failure as its path and the validator's message -- this reaches a real caller.
             refused.message shouldBe "Response for '/user/thing:GET' failed output-schema validation: " +
-                "results.count: 'several' is not a valid integer."
+                "results.count: 'several' is not a whole number."
             // And a response that conforms is let through.
             check(cxtWith(flag), endpoint(validateOutput = true), good)
         }

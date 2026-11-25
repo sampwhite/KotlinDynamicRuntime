@@ -61,8 +61,12 @@ val CreateForUserPage = FC<Props> {
     // Load the chosen user's client's create schema when a user is picked (issue #714 mechanism: resolve the
     // endpoint on that client's surface). Re-runs when the picked user changes -- including to null (the box was
     // cleared or edited), which resets the form so a stale one is never left under a changed pick.
+    val entryLabel = useShellFacts().entryLabel
     // A unique field (issue #1851): asked about as it is left, of the picked user's forms.
-    val uniqueChecks = useUniqueChecks(client = picked?.client, userRef = picked?.primaryId) { path ->
+    val uniqueChecks = useUniqueChecks(
+        client = picked?.client, userRef = picked?.primaryId,
+        pathOf = { traitId, field -> entryFieldPath(values, GDF.entries, traitId, field) },
+    ) { path ->
         uniqueAskInEntries(values, path) { entryDataType(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, GDF.entries, it) }
     }
 
@@ -201,7 +205,16 @@ val CreateForUserPage = FC<Props> {
                                         // this navigation unmounts the page.
                                         formsCreateReturn(launched, routeParams(), newId, givenIds = givenIds)?.let { navigate(it) }
                                     } catch (e: Throwable) {
-                                        runError = userFacingError(e)
+                                        runError = if (uniqueChecks.refused(e)) {
+                                            refusedAtField
+                                        } else {
+                                            saveError(e) {
+                                                val opts = FormOpts(
+                                                    friendly = true, fieldLayouts = cat.fieldLayouts, entryLabel = entryLabel,
+                                                )
+                                                entryFailureLabel(inputType, values, GDF.entries, it, opts)
+                                            }
+                                        }
                                         running = false
                                     }
                                 }

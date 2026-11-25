@@ -106,8 +106,11 @@ val EditFormPage = FC<Props> {
     // them.
     val editedSinceSave = useRef(false)
 
+    val entryLabel = useShellFacts().entryLabel
     // A unique field (issue #1851): asked about as it is left, of the form's owner's other forms.
-    val uniqueChecks = useUniqueChecks(gedraId = gedraId) { path ->
+    val uniqueChecks = useUniqueChecks(
+        gedraId = gedraId, pathOf = { traitId, field -> entryFieldPath(values, GPF.edits, traitId, field) },
+    ) { path ->
         uniqueAskInEntries(values, path) { traitId ->
             entryDataType(
                 catalog?.let { cat -> patchEndpoint?.let { formDocPatchTargetType(cat.inputType(it)) } }, GPF.edits, traitId,
@@ -436,7 +439,14 @@ val EditFormPage = FC<Props> {
                                 // "Saved." only beside a form that still shows what was saved.
                                 if (editedSinceSave.current != true) saved = true
                             } catch (e: Throwable) {
-                                runError = userFacingError(e)
+                                runError = if (uniqueChecks.refused(e)) {
+                                    refusedAtField
+                                } else {
+                                    saveError(e) {
+                                        val opts = FormOpts(friendly = true, fieldLayouts = cat.fieldLayouts, entryLabel = entryLabel)
+                                        entryFailureLabel(targetType, sending, GPF.edits, it, opts)
+                                    }
+                                }
                             } finally {
                                 // The page stays either way now, so the button re-enables here.
                                 running = false

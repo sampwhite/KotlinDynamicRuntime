@@ -331,7 +331,12 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // A unique field (issue #1851): asked about as it is left, of the forms of whoever this form is or is being made for. A
     // trait locked here is not this caller's to change, so it is not asked about.
-    val uniqueChecks = useUniqueChecks(props.client, gedraId.takeIf { isEdit }, pickedUser?.primaryId.takeIf { !isEdit }) { key ->
+    val uniqueChecks = useUniqueChecks(
+        props.client, gedraId.takeIf { isEdit }, pickedUser?.primaryId.takeIf { !isEdit },
+        pathOf = { traitId, field ->
+            if (wf.tasks.any { t -> t.traits.any { it.traitId == traitId } }) "$traitId$uniqueKeyMark$field" else null
+        },
+    ) { key ->
         val traitId = key.substringBefore(uniqueKeyMark)
         wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId && traitId !in wf.lockedTraits } }
             ?.let { uniqueAskOf(traitId, it.type, key.substringAfter(uniqueKeyMark), valuesOf(traitId)) }
@@ -341,6 +346,16 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun takenIn(traitId: String): List<SchFailure> = uniqueChecks.failures
         .filter { it.path.substringBefore(uniqueKeyMark) == traitId }
         .map { it.copy(path = it.path.substringAfter(uniqueKeyMark)) }
+
+    /** The way to the field at [path] of the trait [traitId], as this form labels it; led by the trait's name when [task] has others. */
+    fun wayTo(task: WfTaskView?, traitId: String, path: String): String {
+        val trait = wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId } }
+            ?: return humanizeFieldName(traitId)
+        val opts = FormOpts(friendly = true, fieldLayouts = wf.fieldLayouts, entryLabel = shellFacts.entryLabel)
+        val way = failureLabel(trait.type, valuesOf(traitId), path, opts)
+        val alone = task != null && task.traits.size == 1
+        return listOfNotNull(traitName(trait).takeUnless { alone }, way.ifEmpty { null }).joinToString(", ")
+    }
 
     /** [trait]'s values as they stand, checked as its save would be. */
     fun checkTrait(trait: WfTraitView, values: Map<String, Any?> = valuesOf(trait.traitId)): InputCheck =
@@ -517,7 +532,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     updateResolved { it + savedTraitIds }
                 }
             } catch (e: Throwable) {
-                runError = userFacingError(e)
+                runError = if (uniqueChecks.refused(e)) refusedAtField else saveError(e) { wayTo(task, it.traitId, it.path) }
             } finally {
                 if (!leaving) savingTask = null
             }
@@ -819,7 +834,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (trait.traitId in unmetTraits) {
                 p {
                     className = ClassName("error-text")
-                    +"This is required — please fill it in."
+                    +"This section is required. Please fill it in."
                 }
             }
             // Design View marks this trait's fields (issue #972); outside it the provider carries null.
@@ -980,7 +995,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val status = statusFor(task, unsaved)
         val mark = railMark(status)
         // Name a missing trait by its name (issue #1520), so the tooltip and the panel's heading agree.
-        val explanation = railExplanation(status, unsaved, shellFacts.workflowWords.stepSatisfied) { id ->
+        val explanation = railExplanation(
+            status, unsaved, shellFacts.workflowWords.stepSatisfied,
+            problemText = { labeledMessage(wayTo(task, it.traitId, it.path), it.message) },
+        ) { id ->
             task.traits.firstOrNull { it.traitId == id }?.let(::traitName) ?: humanizeFieldName(id)
         }
         button {
