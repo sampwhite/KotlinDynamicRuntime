@@ -148,6 +148,6 @@ private fun kindSection(kind: PageWidgetKind): String {
 
 /** A row per parameter of [type]: its name, its JSON type, whether it is required, and its description. */
 private fun paramRows(type: SchType): String = type.properties.values.joinToString("\n") { prop ->
-    val jsonType = prop.valueType?.jsonType ?: "string"
+    val jsonType = prop.valueType.jsonType ?: "string"
     "| `${prop.name}` | $jsonType | ${if (prop.name in type.required) "Yes" else "No"} | ${prop.description.orEmpty()} |"
 }
