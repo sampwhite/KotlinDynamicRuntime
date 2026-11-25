@@ -118,18 +118,33 @@ fun ChildrenBuilder.panelLinks(panels: List<Pair<String, String>>, sections: Map
                 key = id.unsafeCast<Key>()
                 panelLink(id, title)
                 sections[id]?.takeIf { it.isNotEmpty() }?.let { subs ->
+                    // A group named for its panel, its parentheses and separators hidden from a screen reader, which
+                    // reads the links alone.
                     span {
                         className = ClassName("panel-sublinks")
-                        subs.forEach { (subId, subTitle) ->
+                        asDynamic()["role"] = "group"
+                        asDynamic()["aria-label"] = "$title sections"
+                        punctuation("(")
+                        subs.forEachIndexed { i, (subId, subTitle) ->
                             span {
                                 key = subId.unsafeCast<Key>()
+                                if (i > 0) punctuation(" · ")
                                 panelLink(subId, subTitle)
                             }
                         }
+                        punctuation(")")
                     }
                 }
             }
         }
+    }
+}
+
+/** [text] that only separates what is around it, so a screen reader skips it. */
+private fun ChildrenBuilder.punctuation(text: String) {
+    span {
+        asDynamic()["aria-hidden"] = true
+        +text
     }
 }
 

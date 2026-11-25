@@ -92,7 +92,8 @@ The page has a header, and then panels: each a keyed `section` (the shared `pane
   - the issues, as a warning block;
   - links to the panels, which scroll rather than set a hash. Forms and data's link has sub-links to its sections --
     Traits, Listing columns (Forms listing where it is not edited), Workflows, and Form states, as the panel draws them
-    (issue #1891) -- which scroll the same way, to headings kept clear of the app bar (`.panel h3[id]`).
+    (issue #1891) -- which scroll the same way, to headings kept clear of the app bar (`.panel h3[id]`). The panel and
+    the sub-links read one list (`formsDataSections`, ids in `FDSEC`), so a section drawn always has its link.
 - **The panels**, in order:
   1. **Definition**: the editor first, then the read-only rows. The rows are grouped as the editor's sections are (`clientSummaryGroups`: About, How it behaves, Platform), plus *Where it runs*. The groups sit side by side where there is room.
   2. **Forms and data**: Traits, then Listing columns, then Workflows, then Form states.
@@ -693,7 +694,8 @@ editors open, lifting the table's height cap while it is open (`.op-table-scroll
 kernel's `WfTemplateSlots`: the workflow's name, and per data-entry task its label and the traits it collects, each
 required or not, named as a form names it (the catalog's trait `name`, `catalogTraitName`, issue #1438). **Collects** is
 a multiple choice that, with one trait chosen, reads as a single one, so it says "Add a trait" while empty and has a
-hint under it that a step may collect several (issue #1891) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
+hint under it that a step may collect several -- or, with nothing else offered, that another is included under Traits
+first (`collectsHint`, issue #1891) -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
 patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a fix

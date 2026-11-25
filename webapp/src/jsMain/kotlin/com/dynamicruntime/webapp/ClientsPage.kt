@@ -389,13 +389,10 @@ private fun ChildrenBuilder.clientDetail(
         if (!overridesRefused) add(panelMenu to "Menu")
         if (acrossClients && row != null) add(panelRetirement to "Retirement")
     }
-    // Forms and data's sections, as it draws them (issue #1891): long enough that reaching one means scrolling.
-    val formsDataSections = buildList {
-        if (configEditable) add(sectionTraits to "Traits")
-        add(sectionListing to if (configEditable) "Listing columns" else "Forms listing")
-        add(sectionWorkflows to "Workflows")
-        if (row != null) add(sectionFormStates to "Form states")
-    }
+    // Forms and data's sections (issue #1891): long enough that reaching one means scrolling, so the panel's link has
+    // links to each. The panel draws exactly these.
+    val formsSections = formsDataSections(configEditable, hasOverview = row != null)
+    val formsSectionTitles = formsSections.toMap()
     // Every child of the card is keyed (issue #1397), so each panel keeps its state by what it is, not by how many
     // elements happen to be drawn above it: mending a file ref clears an issue (issue #1176), and the issues coming
     // and going must not tear down and remake the editors below, losing what was half typed in them.
@@ -475,7 +472,7 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
             if (panels.size > 2) {
-                panelLinks(panels, mapOf(panelFormsData to formsDataSections))
+                panelLinks(panels, mapOf(panelFormsData to formsSections))
             }
         }
         stepsLeft?.let { steps ->
@@ -560,14 +557,14 @@ private fun ChildrenBuilder.clientDetail(
                 // same rules.
                 // An editable configuration is a stored one, so `stored` is there whenever this shows.
                 val stored = def?.stored
-                if (configEditable) {
+                formsSectionTitles[FDSEC.traits]?.let { title ->
                     h3 {
-                        id = ElementId(sectionTraits)
-                        +"Traits"
+                        id = ElementId(FDSEC.traits)
+                        +title
                     }
                     ClientTraitsSection {
                         this.clientId = clientId
-                        this.stored = stored[CLD.includedTraits].toJsonListOfStrings()
+                        this.stored = stored?.get(CLD.includedTraits).toJsonListOfStrings()
                         this.savesDraft = savesDraft
                         formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
                         this.onChanged = onChanged
@@ -577,9 +574,9 @@ private fun ChildrenBuilder.clientDetail(
                 // Its listing columns (issue #1491), after the traits each reads, offered where they are for the same reason.
                 if (configEditable) {
                     WhatIsThis {
-                        heading = "Listing columns"
+                        heading = formsSectionTitles.getValue(FDSEC.listing)
                         headingLevel = 3
-                        headingId = sectionListing
+                        headingId = FDSEC.listing
                         text = pageCopy.explanation(PFRAG.listingColumnsNs)
                     }
                     ClientUsagesSection {
@@ -589,8 +586,8 @@ private fun ChildrenBuilder.clientDetail(
                     }
                 } else {
                     h3 {
-                        id = ElementId(sectionListing)
-                        +"Forms listing"
+                        id = ElementId(FDSEC.listing)
+                        +formsSectionTitles.getValue(FDSEC.listing)
                     }
                 }
                 // How the listing draws each row's workflows (issue #1599): for every client, one defined in code included,
@@ -603,8 +600,8 @@ private fun ChildrenBuilder.clientDetail(
                 }
                 // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason.
                 h3 {
-                    id = ElementId(sectionWorkflows)
-                    +"Workflows"
+                    id = ElementId(FDSEC.workflows)
+                    +formsSectionTitles.getValue(FDSEC.workflows)
                 }
                 ClientWorkflowsSection {
                     this.clientId = clientId
@@ -618,11 +615,11 @@ private fun ChildrenBuilder.clientDetail(
                 }
                 // Bringing its forms' stored state up to date with the configuration above now, rather than overnight
                 // (issue #1412). A sandbox's too: its forms are its own.
-                row?.let { overview ->
+                row?.takeIf { FDSEC.formStates in formsSectionTitles }?.let { overview ->
                     WhatIsThis {
-                        heading = "Form states"
+                        heading = formsSectionTitles.getValue(FDSEC.formStates)
                         headingLevel = 3
-                        headingId = sectionFormStates
+                        headingId = FDSEC.formStates
                         text = pageCopy.explanation(PFRAG.formStatesNs)
                     }
                     FormStatesSection { this.row = overview }
@@ -848,12 +845,6 @@ private const val panelImages = "client-images"
 const val panelPublishing = "client-publishing"
 private const val panelMenu = "client-menu"
 private const val panelRetirement = "client-retirement"
-
-/** Forms and data's sections' element ids (issue #1891), which the sub-links beside its panel link lead to. */
-private const val sectionTraits = "client-forms-data-traits"
-private const val sectionListing = "client-forms-data-listing"
-private const val sectionWorkflows = "client-forms-data-workflows"
-private const val sectionFormStates = "client-forms-data-form-states"
 
 /** How often, and how many times, a panel the address names is checked while the page above it fills in. */
 private const val sectionFollowMs = 200

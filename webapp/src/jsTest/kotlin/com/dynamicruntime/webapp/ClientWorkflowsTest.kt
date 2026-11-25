@@ -12,6 +12,8 @@ import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
+import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import kotlin.test.Test
@@ -72,6 +74,11 @@ class ClientWorkflowsTest {
         // Each by its name (issue #1438), or its id when the catalog gives none or does not list it.
         assertEquals(listOf("Name — A name." to "kdr:name", "siteVisit" to "siteVisit"), traitChoices(catalog, workflowSlots(own.def).tasks.single()))
         assertEquals("Name", catalogTraitName(catalog, "kdr:name"))
+        // Collects says a step takes several (issue #1891) -- and, with nothing else offered, where another comes from.
+        val record = workflowSlots(own.def).tasks.single()
+        assertTrue(collectsHint(catalog, record).endsWith("pick another to add it beside these."))
+        val full = WfTaskSlot(record.taskId, record.label, record.traits + WfTraitRef("siteVisit", required = false))
+        assertTrue(collectsHint(catalog, full).endsWith("include one under Traits above to collect it here."))
         assertEquals("gone", catalogTraitName(catalog, "gone"))
         // Who sees it (issue #1384), and the labels the client suggests for it.
         assertEquals(WfVisibility(WfVisibilityMode.restricted, listOf("pilot")), own.visibility)

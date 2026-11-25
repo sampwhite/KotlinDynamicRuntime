@@ -549,8 +549,13 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         (enabledOf != null && shown.workflows.none { it.def.workflowId == enabledOf && it.enabledOffered }) ||
         (editOf != null && shown.workflows.none { it.def.workflowId == editOf })
     if (rowGone) goneNote("That workflow is gone.")
-    if (newOf != null && (!props.configEditable || shown.templates.none { it.def.workflowId == newOf })) {
-        goneNote("Its template, '$newOf', is not offered by this deployment now.")
+    if (newOf != null) {
+        when {
+            // The templates are offered only where the client's configuration is edited, which it no longer is here.
+            !props.configEditable -> goneNote("This client's configuration is not edited here now, so no workflow is made from a template.")
+            shown.templates.none { it.def.workflowId == newOf } ->
+                goneNote("Its template, '$newOf', is not offered by this deployment now.")
+        }
     }
 }
 
@@ -662,7 +667,7 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                 // With one trait chosen the list reads as a single choice, and adding one as replacing it (issue #1891).
                 div {
                     className = ClassName("type-hint")
-                    +"A step may collect several traits: pick another to add it beside these."
+                    +collectsHint(props.workflowCatalog, task)
                 }
                 if (task.traits.isNotEmpty()) {
                     div {

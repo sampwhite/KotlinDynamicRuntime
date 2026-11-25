@@ -27,6 +27,23 @@ class ClientDetailLayoutTest {
     )
 
     @Test
+    fun formsAndDataSectionsAreWhatThePanelDraws() {
+        // Issue #1891: the panel draws these, and its sub-links lead to them.
+        assertEquals(
+            listOf(
+                FDSEC.traits to "Traits", FDSEC.listing to "Listing columns",
+                FDSEC.workflows to "Workflows", FDSEC.formStates to "Form states",
+            ),
+            formsDataSections(configEditable = true, hasOverview = true),
+        )
+        // A client whose configuration is not edited here: no Traits, its listing's own heading, and no Form states without a row.
+        assertEquals(
+            listOf(FDSEC.listing to "Forms listing", FDSEC.workflows to "Workflows"),
+            formsDataSections(configEditable = false, hasOverview = false),
+        )
+    }
+
+    @Test
     fun theDefinitionIsGroupedAsItsEditorIs() {
         val groups = clientSummaryGroups("acme", row(), definition(), canSeeAllClients = true)
         assertEquals(listOf("About", "How it behaves", "Platform", runsGroupHeading), groups.map { it.heading })

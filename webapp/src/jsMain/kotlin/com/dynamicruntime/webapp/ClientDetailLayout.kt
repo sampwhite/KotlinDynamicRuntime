@@ -24,6 +24,28 @@ import kotlin.time.Clock
  */
 class SummaryGroup(val heading: String, val explanationNs: String, val rows: List<Pair<String, String>>)
 
+/** Forms and data's sections' element ids (issue #1891), which the sub-links beside its panel link lead to. */
+@Suppress("ConstPropertyName")
+object FDSEC {
+    const val traits = "client-forms-data-traits"
+    const val listing = "client-forms-data-listing"
+    const val workflows = "client-forms-data-workflows"
+    const val formStates = "client-forms-data-form-states"
+}
+
+/**
+ * Forms and data's sections (issue #1891), each `id to heading`, in the order the panel draws them: the panel draws a
+ * section only when it is here, and the sub-links beside its panel link are this list, so the two cannot disagree.
+ * Traits only where the client's configuration is edited ([configEditable]), which also names the listing's section;
+ * Form states only for a client the page has a summary row for ([hasOverview]).
+ */
+fun formsDataSections(configEditable: Boolean, hasOverview: Boolean): List<Pair<String, String>> = buildList {
+    if (configEditable) add(FDSEC.traits to "Traits")
+    add(FDSEC.listing to if (configEditable) "Listing columns" else "Forms listing")
+    add(FDSEC.workflows to "Workflows")
+    if (hasOverview) add(FDSEC.formStates to "Form states")
+}
+
 /** The heading of the group of where a client runs (issue #1397): the one group the definition editor has no section for. */
 const val runsGroupHeading = "Where it runs"
 

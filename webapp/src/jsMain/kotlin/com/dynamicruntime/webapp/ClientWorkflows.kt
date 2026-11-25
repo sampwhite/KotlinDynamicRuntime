@@ -304,6 +304,20 @@ fun workflowPreview(base: WfDef, slots: WfTemplateSlots): WfDef? =
         null
     }
 
+/**
+ * The hint under a step's Collects (issue #1891): a list with one trait chosen reads as a single choice, so it says a
+ * step may collect several -- or, when [traitChoices] offers nothing the step does not collect already, where another
+ * comes from, since a trait is offered only once the client includes it.
+ */
+fun collectsHint(catalog: WorkflowCatalogView, task: WfTaskSlot): String {
+    val chosen = task.traits.map { it.traitId }.toSet()
+    return if (traitChoices(catalog, task).any { it.second !in chosen }) {
+        "A step may collect several traits: pick another to add it beside these."
+    } else {
+        "A step may collect several traits. This client includes no other yet: include one under Traits above to collect it here."
+    }
+}
+
 /** The traits a task's choice offers: those the client's workflows may collect, and any the task collects already. */
 fun traitChoices(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<String, String>> =
     (catalog.traits.map { it.traitId } + task.traits.map { it.traitId }).distinct().map { id ->
