@@ -26,6 +26,21 @@ object PRFP {
 }
 
 /**
+ * The Profile page's panels (issues #1479, #1924), `id to heading` in their order -- its top links, its side menu, and
+ * the headings its panels draw: Your users only for a person [usersShown] with more than one, Sign-in only where a
+ * password may be set ([signInShown]). Each heading through [t] (namespace, key, default), the page's copy. Pure;
+ * `jsNodeTest`.
+ */
+fun profilePanels(usersShown: Boolean, signInShown: Boolean, t: (String, String, String) -> String): List<Pair<String, String>> =
+    buildList {
+        add(PRFP.account to t(PRFA.account, "title", "Your account"))
+        if (usersShown) add(PRFP.users to t("users", "title", "Your users"))
+        add(PRFP.name to t("profile", "nameTitle", "Your name"))
+        if (signInShown) add(PRFP.signIn to t("password", "title", "Sign-in"))
+        add(PRFP.keys to t("profile", "keysTitle", "API keys"))
+    }
+
+/**
  * The account panel's copy (issue #1479): the `profile` file's [account] namespace and its keys -- a line's label, the
  * words a value is made of, and what the caller may do ([profileAbilities]).
  */

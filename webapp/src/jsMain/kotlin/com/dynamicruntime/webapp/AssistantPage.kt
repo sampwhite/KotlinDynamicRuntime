@@ -366,8 +366,14 @@ val AssistantPage = FC<Props> {
         }
     }
 
-    div {
-        className = ClassName("card wide")
+    // Which view the page draws, and -- for the assistant switched on -- its panels, worked out before the card so its
+    // top links and its side menu (issue #1924) name the same ones as it draws.
+    val view = assistantViewOf(status, statusError != null)
+    val onPanels = status?.takeIf { view == AssistantView.on }?.let { assistantPanels(it.hasSandbox) }.orEmpty()
+    // Each panel's heading from the same list, so a heading and its link cannot say different things -- but the
+    // drafts', whose link is the short "Drafts" and whose heading says whose they are.
+    val titles = onPanels.toMap()
+    panelPage(onPanels, cardKey = "assistant") {
         h1 { +"Configuration assistant" }
         p {
             className = ClassName("subtitle")
@@ -378,7 +384,7 @@ val AssistantPage = FC<Props> {
             )
         }
         val current = status
-        when (assistantViewOf(current, statusError != null)) {
+        when (view) {
             AssistantView.failed -> errorText("Couldn't load the assistant.", statusError!!)
             AssistantView.loading -> p { className = ClassName("subtitle"); +"Loading…" }
             AssistantView.switchOn -> panel(panelSwitchOn, "Switch on the assistant", kind = PanelKind.live) {
@@ -436,17 +442,10 @@ val AssistantPage = FC<Props> {
                 current!!
                 val running = summary?.running == true || pendingTurnId != null
                 val drafts = draftsOf(messages)
-                panelLinks(
-                    listOfNotNull(
-                        (panelSandbox to "Sandbox").takeIf { !current.hasSandbox },
-                        panelConversation to "Conversation",
-                        panelDrafts to "Drafts",
-                        panelAllowance to "Allowance",
-                    ),
-                )
+                panelLinks(onPanels)
                 if (!current.hasSandbox) {
                     // Turned on here for a client defined in code too (issue #1677), as an overlay of its definition.
-                    panel(panelSandbox, "Sandbox", kind = PanelKind.live) {
+                    panel(panelSandbox, titles.getValue(panelSandbox), kind = PanelKind.live) {
                         p {
                             +(
                                 "The assistant drafts in ${current.clientName}'s sandbox, which ${current.clientName} has not got yet. " +
@@ -470,7 +469,7 @@ val AssistantPage = FC<Props> {
                         panelNote(sandboxError, null, "Couldn't turn on the sandbox.")
                     }
                 }
-                panel(panelConversation, "Conversation", kind = PanelKind.live) {
+                panel(panelConversation, titles.getValue(panelConversation), kind = PanelKind.live) {
                     // What its New form asks for is the code's for a client defined there (issue #1569).
                     if (current.definedInCode) {
                         p {
@@ -573,7 +572,7 @@ val AssistantPage = FC<Props> {
                         panelNote(tryError, null, "Couldn't open the sandbox.")
                     }
                 }
-                panel(panelAllowance, "Allowance") {
+                panel(panelAllowance, titles.getValue(panelAllowance)) {
                     div {
                         className = ClassName("allowance-bar")
                         div {
@@ -736,3 +735,16 @@ private fun ChildrenBuilder.draftList(drafts: List<AssistantDraft>, status: Assi
         }
     }
 }
+
+/**
+ * The assistant's panels once it is on (issue #1924), `id to heading` in their order -- what its top links and its side
+ * menu name, and the headings its panels draw: the Sandbox panel only for a client with no sandbox of its own, then the
+ * conversation, its drafts, and the allowance. The drafts' panel alone heads itself longer, "Drafts from this
+ * conversation", where its link stays short. Pure; `jsNodeTest`.
+ */
+fun assistantPanels(hasSandbox: Boolean): List<Pair<String, String>> = listOfNotNull(
+    (panelSandbox to "Sandbox").takeIf { !hasSandbox },
+    panelConversation to "Conversation",
+    panelDrafts to "Drafts",
+    panelAllowance to "Allowance",
+)

@@ -38,7 +38,9 @@ shows. It names the client by its name (`clientName`), since a self-serve client
 says to switch it on from the client itself. Off and not offered, the page says an operator switches it on. Which of
 these it shows is `assistantViewOf`, covered by `AssistantTranscriptTest`. Each status read, and the switch-on, takes a
 token, so a read under way when the assistant is switched on cannot put the panel back. The menu offers the page while it
-is offered (`assistant:usable`), so the person finds it.
+is offered (`assistant:usable`), so the person finds it. The page is drawn through `panelPage` (issue #1924): with the
+assistant on, its panels (`assistantPanels` -- Sandbox only for a client with no sandbox, then Conversation, Drafts, and
+Allowance) are its top links and, once the conversation makes the page long, a side menu beside the card.
 
 **Where a person starts** (issue #1569). A self-serve client's create lands here when the new client's menu offers
 the page (`landingAfterCreate`, on the create card). On a new conversation, for a person with none yet, the
