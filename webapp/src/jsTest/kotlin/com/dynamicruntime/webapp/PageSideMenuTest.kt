@@ -35,6 +35,22 @@ class PageSideMenuTest {
     }
 
     @Test
+    fun aPageHasAMenuWhenItIsLongAndHasPanelsToFind() {
+        // Three panels or more, and over two screens tall.
+        assertTrue(pageNeedsSideMenu(panelCount = 3, pageHeight = 1801.0, viewportHeight = 900.0))
+        assertFalse(pageNeedsSideMenu(panelCount = 3, pageHeight = 1800.0, viewportHeight = 900.0))
+        assertFalse(pageNeedsSideMenu(panelCount = 2, pageHeight = 5000.0, viewportHeight = 900.0))
+    }
+
+    @Test
+    fun theMarkedEntryIsScrolledIntoTheMenusBox() {
+        // A box from 100 to 500, with 8 to spare.
+        assertEquals(0.0, scrollToShow(100.0, 500.0, 200.0, 230.0, 8.0))
+        assertEquals(38.0, scrollToShow(100.0, 500.0, 500.0, 530.0, 8.0))
+        assertEquals(-28.0, scrollToShow(100.0, 500.0, 80.0, 110.0, 8.0))
+    }
+
+    @Test
     fun aCssLengthIsReadInPixels() {
         assertEquals(72.0, cssPixels("72px"))
         assertEquals(84.5, cssPixels(" 84.5px "))

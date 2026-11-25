@@ -26,6 +26,7 @@ import react.useRef
 import react.useState
 import web.cssom.ClassName
 import web.dom.ElementId
+import web.html.HTMLDivElement
 import web.html.HTMLElement
 
 /*
@@ -187,6 +188,35 @@ object SMENU {
 
     /** The most ancestors looked through for the element that scrolls the page. */
     const val maxDepth = 50
+
+    /** The fewest panels a page has before a side menu is worth its column. */
+    const val minPanels = 3
+
+    /** How many screens tall a page is before it has a side menu: a shorter one is read by scrolling. */
+    const val minScreens = 2.0
+
+    /** Where a screen has room for the column: `app.css` repeats it in its media query, so change the two together. */
+    const val wideQuery = "(min-width: 1200px)"
+
+    /** Room kept above or below the marked entry when the menu's own box scrolls it into view, in pixels. */
+    const val keepInViewPad = 8.0
+}
+
+/**
+ * Whether a page of [panelCount] panels, [pageHeight] tall in a window [viewportHeight] tall, has a side menu (issue
+ * #1919): enough panels to need finding, and tall enough to lose the reader. Pure; `jsNodeTest`.
+ */
+fun pageNeedsSideMenu(panelCount: Int, pageHeight: Double, viewportHeight: Double): Boolean =
+    panelCount >= SMENU.minPanels && pageHeight > viewportHeight * SMENU.minScreens
+
+/**
+ * How far a scroll box [boxTop] to [boxBottom] scrolls to show an item [itemTop] to [itemBottom] (all against the window),
+ * with [pad] to spare: negative up, positive down, 0 when it shows already. Pure; `jsNodeTest`.
+ */
+fun scrollToShow(boxTop: Double, boxBottom: Double, itemTop: Double, itemBottom: Double, pad: Double): Double = when {
+    itemTop < boxTop + pad -> itemTop - boxTop - pad
+    itemBottom > boxBottom - pad -> itemBottom - boxBottom + pad
+    else -> 0.0
 }
 
 /** One place a side menu leads to (issue #1919): a panel, or a section of [panelId] -- a panel is its own. */
@@ -249,8 +279,9 @@ external interface PageSideMenuProps : Props {
 /**
  * A long page's side menu (issue #1919): its panels and their sections, beside the page and in view however far it
  * scrolls, marking where the reader is ([activeSideMenuEntry]) -- the section, and the panel it is in. A click scrolls
- * as the links at the page's top do. Drawn only on a screen wide enough for a column (`app.css`), where it takes the
- * place of those links; a narrower one keeps them.
+ * as the links at the page's top do. Drawn only on a screen wide enough for a column (`app.css`) beside a page long
+ * enough to need it ([pageNeedsSideMenu], measured on the page drawn just before it), where it takes the place of those
+ * links; otherwise they stay. A page draws it with [panelPage], not by hand.
  *
  * Where the reader is is measured on scroll, once a frame: an `IntersectionObserver` hears a place cross a line, but
  * not the page reaching its bottom, where the last, short panels never reach the line at all. Also when the page
@@ -261,7 +292,10 @@ external interface PageSideMenuProps : Props {
 val PageSideMenu = FC<PageSideMenuProps> { props ->
     val entries = sideMenuEntries(props.panels, props.sections)
     var active by useState<String?>(null)
+    // Whether the page beside it is long enough for it ([pageNeedsSideMenu]): measured, so no page has to say.
+    var long by useState(false)
     val menu = useRef<HTMLElement>(null)
+    val box = useRef<HTMLDivElement>(null)
     val ids = entries.joinToString(" ") { it.id }
     useEffect(ids) {
         if (entries.isEmpty()) return@useEffect
@@ -271,8 +305,13 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
         var scroller: dynamic = null
         var landing = 0.0
         fun measure() {
-            // Hidden on a narrow screen: nothing to mark, and nothing read.
-            if (menu.current?.asDynamic()?.offsetParent == null) {
+            // The page it sits beside, drawn just before it ([panelPage]): long enough for a menu, or not.
+            val page = menu.current?.asDynamic()?.previousElementSibling
+            val pageHeight = (page?.getBoundingClientRect()?.height as Double?) ?: 0.0
+            val isLong = pageNeedsSideMenu(props.panels.size, pageHeight, window.innerHeight.toDouble())
+            long = isLong
+            // Hidden -- a short page, or a narrow screen: nothing to mark, and nothing more read.
+            if (!isLong || !window.matchMedia(SMENU.wideQuery).matches) {
                 scroller = null
                 return
             }
@@ -305,8 +344,9 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
         val options = js("({ capture: true, passive: true })")
         document.asDynamic().addEventListener("scroll", onScroll, options)
         window.asDynamic().addEventListener("resize", onResize, options)
-        // Content that loads or opens moves the places without a scroll: the row holding the menu and the page beside
-        // it is watched for it -- there from the start, unlike a panel, which may draw only once its read answers.
+        // Content that loads or opens moves the places without a scroll, and may make the page long enough for the
+        // menu: the row holding the menu and the page beside it is watched for it -- there from the start, unlike a
+        // panel, which may draw only once its read answers.
         val watched = menu.current?.parentElement
         val observer: dynamic = watched?.let {
             val made = resizeObserver { schedule() }
@@ -323,12 +363,28 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
             if (frame != 0) window.cancelAnimationFrame(frame)
         }
     }
+    // The marked entry kept in view when the menu's own box scrolls (a short window, a long list). Its box is moved,
+    // never the page: a scrollIntoView would move every box around it, the page among them.
+    useEffect(active) {
+        val shown = box.current ?: return@useEffect
+        // The first marked, the box goes back to its top, heading and all.
+        if (active != null && active == entries.firstOrNull()?.id) {
+            shown.scrollTop = 0.0
+            return@useEffect
+        }
+        val link = shown.querySelector("[aria-current]") ?: return@useEffect
+        val outer = shown.getBoundingClientRect()
+        val item = link.getBoundingClientRect()
+        val by = scrollToShow(outer.top, outer.bottom, item.top, item.bottom, SMENU.keepInViewPad)
+        if (by != 0.0) shown.scrollTop += by
+    }
     val activePanel = entries.firstOrNull { it.id == active }?.panelId
     nav {
         ref = menu
-        className = ClassName("page-side-menu")
+        className = ClassName(if (long) "page-side-menu page-long" else "page-side-menu")
         asDynamic()["aria-label"] = "Page sections"
         div {
+            ref = box
             className = ClassName("page-side-menu-box")
             // Seen, not heard: the nav's own name says it to a screen reader.
             div {
@@ -359,6 +415,34 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
                 }
             }
         }
+    }
+}
+
+/**
+ * A page of panels in one card (issue #1919): the card ([cardClass], keyed [cardKey]) holding [body], and then its
+ * [PageSideMenu] of [panels] and [sections] -- the lists the card's own top links ([panelLinks]) take. After the card in
+ * the page's order, so a keyboard or a screen reader reaches the page first, and placed beside it on the left by
+ * `app.css`. The menu shows only on a screen wide enough for it and a page long enough to need it
+ * ([pageNeedsSideMenu]), where it takes the place of the top links; otherwise the page reads as it always did.
+ *
+ * Drawn into the page's centered row (`.app-content`), as a page's card is: the two must be its items, side by side.
+ */
+fun ChildrenBuilder.panelPage(
+    panels: List<Pair<String, String>>,
+    sections: Map<String, List<Pair<String, String>>> = emptyMap(),
+    cardKey: String = "page",
+    cardClass: String = "card wide",
+    body: ChildrenBuilder.() -> Unit,
+) {
+    div {
+        key = cardKey.unsafeCast<Key>()
+        className = ClassName(cardClass)
+        body()
+    }
+    PageSideMenu {
+        key = "$cardKey-sideMenu".unsafeCast<Key>()
+        this.panels = panels
+        this.sections = sections
     }
 }
 

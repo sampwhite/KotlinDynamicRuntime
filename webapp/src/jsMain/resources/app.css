@@ -2119,31 +2119,34 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 /* A panel's links to its own sections (issue #1891), beside its link, and the sections they scroll to kept clear of the
    fixed app bar as a panel is. */
 .panel-sublinks { margin-left: 6px; color: var(--text-muted); }
-/* A long page's side menu (issue #1919; `PageSideMenu` in `Panels.kt`): a column beside the card, in view however far
-   the page scrolls, marking where the reader is. Only where the screen has room for it, taking the place of the links
-   at the card's top, which a narrower screen keeps. The card keeps its width where the window has room beside it for
-   the column (the menu's 220px, the page's 32px of padding, and a scrollbar's 20px), and narrows only as far as it must
-   where it has not. */
+/* A long page's side menu (issue #1919; `PageSideMenu` and `panelPage` in `Panels.kt`): a column beside the card, in
+   view however far the page scrolls, marking where the reader is. After the card in the page's order (a keyboard reaches
+   the page first), placed on its left here. Only where the screen has room for it and the page is long enough to need it
+   (`page-long`, measured), taking the place of the links at the card's top, which otherwise stay. The card keeps its
+   width where the window has room beside it for the column (the menu's 220px, the page's 32px of padding, and a
+   scrollbar's 20px), and narrows only as far as it must where it has not. The 1200px is `SMENU.wideQuery`'s too. */
 .page-side-menu { display: none; }
 @media (min-width: 1200px) {
-    .page-side-menu {
+    .page-side-menu.page-long {
         display: block;
+        order: -1;
         position: sticky;
         top: 84px;
         flex: none;
         width: 200px;
         margin-right: 20px;
-        max-height: calc(100vh - 104px);
-        overflow-y: auto;
     }
-    .page-side-menu + .card.wide { width: min(var(--content-width), calc(100vw - 272px)); }
-    .page-side-menu + .card .panel-links { display: none; }
+    .card.wide:has(+ .page-side-menu.page-long) { width: min(var(--content-width), calc(100vw - 272px)); }
+    .card:has(+ .page-side-menu.page-long) .panel-links { display: none; }
 }
 .page-side-menu ul { list-style: none; margin: 0; padding: 0; }
 /* Its own small card, as the page beside it is one: set apart from the page's background, not text loose on it. Entries
    read in the page's text colors, not a column of link indigo; where the reader is is a tinted pill with an accent bar,
    not bold, which would shift the text as the page scrolls. */
 .page-side-menu-box {
+    /* The box scrolls, not the nav around it, so its own shadow is not clipped by a scroll box. */
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
     padding: 14px 10px 12px;
     border: 1px solid var(--border);
     border-radius: 12px;
