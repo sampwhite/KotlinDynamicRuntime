@@ -3,6 +3,7 @@ package com.dynamicruntime.common.webasset
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.annotation.Isolate
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -26,7 +27,11 @@ class RefusingSaxFactory : SAXParserFactory() {
 /**
  * Whether an uploaded web asset is the image it says it is (issue #1130): the declared type checked against the
  * content, and an SVG held to being one that carries no script.
+ *
+ * Isolated, so it never runs beside another spec (issue #1925): a case puts another XML parser in place by a system
+ * property, the whole JVM's.
  */
+@Isolate
 class WebAssetCheckTest : StringSpec({
     val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
     val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 16)

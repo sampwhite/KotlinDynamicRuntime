@@ -65,10 +65,11 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Access tokens (issue #1403): an API key exchanged for a signed JWT that any service verifies with the published keys
  * alone, honored here as its key is -- its rules, its revocation, its owner -- until it expires, and through a rotation
- * of the key that signed it. Over the shared instance, with a client of this issue's own.
+ * of the key that signed it. Over an instance of its own (issue #1075): it travels the instance clock and rotates the
+ * signing key, both instance-wide.
  */
 class AccessTokenTest : StringSpec({
-    val cxt = TestInstances.default("accessToken1403")
+    val cxt = Startup.mkTestBootCxt("accessToken1403", "accessTokenTest")
 
     val mine = "tokens1403"
     val config = gedraConfig(cxt, "${mine}cfg", clientNamespace(mine), mine) {

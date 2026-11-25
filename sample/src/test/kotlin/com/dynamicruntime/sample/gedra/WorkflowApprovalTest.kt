@@ -1,6 +1,7 @@
 package com.dynamicruntime.sample.gedra
 
-import com.dynamicruntime.sample.SampleTestInstances
+import com.dynamicruntime.kdn.Startup
+import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
@@ -46,7 +47,11 @@ import io.kotest.matchers.string.shouldContain
  * someone else's engaged form at the right moment, once.
  */
 class WorkflowApprovalTest : StringSpec({
-    val cxt = SampleTestInstances.default("wfApprove787")
+    // Its own instance (issue #1075): a case freezes the instance clock, which is instance-wide.
+    val cxt = Startup.mkTestBootCxt(
+        "wfApprove787", "workflowApprovalTest", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
+        additionalComponents = listOf(SampleComponent()),
+    )
 
     val create = clientPath(GEP.formDocCreate, SC.acme)
     val engage = clientPath(GEP.workflowEngage, SC.acme)

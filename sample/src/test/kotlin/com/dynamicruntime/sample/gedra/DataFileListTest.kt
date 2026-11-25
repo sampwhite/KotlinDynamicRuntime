@@ -1,19 +1,27 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.datafile.DFILE
 import com.dynamicruntime.common.datafile.DFSTAT
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
-import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.filekind.FKIND
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
@@ -31,14 +39,28 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.shouldBe
 
 /**
- * The listing of data files (issue #1863), on the sample client globex, whose `sample:siteMedia` trait holds files: a
- * user's own, an administrator's whole client, none of another client's, each with how many live forms use it.
+ * The listing of data files (issue #1863), on a client whose forms hold files, in the sample's `sample:siteMedia`: a
+ * user's own, an administrator's whole client, none of another client's, each with how many live forms use it. The client
+ * is this spec's own, since what an administrator lists is every file it has.
  */
 class DataFileListTest : StringSpec({
     val cxt = SampleTestInstances.default("fileList")
-    val pat = TestUser.create(cxt, "pat@list1863.globex.test", userClient = SC.globex)
-    val sam = TestUser.create(cxt, "sam@list1863.globex.test", userClient = SC.globex)
-    val chief = TestUser.create(cxt, "chief@list1863.globex.test", level = ROLE.admin, userClient = SC.globex)
+
+    val client = "files1863"
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+        defineClient(
+            ClientDef(
+                clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.customer,
+                enabledEnvironments = setOf(ENV.unit, ENV.local), includedTraits = listOf(CLD.allGlobal),
+            ),
+        )
+    }
+    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 18630L }, config)
+    GedraConfigReload.reloadClient(cxt, client)
+
+    val pat = TestUser.create(cxt, "pat@list1863.test", userClient = client)
+    val sam = TestUser.create(cxt, "sam@list1863.test", userClient = client)
+    val chief = TestUser.create(cxt, "chief@list1863.test", level = ROLE.admin, userClient = client)
     val outsider = TestUser.create(cxt, "pat@list1863.acme.test", userClient = SC.acme)
 
     fun png(seed: Int): ByteArray =
@@ -62,7 +84,7 @@ class DataFileListTest : StringSpec({
     val spare = upload(pat, "spare.png", png(5))
     val sams = upload(sam, "sams.png", png(7))
     val created = pat.client.sendEditRequest(
-        clientPath(GEP.formDocCreate, SC.globex), null,
+        GEP.formDocCreate, null,
         mapOf(GDF.entries to listOf(mapOf(GE.traitId to ST.siteMedia, GE.data to mapOf(ST.photo to used)))), HttpMethod.POST,
     ).rptResponseData?.jsonMap().shouldNotBeNull()
     created[EP.status] shouldBe null
@@ -91,14 +113,14 @@ class DataFileListTest : StringSpec({
     }
 
     "a caller who reaches every client lists only the client they act in; an editor lists the whole client" {
-        val deploymentAdmin = TestUser.createFullAdmin(cxt, "root@list1863.globex.test", userClient = SC.globex)
+        val deploymentAdmin = TestUser.createFullAdmin(cxt, "root@list1863.test", userClient = client)
         rows(deploymentAdmin).map { it[DFILE.fileId] } shouldContainExactlyInAnyOrder listOf(used, spare, sams)
-        // Acting in `hub`, the same reach lists none of globex's.
+        // Acting in `hub`, the same reach lists none of this client's.
         val inHub = TestUser.createFullAdmin(cxt, "root@list1863.hub.test")
         val hubIds = rows(inHub).map { it[DFILE.fileId] }
         for (id in listOf(used, spare, sams)) hubIds shouldNotContain id
 
-        val editor = TestUser.create(cxt, "ed@list1863.globex.test", userClient = SC.globex, persona = PERSONA.editor)
+        val editor = TestUser.create(cxt, "ed@list1863.test", userClient = client, persona = PERSONA.editor)
         rows(editor).map { it[DFILE.fileId] } shouldContainExactlyInAnyOrder listOf(used, spare, sams)
     }
 
