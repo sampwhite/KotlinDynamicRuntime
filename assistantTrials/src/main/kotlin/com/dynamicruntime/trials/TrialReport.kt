@@ -1,6 +1,10 @@
 package com.dynamicruntime.trials
 
+import com.dynamicruntime.common.util.jsonArray
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.util.toOptStr
 import java.io.File
 import kotlin.math.roundToLong
 import kotlin.time.Instant
@@ -21,6 +25,7 @@ class RunInfo(
  * calls and replies, and the client's whole configuration -- which is also written beside the report, a file per bundle,
  * to inspect or diff on its own.
  */
+@Suppress("ConstPropertyName")
 object TrialReport {
     /**
      * The input price per million tokens, in dollars, of each model the assistant accepts (`KDR_ASSISTANT_MODEL`). A
@@ -43,10 +48,10 @@ object TrialReport {
     fun write(runDir: File, info: RunInfo, results: List<Pair<TrialResult, String>>): File {
         runDir.mkdirs()
         for ((result, _) in results) {
-            val dir = File(runDir, "config/${slug(result)}").also { it.mkdirs() }
+            val dir = File(runDir, "$configDir/${slug(result)}").also { it.mkdirs() }
             for ((name, bundle) in result.config) File(dir, "$name.json").writeText(bundle.toJsonStr() + "\n")
-            File(runDir, "transcripts").mkdirs()
-            File(runDir, "transcripts/${slug(result)}.json").writeText(
+            File(runDir, transcriptsDir).mkdirs()
+            File(runDir, "$transcriptsDir/${slug(result)}.json").writeText(
                 result.conversations.map { mapOf("conversationId" to it.conversationId, "turns" to it.turns, "messages" to it.messages) }
                     .toJsonStr() + "\n",
             )
@@ -56,7 +61,49 @@ object TrialReport {
         return report
     }
 
-    fun slug(r: TrialResult): String = "${r.trial.name}-${r.variant.name}"
+    /** The directories of a run holding each trial's transcript, and its configuration by bundle. */
+    const val transcriptsDir = "transcripts"
+    private const val configDir = "config"
+
+    fun slug(r: TrialResult): String = slug(r.trial, r.variant)
+
+    private fun slug(trial: Trial, variant: TrialVariant): String = "${trial.name}-${variant.name}"
+
+    /**
+     * The results [runDir] holds, of the variants of [trials] there are now, read back from what [write] wrote: the
+     * conversations and the configuration, which are all a check reads. What else a result says -- its client, its problems,
+     * its times -- is the run's own report's.
+     */
+    fun read(runDir: File, trials: List<Trial>): List<TrialResult> =
+        trials.flatMap { trial -> trial.variants.mapNotNull { read(runDir, trial, it) } }
+
+    private fun read(runDir: File, trial: Trial, variant: TrialVariant): TrialResult? {
+        val slug = slug(trial, variant)
+        val transcript = File(runDir, "$transcriptsDir/$slug.json").takeIf { it.isFile } ?: return null
+        val conversations = transcript.readText().jsonArray().toJsonListOfMaps().map {
+            TrialConversation(
+                it["conversationId"].toOptStr().orEmpty(), it["turns"].toJsonListOfMaps(), it["messages"].toJsonListOfMaps(),
+            )
+        }
+        val config = File(runDir, "$configDir/$slug").listFiles { f -> f.name.endsWith(".json") }.orEmpty().sortedBy { it.name }
+            .associate { it.name.removeSuffix(".json") to it.readText().jsonMap().orEmpty() }
+        val at = Instant.fromEpochMilliseconds(transcript.lastModified())
+        return TrialResult(trial, variant, null, null, conversations, config, emptyList(), at, at)
+    }
+
+    /** A saved run held to the checks as they are now: each result's expectations, as the report gives them. */
+    fun renderRecheck(runId: String, results: List<TrialResult>): String = buildString {
+        appendLine("# Assistant trials: run $runId, rechecked")
+        appendLine()
+        appendLine("The run's transcripts and configuration, held to the checks as they are now. The report beside this says what")
+        appendLine("the checks of its day did.")
+        for (r in results) {
+            appendLine()
+            appendLine("## ${r.trial.name}, ${r.variant.name}")
+            appendLine()
+            renderExpectations(r)
+        }
+    }
 
     /** The report itself. [results] pairs each trial's result with the address of the person who ran it. */
     fun render(info: RunInfo, results: List<Pair<TrialResult, String>>): String = buildString {
@@ -104,11 +151,7 @@ object TrialReport {
         appendLine()
         appendLine("### Expectations")
         appendLine()
-        appendLine("| Outcome | Expectation | Found |")
-        appendLine("| --- | --- | --- |")
-        for ((expectation, outcome) in r.outcomes()) {
-            appendLine("| ${label(outcome.kind)} | ${cell(expectation.name)} | ${cell(outcome.detail)} |")
-        }
+        renderExpectations(r)
         if (r.problems.isNotEmpty()) {
             appendLine()
             appendLine("### Problems")
@@ -155,6 +198,14 @@ object TrialReport {
             appendLine("```")
             appendLine()
             appendLine("</details>")
+        }
+    }
+
+    private fun StringBuilder.renderExpectations(r: TrialResult) {
+        appendLine("| Outcome | Expectation | Found |")
+        appendLine("| --- | --- | --- |")
+        for ((expectation, outcome) in r.outcomes()) {
+            appendLine("| ${label(outcome.kind)} | ${cell(expectation.name)} | ${cell(outcome.detail)} |")
         }
     }
 

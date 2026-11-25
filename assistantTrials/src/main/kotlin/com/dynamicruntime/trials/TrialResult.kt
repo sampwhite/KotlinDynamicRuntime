@@ -49,6 +49,9 @@ class TrialConversation(val conversationId: String, val turns: List<Map<String, 
         }
     }
 
+    /** What the conversation began with: its first turn's message. */
+    val firstText: String get() = turns.firstOrNull()?.get(ACNV.text).toOptStr().orEmpty()
+
     /** What the assistant last wrote in [turnId]: its reply to the administrator. */
     fun reply(turnId: String): String = messages.filter { it[ACNV.role] == ABLK.assistant && it[ACNV.turnId] == turnId }
         .lastOrNull { message -> blocksOf(message).any { it[ABLK.type] == ABLK.text } }
@@ -109,8 +112,12 @@ class TrialResult(
     /** The model that answered, when every turn names the same one. */
     val model: String? get() = models.singleOrNull()
 
-    /** Each expectation of the trial, then those every trial is held to, with its outcome. */
-    fun outcomes(): List<Pair<Expectation, Outcome>> = (trial.expectations + MethodChecks.all).map { expectation ->
+    /** Each expectation of the trial, its variant's own, and those every trial is held to, with its outcome. */
+    fun outcomes(): List<Pair<Expectation, Outcome>> = buildList {
+        addAll(trial.expectations)
+        addAll(variant.expectations)
+        addAll(MethodChecks.all)
+    }.map { expectation ->
         expectation to try {
             expectation.check(this)
         } catch (e: Exception) {

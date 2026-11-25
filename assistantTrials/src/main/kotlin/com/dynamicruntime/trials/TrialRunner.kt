@@ -26,6 +26,7 @@ object Trials {
  *   attaches to a node somebody started, it starts one and leaves it running. `--trials list` lists the trials.
  * - `stop [--port <port>|all]` lists the trial nodes still running, or stops the ones named.
  * - `restart --run <runId>` starts a run's node again, on its port and database, as the run left it.
+ * - `recheck --run <runId>|all` holds saved runs to the checks as they are now.
  *
  * A run never fails on what the assistant did -- that is the report's to say. It exits non-zero only when the harness
  * itself could not run: no API key, no free port, a node that would not start.
@@ -66,14 +67,12 @@ object TrialRunner {
         val url = attach ?: node!!.url
         val info = RunInfo(runId, url, node?.port, if (attach != null) emptyMap() else settings, commit(), Clock.System.now())
         println("Running ${runs.joinToString { "${it.first.name}/${it.second.name}" }} against $url")
-        val results = runs.map { (trial, variant) ->
-            val email = "${trial.name}-${variant.name}-$runId@trials.test".lowercase()
+        val (report, results) = runAll(runs, runDir, info) { trial, variant, email ->
             ProbeSession("trial-${trial.name}-${variant.name}", url).use { session ->
                 session.becomeUser(email, client = CL.public)
-                TrialDriver(ProbeCaller(session)).run(trial, variant, runId) to email
+                TrialDriver(ProbeCaller(session)).run(trial, variant, runId)
             }
         }
-        val report = TrialReport.write(runDir, info, results)
         println()
         for ((r, _) in results) {
             val counts = r.outcomes().groupingBy { it.second.kind }.eachCount()
@@ -87,6 +86,61 @@ object TrialRunner {
         println("Report: ${report.absolutePath}")
         node?.let {
             println("The node is still running at ${it.url}/wa. Stop it with ./gradlew :assistantTrials:stopTrials -Pport=${it.port}")
+        }
+    }
+
+    /**
+     * Runs each of [runs] with [runOne], writing the report again as each ends, so what one run was paid for is kept
+     * whatever happens to the next (issue #1914). A run that fails to start -- its node gone, say -- is a result with that
+     * as its problem, and the rest go on. Answers the report and the results.
+     */
+    fun runAll(
+        runs: List<Pair<Trial, TrialVariant>>,
+        runDir: File,
+        info: RunInfo,
+        runOne: (trial: Trial, variant: TrialVariant, email: String) -> TrialResult,
+    ): Pair<File, List<Pair<TrialResult, String>>> {
+        val results = mutableListOf<Pair<TrialResult, String>>()
+        for ((trial, variant) in runs) {
+            val email = "${trial.name}-${variant.name}-${info.runId}@trials.test".lowercase()
+            val startedAt = Clock.System.now()
+            val result = try {
+                runOne(trial, variant, email)
+            } catch (e: Exception) {
+                val problem = "The run failed: ${e.message ?: e::class.simpleName}"
+                println("  ${trial.name}/${variant.name}: $problem")
+                TrialResult(trial, variant, null, null, emptyList(), emptyMap(), listOf(problem), startedAt, Clock.System.now())
+            }
+            results.add(result to email)
+            TrialReport.write(runDir, info, results)
+        }
+        return TrialReport.write(runDir, info, results) to results
+    }
+
+    /**
+     * Holds saved runs to the checks as they are now (issue #1914), from each run's transcripts and configuration: what an
+     * old report said is only what the checks of its day could tell. Costs nothing, and leaves the run's report as it was,
+     * writing `recheck.md` beside it. `--run all` takes every run that has a transcript.
+     */
+    fun recheck(args: Map<String, String>) {
+        val which = args["run"] ?: throw IllegalArgumentException("Name the run to recheck: -Prun=<runId>, or -Prun=all.")
+        val dirs = if (which == "all") {
+            runsDir.listFiles()?.filter { File(it, TrialReport.transcriptsDir).isDirectory }?.sortedBy { it.name }.orEmpty()
+        } else {
+            listOf(File(runsDir, which))
+        }
+        for (dir in dirs) {
+            val results = TrialReport.read(dir, Trials.all)
+            if (results.isEmpty()) println("${dir.name}: no transcript of a trial there is now.")
+            for (result in results) {
+                println("${dir.name} ${result.trial.name}/${result.variant.name}")
+                for ((expectation, outcome) in result.outcomes()) {
+                    if (outcome.kind == OutcomeKind.varied || outcome.kind == OutcomeKind.notMet) {
+                        println("  ${outcome.kind.name}: ${expectation.name} -- ${outcome.detail.take(200)}")
+                    }
+                }
+            }
+            if (results.isNotEmpty()) File(dir, "recheck.md").writeText(TrialReport.renderRecheck(dir.name, results))
         }
     }
 
@@ -152,7 +206,7 @@ object TrialRunner {
     }.getOrNull()
 }
 
-/** `run …`, `stop …`, or `restart …`; see [TrialRunner]. */
+/** `run …`, `stop …`, `restart …`, or `recheck …`; see [TrialRunner]. */
 fun main(args: Array<String>) {
     val command = args.firstOrNull()
     val options = args.drop(1).chunked(2).filter { it.size == 2 && it[0].startsWith("--") }.associate { it[0].removePrefix("--") to it[1] }
@@ -161,7 +215,10 @@ fun main(args: Array<String>) {
             "run" -> TrialRunner.run(options)
             "stop" -> TrialRunner.stop(options)
             "restart" -> TrialRunner.restart(options)
-            else -> throw IllegalArgumentException("Usage: run --trials <names> | stop [--port <port>|all] | restart --run <runId>")
+            "recheck" -> TrialRunner.recheck(options)
+            else -> throw IllegalArgumentException(
+                "Usage: run --trials <names> | stop [--port <port>|all] | restart --run <runId> | recheck --run <runId>|all",
+            )
         }
     } catch (e: Exception) {
         System.err.println("Assistant trials: ${e.message ?: e::class.simpleName}")

@@ -1374,7 +1374,7 @@ object WfDefSchema {
         type(WFD.approvalStepType) {
             type = SCT.kObject
             description = "One step of an ordered approval: who may give it, the copy around its button, and who it waits on."
-            property(WFD.id, "The step's id, unique in its task: what its record is kept under.", required = true)
+            property(WFD.id, "The step's id, unique in its task, and not the task's own: what its record is kept under.", required = true)
             property(WFD.label, "What the record shows once the step is given -- a template, like a task's label.")
             property(WFD.prompt, "The text above the step's button -- a template, evaluated in two passes.", required = true)
             property(WFD.button, "The step's button text -- a template, evaluated in two passes.", required = true)

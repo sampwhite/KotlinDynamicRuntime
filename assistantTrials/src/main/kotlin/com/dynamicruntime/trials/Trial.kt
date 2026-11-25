@@ -9,10 +9,16 @@ class TrialPrompt(val text: String, val newConversation: Boolean = true)
 
 /**
  * One phrasing of a trial's goal: `explicit` in the documentation's own words, `loose` as a person says it in passing, or
- * `ownWords` in an organization's own terms. Every variant of a trial is held to the same expectations, so two reports of
- * one trial show what the wording changed.
+ * `ownWords` in an organization's own terms. Every variant of a trial is held to the trial's expectations, so two reports
+ * of one trial show what the wording changed. A variant that names something exactly -- these four choices, that mail's
+ * subject -- has [expectations] of its own beside them (issue #1914), which one that only means it is not held to.
  */
-class TrialVariant(val name: String, val description: String, val prompts: List<TrialPrompt>)
+class TrialVariant(
+    val name: String,
+    val description: String,
+    val prompts: List<TrialPrompt>,
+    val expectations: List<Expectation> = emptyList(),
+)
 
 /** How an expectation came out. Each name matches its value. */
 @Suppress("EnumEntryName")

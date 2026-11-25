@@ -2,9 +2,14 @@ package com.dynamicruntime.trials
 
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ATOOL
+import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.report.ReportCombine
+import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
@@ -14,6 +19,7 @@ import com.dynamicruntime.common.home.HCARD
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -22,19 +28,25 @@ import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * One field of a trait's data, read for matching by meaning: its [words] are its name, title, and description, lowercased,
+ * One field of a trait's data, read for matching by meaning: its [words] are its name, its layout's [label], its title, and
+ * its description, lowercased,
  * so a check can ask whether a field is about an amount without knowing what the model called it.
  */
-class FieldView(val traitId: String, val name: String, val schema: Map<String, Any?>) {
+class FieldView(val traitId: String, val name: String, val schema: Map<String, Any?>, val label: String? = null) {
     /** Its JSON Schema type; an absent type is a string, as the schema dialect reads it. */
     val type: String get() = schema[SCH.type].toOptStr() ?: "string"
     val format: String? get() = schema[SCH.format].toOptStr()
     val options: List<Any?> get() = schema[SCH.options] as? List<*> ?: schema[SCH.enum] as? List<*> ?: emptyList()
+    /** What its choices are called, lowercased: each by its label where it has one, else its value. */
+    val optionNames: Set<String> get() = options.mapNotNull { o ->
+        ((o as? Map<*, *>)?.let { it[SCH.label] ?: it[SCH.value] } ?: o).toOptStr()?.lowercase()
+    }.toSet()
     val longText: Boolean get() = schema[SCH.longText] == true
     val isNumber: Boolean get() = type == "number" || type == "integer"
     val isDate: Boolean get() = format == "date" || format == "date-time"
 
-    val words: String get() = listOfNotNull(name, schema[SCH.title].toOptStr(), schema[SCH.description].toOptStr()).joinToString(" ").lowercase()
+    val words: String get() =
+        listOfNotNull(name, label, schema[SCH.title].toOptStr(), schema[SCH.description].toOptStr()).joinToString(" ").lowercase()
 
     /** Whether any of [terms] appears in its [words]. */
     fun mentions(terms: List<String>): Boolean = terms.any { words.contains(it.lowercase()) }
@@ -62,8 +74,11 @@ class ConfigView(val bundles: Map<String, Map<String, Any?>>) {
     val fields: List<FieldView> by lazy {
         entries(CCT.traitDef).flatMap { trait ->
             val traitId = trait[CCT.traitId].toOptStr().orEmpty()
-            trait[CCT.dataSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty().map { (name, schema) ->
-                FieldView(traitId, name, schema.toJsonMapOrEmpty())
+            val data = trait[CCT.dataSchema].toJsonMapOrEmpty()
+            val labels = data[SCH.layout].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+                .associate { it[SL.field].toOptStr() to it[SL.label].toOptStr() }
+            data[SCH.properties].toJsonMapOrEmpty().map { (name, schema) ->
+                FieldView(traitId, name, schema.toJsonMapOrEmpty(), labels[name])
             }
         }
     }
@@ -203,9 +218,10 @@ object Checks {
 
     /**
      * A card on Home that opens the New form (issue #1869): by its button, which takes an action naming the page **and** an
-     * action label, by one of its links, or by a link in its words. Varied when a card opens some other page. A card whose
-     * action is an address, or has no words for its button, opens nothing: until the guide said how, every run wrote one
-     * such, and a check that asked only for a card passed it.
+     * action label, by one of its links, or by a link in its words -- and that an applicant is shown. Varied when the card
+     * opens some other page, or is hidden from applicants. A card whose action is an address, or has no words for its
+     * button, opens nothing: until the guide said how, every run wrote one such, and a check that asked only for a card
+     * passed it.
      */
     fun homeCardStartsForm(r: TrialResult): Outcome {
         val cards = r.view.homeCards.filter { it[HCARD.title] != null }
@@ -215,12 +231,31 @@ object Checks {
         }
         val summary = cards.joinToString("; ") { cardSummary(it) }
         val opened = cards.flatMap { cardOpens(it) }
+        val starting = cards.filter { HMENU.pageNewForm in cardOpens(it) }
         return when {
-            HMENU.pageNewForm in opened -> Outcome.met(summary)
+            starting.any { shownToApplicant(it[UIB.cfactExpression].toOptStr()) } -> Outcome.met(summary)
+            starting.isNotEmpty() -> Outcome.varied("Opens the New form, but an applicant is not shown it: $summary")
             opened.isNotEmpty() -> Outcome.varied("Opens ${opened.joinToString()}, not the New form: $summary")
             else -> Outcome.notMet("Opens no page: $summary")
         }
     }
+
+    /**
+     * Whether [condition] shows an item to an applicant: someone signed in to the client, who administers and edits
+     * nothing. A condition that does not parse shows it to nobody.
+     */
+    fun shownToApplicant(condition: String?): Boolean {
+        val expression = condition ?: return true
+        val names = cfactName.findAll(expression).map { it.value }.toSet()
+        return CFactParser.analyze(expression, names, applicantFacts).value == true
+    }
+
+    private val cfactName = Regex("[A-Za-z][A-Za-z0-9_.:]*")
+
+    /** What is true of an applicant in a self-serve client with a sandbox and a review, as the trials make it. */
+    private val applicantFacts = setOf(
+        CFACTS.app, CFACTS.loggedIn, CFACTS.selfServeClient, CFACTS.clientHasSandbox, CFACTS.clientHasWaitingWorkflows,
+    )
 
     /** The pages [card] opens, by name: its button's, its links', and those its words link. */
     private fun cardOpens(card: Map<String, Any?>): List<String> {
@@ -300,12 +335,51 @@ object Checks {
      */
     fun reportMadeWhole(r: TrialResult): Outcome {
         val created = r.calls.filter { it.name == ATOOL.createReport && it.dryRun != true && !it.isError }
-        val patched = r.calls.filter { it.name == ATOOL.patchConfig && it.dryRun != true && CCT.reportDef in patchedSlots(it) }
+        val patches = r.calls.filter {
+            it.name == ATOOL.patchConfig && it.dryRun != true && !it.isError && CCT.reportDef in patchedSlots(it)
+        }
+        val after = created.firstOrNull()?.let { first -> patches.filter { r.calls.indexOf(it) > r.calls.indexOf(first) } }.orEmpty()
         return when {
-            created.isEmpty() && patched.isEmpty() -> Outcome.notMet("No report was made.")
-            created.isEmpty() -> Outcome.varied("Made with ${ATOOL.patchConfig} alone, in ${patched.size} write(s).")
-            patched.isNotEmpty() -> Outcome.varied("Made with ${ATOOL.createReport}, then patched in ${patched.size} write(s).")
+            created.isEmpty() && patches.isEmpty() -> Outcome.notMet("No report was made.")
+            created.isEmpty() -> Outcome.varied("Made with ${ATOOL.patchConfig} alone, in ${patches.size} write(s).")
+            after.isNotEmpty() -> Outcome.varied("Made with ${ATOOL.createReport}, then patched in ${after.size} write(s).")
             else -> Outcome.met("Made with ${ATOOL.createReport}, and not patched afterward.")
+        }
+    }
+
+    /**
+     * A report grouped by the New form's choice that [categoryTerms] describe, totaling the number [amountTerms] do
+     * (issue #1914): both by the fields its columns read, not by words found anywhere in it. How many forms a group holds
+     * needs no column: a grouped run says it beside every group. Varied when a report has one and not the other. The
+     * starter report, which every new client has, is nobody's answer.
+     */
+    fun reportTotals(r: TrialResult, categoryTerms: List<String>, amountTerms: List<String>): Outcome {
+        fun reads(column: Map<String, Any?>, terms: List<String>, wanted: (FieldView) -> Boolean): Boolean {
+            val path = column[RDEF.path].toOptStr().orEmpty()
+            return r.view.fields.any { field ->
+                // The trait, with a keyed one's selector after it, then the field, however deep.
+                val rest = path.removePrefix("${ReportSource.form.name}.${field.traitId}")
+                rest != path && (rest[0] == '.' || rest[0] == '[') && rest.endsWith(".${field.name}") &&
+                    field.mentions(terms) && wanted(field)
+            }
+        }
+        class Held(val report: Map<String, Any?>) {
+            val columns = report[RDEF.columns].toJsonListOfMaps()
+            val groupBy = report[RDEF.groupBy].toJsonListOfStrings()
+            val grouped = columns.any { it[RDEF.columnId] in groupBy && reads(it, categoryTerms) { f -> f.options.isNotEmpty() } }
+            val totaled = columns.any { it[RDEF.rollup] == ReportCombine.sum.name && reads(it, amountTerms) { f -> f.isNumber } }
+            val lacks = listOfNotNull("not grouped by the category".takeIf { !grouped }, "not totaling the amount".takeIf { !totaled })
+        }
+        val reports = r.view.reports.filter { it[RDEF.reportId] != ClientCreate.starterReport }.map { Held(it) }
+        val whole = reports.firstOrNull { it.lacks.isEmpty() }
+        return when {
+            whole != null -> Outcome.met(reportSummary(whole.report))
+            reports.any { it.lacks.size == 1 } || reports.size > 1 ->
+                Outcome.varied(reports.joinToString("; ") { "${it.lacks.joinToString(", ")}: ${reportSummary(it.report)}" })
+            reports.isNotEmpty() -> reports.single().let {
+                Outcome.notMet("It is ${it.lacks.joinToString(", and ")}: ${reportSummary(it.report)}")
+            }
+            else -> Outcome.notMet("No report but the starter one.")
         }
     }
 
@@ -314,46 +388,61 @@ object Checks {
         config[CFEP.edits].toJsonListOfMaps().mapNotNull { it[CFEP.slot].toOptStr() }
     }
 
-    /** A reworded key under [file] whose value mentions [term]. */
-    fun copyMentions(r: TrialResult, file: String, namespaceTerm: String?, term: String): Outcome {
-        val keys = r.view.copyKeys.filterKeys { k ->
-            k.startsWith("$file.") && (namespaceTerm == null || k.substringAfter('.').contains(namespaceTerm, ignoreCase = true))
-        }
+    /**
+     * Reworded copy of [file] that mentions [term]: in any of its keys, in those of [namespace], or in the one [key] of it
+     * (issue #1914), so a check titled for one line is not met by another.
+     */
+    fun copyMentions(r: TrialResult, file: String, namespace: String?, term: String, key: String? = null): Outcome {
+        val under = listOfNotNull(file, namespace, key).joinToString(".")
+        val keys = r.view.copyKeys.filterKeys { it == under || it.startsWith("$under.") }
         val hit = keys.entries.firstOrNull { it.value.contains(term, ignoreCase = true) }
         return when {
             hit != null -> Outcome.met("${hit.key}: ${hit.value.take(160)}")
             keys.isNotEmpty() -> Outcome.varied("Reworded ${keys.keys.joinToString()}, none naming '$term'.")
-            else -> Outcome.notMet("Nothing in '$file' reworded. Reworded keys: ${r.view.copyKeys.keys.joinToString().ifEmpty { "none" }}.")
+            else -> {
+                val reworded = r.view.copyKeys.keys.joinToString().ifEmpty { "none" }
+                Outcome.notMet("Nothing under '$under' reworded. Reworded keys: $reworded.")
+            }
         }
     }
 }
 
 /** What every trial is held to: how the assistant worked, as its transcript shows. */
 object MethodChecks {
-    val readsMakingChanges = Expectation("Read making-changes before its first change") { r ->
-        // A dry run changes nothing, so it may come before the read.
-        val writes = r.calls.filterNot { it.isRead || it.name == ATOOL.readDoc || it.dryRun == true }
-        val firstWrite = r.calls.indexOfFirst { it in writes }
-        val read = r.calls.indexOfFirst { it.name == ATOOL.readDoc && it.input[ATOOL.doc] == HDOC.makingChanges }
-        when {
-            writes.isEmpty() -> Outcome.info("It changed nothing.")
-            read in 0..<firstWrite -> Outcome.met("Read it at call ${read + 1}, before its first change at call ${firstWrite + 1}.")
-            read >= 0 -> Outcome.varied(
-                "Read it at call ${read + 1}, after its first change (${writes.first().name}) at call ${firstWrite + 1}.",
-            )
-            else -> Outcome.notMet("Never read it; its first change was ${writes.first().name}.")
+    /** Information alone: the guide is for when the tool is not plain, which a transcript does not say (issue #1914). */
+    val readsMakingChanges = Expectation("Conversations that read making-changes before their first change") { r ->
+        // A conversation has only what was read in it. A dry run changes nothing, so it may come before the read, and a call
+        // refused changed and read nothing.
+        val changing = r.conversations.mapNotNull { c ->
+            val calls = c.calls.filter { !it.isError }
+            val first = calls.indexOfFirst { !it.isRead && it.name != ATOOL.readDoc && it.dryRun != true }
+            if (first < 0) return@mapNotNull null
+            val read = calls.indexOfFirst { it.name == ATOOL.readDoc && it.input[ATOOL.doc] == HDOC.makingChanges }
+            Triple(c, calls[first], read in 0..<first)
         }
+        val unread = changing.filter { !it.third }
+        val without = unread.joinToString("; ") { (c, change, _) -> "'${c.firstText.take(50)}' (${change.name})" }
+        Outcome.info(
+            when {
+                changing.isEmpty() -> "It changed nothing."
+                unread.isEmpty() -> "All ${changing.size} that changed something."
+                else -> "${changing.size - unread.size} of the ${changing.size} that changed something. Without it: $without."
+            },
+        )
     }
 
     val dryRunsFirst = Expectation("Dry-ran each change that offers one before making it") { r ->
         // A tool offers a dry run when any of the run's calls to it said dryRun; patch_config always does. A change made
-        // through one without saying dryRun at all is made outright, as dryRun false is.
+        // through one without saying dryRun at all is made outright, as dryRun false is. Rehearsed is the same change, in
+        // the same turn, by a dry run that was accepted (issue #1914).
+        fun change(call: ToolCall) = call.input - CFEP.dryRun
         val offering = r.calls.filter { it.dryRun != null }.map { it.name }.toSet() + ATOOL.patchConfig
         val writes = r.calls.filter { !it.isRead && it.name != ATOOL.readDoc && !it.isError }
         val made = writes.filter { it.name in offering && it.dryRun != true }
-        val unrehearsed = made.filter { change ->
-            val before = r.calls.subList(0, r.calls.indexOf(change))
-            before.none { it.name == change.name && it.turnId == change.turnId && it.dryRun == true }
+        val unrehearsed = made.filter { call ->
+            r.calls.subList(0, r.calls.indexOf(call)).none {
+                it.name == call.name && it.turnId == call.turnId && it.dryRun == true && !it.isError && change(it) == change(call)
+            }
         }
         val noOption = writes.count { it.name !in offering }
         val also = if (noOption > 0) " $noOption change(s) offered no dry run." else ""
@@ -385,7 +474,7 @@ object MethodChecks {
     }
 
     val patchConfigUse = Expectation("Writes made with patch_config rather than a targeted tool") { r ->
-        val patches = r.calls.filter { it.name == ATOOL.patchConfig && it.dryRun != true }
+        val patches = r.calls.filter { it.name == ATOOL.patchConfig && it.dryRun != true && !it.isError }
         if (patches.isEmpty()) {
             Outcome.info("None.")
         } else {

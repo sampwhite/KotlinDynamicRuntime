@@ -108,7 +108,7 @@ class AssistantNewFormTest : StringSpec({
         text shouldContain "The New form page asks for exactly the traits of the client's creation workflow"
         // Long text (issue #1592): a trait it writes marks its free text, so a form draws a box of several lines.
         text shouldContain "Give it \"g-longText\": true in the trait's dataSchema"
-        // The whole client (issue #1768): the guide to read before choosing a tool, a rule per area, and what stays out.
+        // The whole client (issue #1768): the guide to choosing a tool, a rule per area, and what stays out.
         text shouldContain "configure it: its workflows"
         text shouldContain "read_doc '${HDOC.makingChanges}'"
         text shouldContain "Prefer a targeted tool to ${ATOOL.patchConfig}"
