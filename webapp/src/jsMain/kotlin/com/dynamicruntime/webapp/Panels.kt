@@ -22,9 +22,11 @@ import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.summary
 import react.dom.html.ReactHTML.ul
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 import web.dom.ElementId
+import web.html.HTMLElement
 
 /*
  * The building blocks of a page's structure (issue #1477), shared so every page reads the same way: see "Page
@@ -251,29 +253,42 @@ external interface PageSideMenuProps : Props {
  * place of those links; a narrower one keeps them.
  *
  * Where the reader is is measured on scroll, once a frame: an `IntersectionObserver` hears a place cross a line, but
- * not the page reaching its bottom, where the last, short panels never reach the line at all.
+ * not the page reaching its bottom, where the last, short panels never reach the line at all. Also when the page
+ * holding the places changes size -- content loaded or opened moves them without a scroll -- and never while the menu
+ * is hidden. What does not change with a scroll (the element scrolling the page, where a link lands a place) is read
+ * once, and again on a resize.
  */
 val PageSideMenu = FC<PageSideMenuProps> { props ->
     val entries = sideMenuEntries(props.panels, props.sections)
     var active by useState<String?>(null)
+    val menu = useRef<HTMLElement>(null)
     val ids = entries.joinToString(" ") { it.id }
     useEffect(ids) {
         if (entries.isEmpty()) return@useEffect
         var frame = 0
+        // What does not change as the page scrolls -- the element that scrolls it, and where a link lands a place --
+        // read once, and again on a resize; null until the menu shows.
+        var scroller: dynamic = null
+        var landing = 0.0
         fun measure() {
-            val tops = entries.mapNotNull { e ->
-                document.getElementById(e.id)?.getBoundingClientRect()?.top?.let { e.id to it }
+            // Hidden on a narrow screen: nothing to mark, and nothing read.
+            if (menu.current?.asDynamic()?.offsetParent == null) {
+                scroller = null
+                return
             }
             val first = document.getElementById(entries.first().id) ?: return
-            val scroller = pageScroller(first)
-            val ownScroller = scroller == document.asDynamic().scrollingElement || scroller == document.documentElement
-            val scrollerTop = if (ownScroller) 0.0 else (scroller.getBoundingClientRect().top as Double)
-            val atBottom = (scroller.scrollTop as Double) + (scroller.clientHeight as Int) >=
-                (scroller.scrollHeight as Int) - SMENU.bottomSlack
-            val line = scrollerTop + landingOffset(scroller, first) + SMENU.lineSlack
-            active = activeSideMenuEntry(tops, line, atBottom, window.innerHeight.toDouble())
+            if (scroller == null) {
+                scroller = pageScroller(first)
+                landing = landingOffset(scroller, first)
+            }
+            val box = scroller
+            val ownScroller = box == document.asDynamic().scrollingElement || box == document.documentElement
+            val boxTop = if (ownScroller) 0.0 else (box.getBoundingClientRect().top as Double)
+            val atBottom = (box.scrollTop as Double) + (box.clientHeight as Int) >= (box.scrollHeight as Int) - SMENU.bottomSlack
+            val tops = entries.mapNotNull { e -> document.getElementById(e.id)?.getBoundingClientRect()?.top?.let { e.id to it } }
+            active = activeSideMenuEntry(tops, boxTop + landing + SMENU.lineSlack, atBottom, window.innerHeight.toDouble())
         }
-        val onScroll: (dynamic) -> Unit = {
+        fun schedule() {
             if (frame == 0) {
                 frame = window.requestAnimationFrame {
                     frame = 0
@@ -281,37 +296,53 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
                 }
             }
         }
+        val onScroll: (dynamic) -> Unit = { schedule() }
+        val onResize: (dynamic) -> Unit = {
+            scroller = null
+            schedule()
+        }
         // Capturing on the document hears whichever element scrolls the page, since a scroll does not bubble.
         val options = js("({ capture: true, passive: true })")
         document.asDynamic().addEventListener("scroll", onScroll, options)
-        window.asDynamic().addEventListener("resize", onScroll, options)
+        window.asDynamic().addEventListener("resize", onResize, options)
+        // Content that loads or opens moves the places without a scroll: the row holding the menu and the page beside
+        // it is watched for it -- there from the start, unlike a panel, which may draw only once its read answers.
+        val watched = menu.current?.parentElement
+        val observer: dynamic = watched?.let {
+            val made = resizeObserver { schedule() }
+            made.observe(it)
+            made
+        }
         measure()
         try {
             awaitCancellation()
         } finally {
             document.asDynamic().removeEventListener("scroll", onScroll, options)
-            window.asDynamic().removeEventListener("resize", onScroll, options)
+            window.asDynamic().removeEventListener("resize", onResize, options)
+            observer?.disconnect()
             if (frame != 0) window.cancelAnimationFrame(frame)
         }
     }
     val activePanel = entries.firstOrNull { it.id == active }?.panelId
     nav {
+        ref = menu
         className = ClassName("page-side-menu")
         asDynamic()["aria-label"] = "Page sections"
         ul {
-            props.panels.forEach { (id, title) ->
+            entries.filter { !it.isSection }.forEach { panelEntry ->
                 li {
-                    key = id.unsafeCast<Key>()
-                    className = ClassName(if (id == activePanel) "side-menu-panel side-menu-in" else "side-menu-panel")
-                    panelLink(id, title, current = id == active)
-                    props.sections[id]?.takeIf { it.isNotEmpty() }?.let { subs ->
+                    key = panelEntry.id.unsafeCast<Key>()
+                    className = ClassName(if (panelEntry.id == activePanel) "side-menu-panel side-menu-in" else "side-menu-panel")
+                    panelLink(panelEntry.id, panelEntry.title, current = panelEntry.id == active)
+                    val subs = entries.filter { it.isSection && it.panelId == panelEntry.id }
+                    if (subs.isNotEmpty()) {
                         ul {
-                            subs.forEach { (sectionId, sectionTitle) ->
+                            subs.forEach { sub ->
                                 li {
-                                    key = sectionId.unsafeCast<Key>()
-                                    val here = sectionId == active
+                                    key = sub.id.unsafeCast<Key>()
+                                    val here = sub.id == active
                                     className = ClassName(if (here) "side-menu-section side-menu-in" else "side-menu-section")
-                                    panelLink(sectionId, sectionTitle, current = here)
+                                    panelLink(sub.id, sub.title, current = here)
                                 }
                             }
                         }

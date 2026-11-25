@@ -410,14 +410,15 @@ all of them.
    line shared by the page.
 4. **A longer page, or tabs.** The default is one scrolling page of panels, with links to them at the top
    (`panelLinks`; a long panel's sections as sub-links beside it, and again under its heading, `sectionLinks`). A page
-   long enough to lose the reader adds a **side menu** (`PageSideMenu`, issue #1919): the same panels and sections, in
-   a column beside the card that stays in view as the page scrolls, marking where the reader is (`activeSideMenuEntry`,
+   long enough to lose the reader adds a **side menu** (`PageSideMenu`, issue #1919): the same panels and sections, in a
+   column beside the card that stays in view as the page scrolls, marking where the reader is (`activeSideMenuEntry`,
    measured once a frame on scroll -- an `IntersectionObserver` cannot tell the page reaching its bottom, where the last
-   short panels never reach the line). It shows only from 1200 pixels wide, taking the place of the links at the top,
-   which a narrower screen keeps; the card gives up the column's width. The Clients page has one. Tabs only for
-   sections that are separate tasks, visited one at a time, on a page past about three screens -- none yet, so there
-   are no `Tabs` bindings: a side menu keeps everything on the page, where a hidden tab could hide a draft. **A draft
-   never spans tabs**: Save must not commit what is out of sight.
+   short panels never reach the line; and when the card changes size, since loaded or opened content moves the places
+   without a scroll). It shows only from 1200 pixels wide, taking the place of the links at the top, which a narrower
+   screen keeps; the card narrows for the column only where the window has no room beside it. The Clients page has one.
+   Tabs only for sections that are separate tasks, visited one at a time, on a page past about three screens -- none
+   yet, so there are no `Tabs` bindings: a side menu keeps everything on the page, where a hidden tab could hide a
+   draft. **A draft never spans tabs**: Save must not commit what is out of sight.
 5. **Simple first, the rest on request — per panel, not a global mode.** An "advanced mode" switch hides state: a
    reader in simple mode cannot see that a user holds All clients. A draft panel shows its common fields and puts the
    rest under `MoreOptions`, which opens itself when anything inside is set and names what is in its summary ("More

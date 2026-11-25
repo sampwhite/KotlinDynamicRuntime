@@ -2121,7 +2121,9 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 .panel-sublinks { margin-left: 6px; color: var(--text-muted); }
 /* A long page's side menu (issue #1919; `PageSideMenu` in `Panels.kt`): a column beside the card, in view however far
    the page scrolls, marking where the reader is. Only where the screen has room for it, taking the place of the links
-   at the card's top, which a narrower screen keeps. The card gives up the column's width. */
+   at the card's top, which a narrower screen keeps. The card keeps its width where the window has room beside it for
+   the column (the menu's 220px, the page's 32px of padding, and a scrollbar's 20px), and narrows only as far as it must
+   where it has not. */
 .page-side-menu { display: none; }
 @media (min-width: 1200px) {
     .page-side-menu {
@@ -2135,7 +2137,7 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
         overflow-y: auto;
         font-size: .9rem;
     }
-    .page-side-menu + .card.wide { width: calc(var(--content-width) - 220px); }
+    .page-side-menu + .card.wide { width: min(var(--content-width), calc(100vw - 272px)); }
     .page-side-menu + .card .panel-links { display: none; }
 }
 .page-side-menu ul { list-style: none; margin: 0; padding: 0; }
