@@ -436,6 +436,7 @@ object SL {
     )
 
     /** What each key of a [schemaFields] entry means (issue #1609); held to [fieldKeys] by a test. */
+    @Suppress("CanConvertToMultiDollarString")
     val fieldMeanings: Map<String, String> = linkedMapOf(
         field to "The property of the type this entry is about. Required, and one the type declares.",
         label to "The field's label on the form, in place of the schema's `title`.",
@@ -978,8 +979,12 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     }
     if (undeclared.isNotEmpty()) return undeclared
 
-    return formRequirementProblems(where, layout, type) + linesProblems(where, layout, type) +
-        entryLabelProblems(where, layout, type) + authoritativeLayoutProblems(where, layout, type)
+    return buildList {
+        addAll(formRequirementProblems(where, layout, type))
+        addAll(linesProblems(where, layout, type))
+        addAll(entryLabelProblems(where, layout, type))
+        addAll(authoritativeLayoutProblems(where, layout, type))
+    }
 }
 
 /** How many lines a long text field's box starts with when its form's layout does not say (issue #1550). */
@@ -1023,10 +1028,6 @@ fun entryLabelProblems(where: String, layout: SchLayout, type: SchType): List<Pr
 
 /** Whether [type] is a list a form draws entry by entry (issue #1714): a list, but not one of closed choices. */
 fun isListOfEntries(type: SchType): Boolean = type.jsonType == SCT.array && type.itemType?.options.isNullOrEmpty()
-
-/** Whether [type] is plain text: a string with no choices and no date, binary, or file format -- what a text area can enter. */
-fun isPlainText(type: SchType): Boolean =
-    type.jsonType == SCT.string && type.options == null && !isNonTextFormat(type.format)
 
 /**
  * The problems with [layout]'s **form requirements** against [type] (issue #1022):
@@ -1096,7 +1097,11 @@ fun formRequirementProblems(where: String, layout: SchLayout, type: SchType): Li
  */
 fun fieldsAListMustShow(type: SchType): Set<String> {
     val condition = type.condition
-    val mayRequire = type.required + condition?.thenRequired.orEmpty() + condition?.elseRequired.orEmpty()
+    val mayRequire = buildSet {
+        addAll(type.required)
+        addAll(condition?.thenRequired.orEmpty())
+        addAll(condition?.elseRequired.orEmpty())
+    }
     return mayRequire.filterTo(LinkedHashSet()) { type.properties[it]?.valueType?.derived != true }
 }
 
@@ -1138,7 +1143,7 @@ fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType)
  * rather than silently rendering nothing. The default copy for each is here too ([defaults], issue #1609), read by the
  * pages that show it; a layout carries only the overrides.
  */
-@Suppress("ConstPropertyName")
+@Suppress("ConstPropertyName", "CanConvertToMultiDollarString")
 object LAYSTR {
     /** The heading over a form's internal validation-failure list, shown only when the frontend is in debug
      *  (issue #641). Off debug, the list and this heading are replaced by [formErrorHint]. */
@@ -1472,7 +1477,7 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
  * `schemaFields[2].hint`, `strings.formErrorHint`, `schemaFields[0].errors.maximum` -- and a template fault adds
  * its offset in the copy. The message is the same sentence as ever, naming the type.
  */
-@Suppress("EnumEntryName")
+@Suppress("EnumEntryName", "CanConvertToMultiDollarString")
 enum class LayoutError(
     /** What the code means, in a sentence, for the form layouts reference (issue #1609). */
     val meaning: String,

@@ -293,7 +293,7 @@ object ConfigImpact {
         return out.toString().removePrefix(GE.data).removePrefix(".")
     }
 
-    private val pathStep = Regex("""([^.\[\]]+)|\[\d+\]""")
+    private val pathStep = Regex("""([^.\[\]]+)|\[\d+]""")
 
     /**
      * Whether the `g-onWrite` functions of [next]'s data type would store other values for [entry] than the running
