@@ -343,9 +343,22 @@ A field that must be unique for its owner (`g-unique`) is asked about when it is
 shows under the field for as long as the field holds the value asked about, so it needs no clearing. It is asked for the
 form's owner when editing, and for the user a form is being made for, whose change asks again about the fields already
 left; an answer about the one before is not shown (`takenFailures`). A taken value is a failure of the code `valueTaken`,
-which a layout's `errors` or the schema's `g-errors` rewords on the page; a refused save keeps the platform's words. An
-answer never blocks
+which a layout's `errors` or the schema's `g-errors` rewords. A save refused for it is shown under the field too, with
+"See the field marked above." by Save for as long as it is marked (`UniqueChecks.refused`, `refusedShown`, issue #1918): a
+refusal names the trait and the field as data (`EP.failures`, each with its trait), and the page finds the field, as the
+latest render draws it. A field it does not draw, or that has changed since, has the message by Save. An answer never blocks
 Save, and an ask that fails says nothing: the save's refusal is what holds the value.
+
+## A failure is named where it is shown (issue #1918)
+
+A validation message names no field ("Value must be at least 3 characters."), since it is read under one. A place that
+lists failures away from their fields puts in front what its own form calls each (`failureLabel`, `FieldFailures.kt`):
+the task rail's tooltip, and a save's refusal under Save (`saveError`), which comes with the entries' failures as data.
+The label is the way to the field, a step's label or an entry's heading at a time ("Co-speaker 2, Email"), after the
+trait's name where the place lists more than one trait's, with its key when it may have several entries ("Yearly — 2024").
+The words are the page's too (`failureWords`): the layout's message, else the schema author's with this form's label.
+`fieldLabelOf` (kernel) is the one rule for a field's label:
+the layout's, the field's own title, its name in words. The endpoint catalog keeps paths, as it documents the wire.
 
 ## A counter's id is shown before the form is saved (issue #1849)
 

@@ -83,9 +83,10 @@ wrong: `missingRequired`, `belowMinimum`, `aboveMaximum`, `invalidOption`, and s
 ```
 
 A message can name the failure's own values, which are filled in when it is shown: `${min}` and `${max}` for the
-field's bounds, `${value}` for the value refused, `${options}` for a field's choices, and `${field}` for the field's
-name. A message that says `${min}` rather than `50` stays right when the bound changes. Each code offers only the
-values that make sense for it, and a message naming one its code does not offer is refused when the schema is loaded.
+field's bounds, `${value}` for the value refused, `${options}` for a field's choices, `${label}` for the field's label
+on the form that shows the message, and `${field}` for the field's own name. A message that says `${min}` rather than
+`50` stays right when the bound changes. Each code offers only the values that make sense for it, and a message naming
+one its code does not offer is refused when the schema is loaded.
 
 A form can also give a message of its own. A field's entry in a form's layout (see [Field layouts](#field-layouts))
 can have `errors`, keyed in the same way, which that form shows in place of the schema's. It suits a requirement the

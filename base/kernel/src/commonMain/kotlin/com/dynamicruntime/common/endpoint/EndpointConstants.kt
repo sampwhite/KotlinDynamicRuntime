@@ -308,6 +308,12 @@ object EP {
     const val failureCode = "code"
     const val failureMessage = "message"
     const val failureUserMessage = "userMessage"
+
+    /**
+     * On a failure of an entry a write would store (issue #1918): the entry's key, each key field with its value, when its
+     * trait may have several entries. Absent for a trait with one.
+     */
+    const val failureEntryKey = "entryKey"
     const val failureOptions = "options"
     const val failureFormRequirement = "formRequirement"
 

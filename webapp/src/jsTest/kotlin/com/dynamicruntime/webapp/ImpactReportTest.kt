@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.ImpactKind
+import com.dynamicruntime.common.schema.SchFailCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -61,7 +62,28 @@ class ImpactReportTest {
             impactFindingText(report.findings[1]),
         )
         val invalid = ImpactFindingView(ImpactKind.dataInvalid.name, "memo", null, null, 2, emptyList())
-        assertTrue(impactFindingText(invalid).contains("could not be edited"))
+        assertEquals(
+            "2 forms hold entries of trait memo that would no longer be valid, and could not be edited until they are fixed.",
+            impactFindingText(invalid),
+        )
+        // With the field and why (issue #1918), so it says what to fix.
+        val read = parseImpactReport(
+            mapOf(
+                IMP.findings to listOf(
+                    mapOf(
+                        IMP.kind to ImpactKind.dataInvalid.name, IMP.traitId to "memo", IMP.count to 1,
+                        IMP.field to "lines[].amount", IMP.code to SchFailCode.belowMinimum.name,
+                    ),
+                    mapOf(IMP.kind to ImpactKind.valuesShared.name, IMP.traitId to "memo", IMP.count to 2, IMP.field to "title"),
+                ),
+            ),
+        ).findings.map { impactFindingText(it) }
+        assertEquals(
+            "1 form holds entries of trait memo whose lines[].amount would no longer be valid, and could not be edited until they " +
+                "are fixed. ${SchFailCode.belowMinimum.meaning}",
+            read[0],
+        )
+        assertTrue(read[1].startsWith("2 forms share a value of title of trait memo with another form of the same owner."))
         val workflow = ImpactFindingView(ImpactKind.workflowGone.name, null, "aside", null, 3, emptyList())
         assertEquals("3 forms take part in workflow aside, which would no longer exist.", impactFindingText(workflow))
     }

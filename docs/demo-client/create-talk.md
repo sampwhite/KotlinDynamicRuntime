@@ -142,8 +142,8 @@ The field's description, *What to call it.*, comes from the trait's own schema, 
 layout gives the field a label and nothing else.
 
 A speaker who types a title one of their other talks already has is told so as they leave the field, in a message under
-it: *Title 'kotlin for two!' is already used by another of your forms, as 'Kotlin for Two'. Choose a different one.* The
+it: *Value 'kotlin for two!' is already used by another of your forms, as 'Kotlin for Two'. Choose a different one.* The
 message goes as soon as they change the title. If they press **Create the talk** without changing it, the talk is not
-created, and a message under the button says why.
+created, and the message stays under the field, with a note under the button to look there.
 
 Next: [Talk core details](talk-core-details.md).

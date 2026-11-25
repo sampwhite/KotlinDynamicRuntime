@@ -93,8 +93,15 @@ val NewFormPage = FC<Props> {
 
     useFocusOnFailure(focusRequest, failures)
 
+    val entryLabel = useShellFacts().entryLabel
     // A unique field (issue #1851): asked about as it is left, for whoever the form is being made for.
-    val uniqueChecks = useUniqueChecks(userRef = pickedUser?.primaryId) { path ->
+    val uniqueChecks = useUniqueChecks(
+        userRef = pickedUser?.primaryId,
+        pathOf = { traitId, field ->
+            val type = catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }
+            drawnEntryField(type, values, GDF.entries, traitId, field, catalog?.formOpts(entryLabel) ?: FormOpts())
+        },
+    ) { path ->
         uniqueAskInEntries(values, path) { entryDataType(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, GDF.entries, it) }
     }
 
@@ -188,6 +195,7 @@ val NewFormPage = FC<Props> {
                     } else {
                         running = true
                         runError = null
+                        uniqueChecks.saving()
                         // The address this create was launched under (#758 review): the return carries *this*
                         // listing context home, and only while the user is still here.
                         val launched = routeParams()
@@ -214,7 +222,11 @@ val NewFormPage = FC<Props> {
                             } catch (e: Throwable) {
                                 // Only the failure path stays on the page, so re-enable the button here
                                 // rather than in a finally that would run after a create has navigated away.
-                                runError = userFacingError(e)
+                                runError = if (uniqueChecks.refused(e)) {
+                                    null
+                                } else {
+                                    saveError(e) { entryFailureText(inputType, sending, GDF.entries, it, cat.formOpts(entryLabel)) }
+                                }
                                 running = false
                             }
                         }
@@ -279,7 +291,7 @@ val NewFormPage = FC<Props> {
                 }
 
                 counterIds.error?.let { errorText("Couldn't get this form's id.", it) }
-                runError?.let { errorText("Couldn't create the form.", it) }
+                (runError ?: refusedAtField.takeIf { uniqueChecks.refusedShown })?.let { errorText("Couldn't create the form.", it) }
             }
         }
     }

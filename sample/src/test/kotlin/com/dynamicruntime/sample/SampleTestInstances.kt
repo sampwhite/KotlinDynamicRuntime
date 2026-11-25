@@ -19,15 +19,24 @@ import com.dynamicruntime.kdn.Startup
  */
 object SampleTestInstances {
     /** The sample component loaded (`KDR_LOAD_SAMPLE`): acme, globex, and the sample's traits and workflows. */
-    fun default(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
-        cxtName, "sampleShared", mapOf(SampleComponent.loadSampleEnvVar.name to "true"),
-        additionalComponents = listOf(SampleComponent()),
-    )
+    fun default(cxtName: String): KdrCxt =
+        shared(cxtName, "sampleShared", mapOf(SampleComponent.loadSampleEnvVar.name to "true"))
 
     /** As [default], under the `reference` deployment flavor: the demo clients, joining, and the flavor's copy. */
-    fun reference(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
+    fun reference(cxtName: String): KdrCxt = shared(
         cxtName, "sampleSharedReference",
         mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference, SampleComponent.loadSampleEnvVar.name to "true"),
-        additionalComponents = listOf(SampleComponent()),
     )
+
+    /**
+     * Boots, or returns, the shared instance [instanceName] with the sample's component, which refuses to have its clock
+     * moved (issue #1925).
+     */
+    private fun shared(cxtName: String, instanceName: String, overlay: Map<String, Any?>): KdrCxt =
+        Startup.mkTestBootCxt(cxtName, instanceName, overlay, listOf(SampleComponent())).also {
+            it.instanceConfig.clock.refuseTravel(
+                "The clock of '$instanceName' may not be moved: specs share that instance, and time travel is instance-wide. " +
+                    "Boot an instance of the spec's own with Startup.mkTestBootCxt.",
+            )
+        }
 }

@@ -8,6 +8,7 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.annotation.Isolate
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -35,7 +36,10 @@ private fun <T> withTempWorkspaceDir(block: (File) -> T): T {
  * Stage-3 proof (issue #33): the database config builder produces the `db` config for each database kind;
  * the builder defaults the type from in-memory-ness; databases are built (and connection-tested) for the H2
  * kinds; and the secrets file indirection resolves (or fails fast on) a PostgreSQL password.
+ *
+ * Isolated, so it never runs beside another spec (issue #1925): it sets the workspace's system property, the whole JVM's.
  */
+@Isolate
 class SqlDbBuilderTest : StringSpec({
 
     val cxt = KdrCxt.mkSimpleCxt("test")

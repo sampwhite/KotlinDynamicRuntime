@@ -39,14 +39,12 @@ import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
-import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
 import react.dom.html.ReactHTML.tbody
 import react.dom.html.ReactHTML.td
-import react.dom.html.ReactHTML.textarea
 import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
@@ -55,6 +53,7 @@ import react.useEffect
 import web.cssom.ClassName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.schema.fieldLabelOf
 import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
@@ -262,21 +261,18 @@ internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, 
  * The layout's wording for failure [f] on field [name] of type [prop] (issue #588), or null to leave the
  * framework's own message (or the `g-errors` floor) in place. The override is looked up by the failure's code,
  * then `default`, and resolved -- fail-safe, like all layout copy -- against the failure's params
- * ([errorContextData]: the offending [value], the option list, the bound), the same `${'$'}{…}` machinery the
+ * ([errorContextData]: the offending [value], the label, the option list, the bound), the same `${'$'}{…}` machinery the
  * templated hint uses. This is where message *variation* is homed, so it wins over the built-in wording.
  */
 internal fun layoutErrorMessage(copy: LayoutCopy?, prop: SchProperty, name: String, value: Any?, f: SchFailure): String? {
     val template = copy?.errors?.let { it[f.code.name] ?: it[SCH.errorDefault] } ?: return null
-    return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options))
+    val label = fieldLabelOf(name, prop, copy.label)
+    return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options, label))
 }
 
-/**
- * The label a field shows: its schema title (or a humanized key) in friendly mode, else the raw wire key. The
- * title is the **property's**, never its value type's -- a `$ref` field's value type is shared, so a title from
- * there would label every field referencing that type alike (see [SchProperty.title]).
- */
-private fun fieldLabel(name: String, prop: SchProperty, opts: FormOpts): String =
-    if (opts.friendly) prop.title ?: humanizeFieldName(name) else name
+/** The label a field shows: what a person calls it in friendly mode ([fieldLabelOf]), else the raw wire key. */
+private fun fieldLabel(name: String, prop: SchProperty, opts: FormOpts, copy: LayoutCopy? = null): String =
+    if (opts.friendly) fieldLabelOf(name, prop, copy?.label) else name
 
 /**
  * The primary-key value(s) an array element carries, as a label, or null when the element's type is not keyed
@@ -1250,7 +1246,7 @@ private fun ChildrenBuilder.fieldFrame(
         tabIndex = -1
         className = ClassName(rowClass(messages))
         // The layout's `label` (issue #586) shadows the schema title/humanized key; absent, `fieldLabel` decides.
-        labelSpan(copy?.label ?: fieldLabel(name, prop, opts), required)
+        labelSpan(fieldLabel(name, prop, opts, copy), required)
         // A `filled` default not yet accepted wears a "Suggested" chip on the container, not inside the control,
         // so the mark reads the same across text / select / checkbox / date (issue #710).
         if (prefill?.mode == SLDM.filled && prefill.suggested) {
@@ -1267,7 +1263,9 @@ private fun ChildrenBuilder.fieldFrame(
     // thing for an output type; this is the input side, which is the one someone is about to type into. The
     // layout's `hint` (issue #587), already resolved against the field's bounds, shadows the derived range.
     boundHint(prop.valueType, copy?.hint)
-    fieldErrors(path, messages) { f -> layoutErrorMessage(copy, prop, name, value, f) }
+    // The schema author's message names the field as this form does, when it names it (issue #1918).
+    val named = messages.map { it.called(fieldLabel(name, prop, opts, copy)) }
+    fieldErrors(path, named) { f -> layoutErrorMessage(copy, prop, name, value, f) }
 }
 
 /**
@@ -1453,7 +1451,7 @@ private fun ChildrenBuilder.renderObjectList(
         // A failure against the element *itself* rather than one of its fields -- an element that is not an
         // object at all, say. Its fields each have a row; until now the element did not, so this was the one
         // failure inside a list with nowhere of its own to appear.
-        val elementMessages = errors.messagesAt(elementPath)
+        val elementMessages = errors.messagesAt(elementPath).map { it.called(fieldLabel(name, prop, opts, copy)) }
         val header = headers[i]
         div {
             className = ClassName("nested")
@@ -1538,7 +1536,7 @@ private fun ChildrenBuilder.renderScalarList(
     val fileKeys = if (elementType?.isDataFile() == true) elementKeys(elements) else null
     elements.forEachIndexed { i, element ->
         val elementPath = indexPath(path, i)
-        val elementMessages = errors.messagesAt(elementPath)
+        val elementMessages = errors.messagesAt(elementPath).map { it.called(fieldLabel(name, prop, opts, copy)) }
         fun replace(newValue: Any?) {
             errors.noteEdit(elementPath)
             emit(elements.mapIndexed { j, old -> if (j == i) newValue else old })
@@ -1585,7 +1583,7 @@ private fun ChildrenBuilder.renderScalarList(
 }
 
 /** What a list field's entries are headed with on a friendly form (issue #1714): its layout's `entryLabel`, else the form's. */
-private fun entryLabelFor(copy: LayoutCopy?, opts: FormOpts): String = copy?.entry?.entryLabel ?: opts.entryLabel
+internal fun entryLabelFor(copy: LayoutCopy?, opts: FormOpts): String = copy?.entry?.entryLabel ?: opts.entryLabel
 
 /**
  * The "add" affordance. It carries only the verb: it sits inside the block of the field it adds to, so position

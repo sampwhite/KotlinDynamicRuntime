@@ -16,7 +16,6 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraTrait
-import com.dynamicruntime.common.gedra.fieldLabelOf
 import com.dynamicruntime.common.gedra.formTraitData
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.keyFromLabel
@@ -26,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.searchKeywordsOf
 import com.dynamicruntime.common.gedra.workflow.labelsCtaFilter
+import com.dynamicruntime.common.schema.fieldLabelOf
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchProperty

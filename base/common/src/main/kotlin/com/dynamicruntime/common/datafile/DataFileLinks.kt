@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.LogGedra
 import com.dynamicruntime.common.gedra.gedraDataTopic
 import com.dynamicruntime.common.gedra.traitDataTypeIn
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.fieldLabelOf
 import com.dynamicruntime.common.schema.fileSizeLimit
 import com.dynamicruntime.common.schema.isDataTable
 import com.dynamicruntime.common.sql.KdrTable
@@ -38,6 +39,7 @@ import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.humanizeFieldName
 import kotlin.time.Instant
 
@@ -337,9 +339,11 @@ object DataFileLinks {
                 linkedMapOf(
                     DFILE.formId to link[GDL.holderId], DFILE.traitId to traitId, DFILE.fieldPath to fieldPath,
                     DFILE.traitTitle to (dataType?.title ?: humanizeFieldName(traitId.substringAfterLast(':'))),
-                    // The field's own title, as a form labels it, never its target type's, which every field of
-                    // that type shares.
-                    DFILE.fieldLabel to (dataType?.properties?.get(field)?.title ?: humanizeFieldName(field)),
+                    // As the form's client labels it (issue #1918), a workflow's own wording aside.
+                    DFILE.fieldLabel to fieldLabelOf(
+                        holder?.let { SchemaService.get(cxt).storeFor(it.client) }?.layouts?.get(dataType?.name), field,
+                        dataType?.properties?.get(field),
+                    ),
                     DFILE.formCreatedAt to holder?.createdAt?.formatDate(),
                 ).filterValues { it != null }
             },

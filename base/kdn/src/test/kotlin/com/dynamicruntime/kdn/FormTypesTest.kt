@@ -336,7 +336,7 @@ class FormTypesTest : StringSpec({
         )
         fun refusal(more: GedraConfigBuilder.() -> Unit) = site.admin.expectError(EXC.badInput, CFEP.bundleWrite, bundle(more)).toString()
         refusal { formType("bad id", "Bad") } shouldContain FTYPE.formTypeId
-        refusal { formType("blank", "  ") } shouldContain "'label' is missing"
+        refusal { formType("blank", "  ") } shouldContain "label: A value is required."
         refusal { formType("lead", "Again") } shouldContain "declared more than once"
         refusal { formType("a", "A") { trait("nosuch") } } shouldContain "which the client's forms cannot hold"
         refusal { formType("a", "A") { trait("ask"); trait("ask") } } shouldContain "lists the trait 'ask' twice"

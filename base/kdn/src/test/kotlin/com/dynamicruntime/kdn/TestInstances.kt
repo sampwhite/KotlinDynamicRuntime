@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.AuthTiming
 
 /**
@@ -24,31 +25,34 @@ import com.dynamicruntime.common.user.AuthTiming
  * new setup that other tests could share is added here instead, with who it is for. Within one test file, share one
  * instance across its tests rather than booting one per test.
  *
+ * **The clock is held to that**: a shared instance's refuses to be moved (issue #1925), since a spec that moved one signed
+ * out the users of whatever ran beside it. The rest of the list is the test's to keep.
+ *
  * An entry is the whole setup, not just a name: the registry refuses a cached name asked for with other components
  * or settings, so a test cannot drift from the setup it shares.
  */
 object TestInstances {
     /** The base components with the standard test settings: any test isolated by its own clients and users. */
-    fun default(cxtName: String): KdrCxt = Startup.mkTestBootCxt(cxtName, "kdnSharedDefault")
+    fun default(cxtName: String): KdrCxt = shared(cxtName, "kdnSharedDefault")
 
     /**
      * Stored-configuration problems **reported rather than refused** (`KDR_STORED_CONFIG_CHECK=warn`): for tests that
      * write a faulty configuration on purpose and read the issues it leaves, each under a client of its own.
      */
     fun storedConfigWarn(cxtName: String): KdrCxt =
-        Startup.mkTestBootCxt(cxtName, "kdnSharedStoredConfigWarn", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name))
+        shared(cxtName, "kdnSharedStoredConfigWarn", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name))
 
     /** Callers named by the env-auth header (`assumeEnvAuth`): for tests that sign callers in by address alone. */
-    fun envAuth(cxtName: String): KdrCxt = Startup.mkTestBootCxt(cxtName, "kdnSharedEnvAuth", mapOf(ACFG.assumeEnvAuth to true))
+    fun envAuth(cxtName: String): KdrCxt = shared(cxtName, "kdnSharedEnvAuth", mapOf(ACFG.assumeEnvAuth to true))
 
     /**
      * Not a test instance (`isTestInstance=false`): for tests of what a real deployment withholds -- error detail,
      * debug pages, test-only configuration. Its test endpoints do not exist, so callers are made by other means.
      */
-    fun notTestInstance(cxtName: String): KdrCxt = Startup.mkTestBootCxt(cxtName, "kdnSharedNotTestInstance", mapOf(ACFG.isTestInstance to false))
+    fun notTestInstance(cxtName: String): KdrCxt = shared(cxtName, "kdnSharedNotTestInstance", mapOf(ACFG.isTestInstance to false))
 
     /** As [notTestInstance], with callers named by the env-auth header: for the fences a real deployment keeps. */
-    fun envAuthNotTestInstance(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
+    fun envAuthNotTestInstance(cxtName: String): KdrCxt = shared(
         cxtName, "kdnSharedEnvAuthNotTestInstance", mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
     )
 
@@ -57,27 +61,27 @@ object TestInstances {
      * also turns on the auth timing floor (issue #1299), which these tests are not about, so it is set to nothing here
      * and the suite stays fast; `AuthTimingTest` checks the floor on an instance of its own.
      */
-    fun obfuscatedErrors(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
+    fun obfuscatedErrors(cxtName: String): KdrCxt = shared(
         cxtName, "kdnSharedObfuscatedErrors",
         mapOf(ACFG.obfuscateSensitiveErrors to true, AuthTiming.floorMsKey to 0, AuthTiming.jitterMsKey to 0),
     )
 
     /** With [ExtensionTemplateComponent]'s source template: for tests of clients defined on a template (issue #945). */
     fun extensionTemplate(cxtName: String): KdrCxt =
-        Startup.mkTestBootCxt(cxtName, "kdnSharedExtensionTemplate", emptyMap(), listOf(ExtensionTemplateComponent()))
+        shared(cxtName, "kdnSharedExtensionTemplate", emptyMap(), listOf(ExtensionTemplateComponent()))
 
     /**
      * [extensionTemplate]'s template, with stored-configuration problems reported rather than refused: for tests of
      * configuration stored before a rule that now refuses it at write, which still loads (issue #1634).
      */
-    fun extensionTemplateWarn(cxtName: String): KdrCxt = Startup.mkTestBootCxt(
+    fun extensionTemplateWarn(cxtName: String): KdrCxt = shared(
         cxtName, "kdnSharedExtensionTemplateWarn", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
         listOf(ExtensionTemplateComponent()),
     )
 
     /** With [TraitBaseComponent]'s global trait: for tests that narrow or extend one (issue #1119). */
     fun traitBases(cxtName: String): KdrCxt =
-        Startup.mkTestBootCxt(cxtName, "kdnSharedTraitBases", emptyMap(), listOf(TraitBaseComponent()))
+        shared(cxtName, "kdnSharedTraitBases", emptyMap(), listOf(TraitBaseComponent()))
 
     /**
      * Under the `reference` deployment flavor: joining the demo clients offered, the conference demo provisioned at
@@ -85,5 +89,18 @@ object TestInstances {
      * it provisions is shared by everyone who joins it, as on a real one, so a test finds its own forms by name.
      */
     fun reference(cxtName: String): KdrCxt =
-        Startup.mkTestBootCxt(cxtName, "kdnSharedReference", mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference))
+        shared(cxtName, "kdnSharedReference", mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference))
+
+    /** Boots, or returns, the shared instance [instanceName], which refuses to have its clock moved (issue #1925). */
+    private fun shared(
+        cxtName: String,
+        instanceName: String,
+        overlay: Map<String, Any?> = emptyMap(),
+        additionalComponents: List<ComponentDefinition> = emptyList(),
+    ): KdrCxt = Startup.mkTestBootCxt(cxtName, instanceName, overlay, additionalComponents).also {
+        it.instanceConfig.clock.refuseTravel(
+            "The clock of '$instanceName' may not be moved: specs share that instance, and time travel is instance-wide. " +
+                "Boot an instance of the spec's own with Startup.mkTestBootCxt.",
+        )
+    }
 }

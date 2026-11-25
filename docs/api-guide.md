@@ -64,7 +64,7 @@ A refusal is a JSON object with the HTTP status in `status` and what was wrong i
   "status": 400,
   "errorMessage": "Validation failed for 1 field: configs[0].edits[0].slot.",
   "extraData": {
-    "failures": [{"path": "configs[0].edits[0].slot", "code": "invalidOption", "message": "'kdr:nope' is not a valid option."}]
+    "failures": [{"path": "configs[0].edits[0].slot", "code": "invalidOption", "message": "'kdr:nope' is not one of the choices."}]
   }
 }
 ```

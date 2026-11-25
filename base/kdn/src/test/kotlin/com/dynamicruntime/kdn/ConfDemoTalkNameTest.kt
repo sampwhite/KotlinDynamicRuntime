@@ -90,13 +90,14 @@ class ConfDemoTalkNameTest : StringSpec({
         columns.single { it.columnId == ConfDemo.talkId }.width shouldBe ColumnWidth.narrow
     }
 
-    "a speaker's talks have different titles, and the refusal calls the field by its label on the form (issue #1851)" {
+    "a speaker's talks have different titles, and the refusal says which field, for the form to show it under (issues #1851, #1918)" {
         val speaker = TestUser.create(cxt, "titles@$client.example", userClient = client)
         val path = clientPath(GEP.formDocCreate, client)
         fun talk(title: String) = mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to title))))
         speaker.postItem(path, talk("Kotlin for Two"))
         speaker.expectError(EXC.badInput, path, talk("kotlin for two!"))[EP.errorMessage] shouldBe
-            "Title 'kotlin for two!' is already used by another of your forms, as 'Kotlin for Two'. Choose a different one."
+            "${GT.name}, data.${GT.nameField}: Value 'kotlin for two!' is already used by another of your forms, as " +
+            "'Kotlin for Two'. Choose a different one."
         // Another speaker's talk may have it.
         TestUser.create(cxt, "titles2@$client.example", userClient = client).postItem(path, talk("Kotlin for Two"))
         // And an administrator adapts the trait, its uniqueness one of the editor's own moves.

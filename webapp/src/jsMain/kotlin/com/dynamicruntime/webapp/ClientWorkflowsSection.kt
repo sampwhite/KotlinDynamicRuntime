@@ -784,7 +784,7 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                                 asDynamic()["showSearch"] = js("({ optionFilterProp: 'label' })")
                                 style = js("({ width: '100%', maxWidth: 420 })")
                                 onChange = { v ->
-                                    (v as Any?)?.toString()?.let { id ->
+                                    v?.toString()?.let { id ->
                                         draft = draft.withTaskTraits(task.taskId, order + id)
                                     }
                                 }

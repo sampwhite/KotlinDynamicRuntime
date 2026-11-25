@@ -441,7 +441,7 @@ class DesignViewTest {
     fun aSavedEntryLabelIsKeptOrClearedLikeTheOtherCopy() {
         val start = mapOf(SL.field to "speakers", SL.label to "Speakers", SL.entryLabel to $$"Speaker ${n}")
         val keys = editableCopyKeys(listTypes.properties.getValue("speakers"))
-        val values = keys.associateWith { start[it]?.toString().orEmpty() }
+        val values = keys.associateWith { start[it].orEmpty() }
         assertEquals(false, copyChanged(start, values))
         val renamed = values + (SL.entryLabel to $$"Co-speaker ${n}")
         assertEquals(true, copyChanged(start, renamed))

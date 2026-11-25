@@ -106,8 +106,15 @@ val EditFormPage = FC<Props> {
     // them.
     val editedSinceSave = useRef(false)
 
+    val entryLabel = useShellFacts().entryLabel
     // A unique field (issue #1851): asked about as it is left, of the form's owner's other forms.
-    val uniqueChecks = useUniqueChecks(gedraId = gedraId) { path ->
+    val uniqueChecks = useUniqueChecks(
+        gedraId = gedraId,
+        pathOf = { traitId, field ->
+            val type = catalog?.let { cat -> patchEndpoint?.let { formDocPatchTargetType(cat.inputType(it)) } }
+            drawnEntryField(type, values, GPF.edits, traitId, field, catalog?.formOpts(entryLabel) ?: FormOpts())
+        },
+    ) { path ->
         uniqueAskInEntries(values, path) { traitId ->
             entryDataType(
                 catalog?.let { cat -> patchEndpoint?.let { formDocPatchTargetType(cat.inputType(it)) } }, GPF.edits, traitId,
@@ -403,6 +410,7 @@ val EditFormPage = FC<Props> {
                     } else {
                         running = true
                         runError = null
+                        uniqueChecks.saving()
                         editedSinceSave.current = false
                         editScope.launch {
                             try {
@@ -436,7 +444,11 @@ val EditFormPage = FC<Props> {
                                 // "Saved." only beside a form that still shows what was saved.
                                 if (editedSinceSave.current != true) saved = true
                             } catch (e: Throwable) {
-                                runError = userFacingError(e)
+                                runError = if (uniqueChecks.refused(e)) {
+                                    null
+                                } else {
+                                    saveError(e) { entryFailureText(targetType, sending, GPF.edits, it, cat.formOpts(entryLabel)) }
+                                }
                             } finally {
                                 // The page stays either way now, so the button re-enables here.
                                 running = false
@@ -557,7 +569,7 @@ val EditFormPage = FC<Props> {
                         +it
                     }
                 }
-                runError?.let { errorText("Couldn't save the form.", it) }
+                (runError ?: refusedAtField.takeIf { uniqueChecks.refusedShown })?.let { errorText("Couldn't save the form.", it) }
             }
         }
     }

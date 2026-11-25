@@ -28,6 +28,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.simulation.ImpactDemo
 import com.dynamicruntime.common.simulation.provisionImpactDemo
+import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -139,6 +140,8 @@ class ConfigImpactTest : StringSpec({
         val invalid = findings(report(admin, "traits")).single()
         invalid[IMP.kind] shouldBe ImpactKind.dataInvalid.name
         invalid[IMP.traitId] shouldBe "memo"
+        invalid[IMP.field] shouldBe "owner"
+        invalid[IMP.code] shouldBe SchFailCode.missingRequired.name
         invalid[IMP.sampleIds].toJsonListOfStrings() shouldContainExactly listOf(memo)
     }
 
@@ -268,7 +271,11 @@ class ConfigImpactTest : StringSpec({
         provisionImpactDemo(cxt, "t").clients shouldContainExactly listOf(client, sandboxOf(client))
         val byKind = demoReport().findings.associateBy { it.kind }
         byKind.getValue(ImpactKind.traitGone).let { it.traitId shouldBe ImpactDemo.visit; it.rows.size shouldBe 2 }
-        byKind.getValue(ImpactKind.dataInvalid).let { it.traitId shouldBe ImpactDemo.note; it.rows.size shouldBe 3 }
+        byKind.getValue(ImpactKind.dataInvalid).let {
+            it.traitId shouldBe ImpactDemo.note
+            it.field shouldBe "owner"
+            it.rows.size shouldBe 3
+        }
         // Two notes that say the same thing, whatever their spelling (issue #1851).
         byKind.getValue(ImpactKind.valuesShared).let { it.traitId shouldBe ImpactDemo.note; it.rows.size shouldBe 2 }
 

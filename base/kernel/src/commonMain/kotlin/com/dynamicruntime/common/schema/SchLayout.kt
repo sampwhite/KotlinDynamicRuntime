@@ -6,6 +6,7 @@ import com.dynamicruntime.common.overlay.KeyedElement
 import com.dynamicruntime.common.overlay.MergeRule
 import com.dynamicruntime.common.overlay.MergeSpec
 import com.dynamicruntime.common.overlay.OnNew
+import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
@@ -435,6 +436,7 @@ object SL {
     )
 
     /** What each key of a [schemaFields] entry means (issue #1609); held to [fieldKeys] by a test. */
+    @Suppress("CanConvertToMultiDollarString")
     val fieldMeanings: Map<String, String> = linkedMapOf(
         field to "The property of the type this entry is about. Required, and one the type declares.",
         label to "The field's label on the form, in place of the schema's `title`.",
@@ -977,8 +979,12 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     }
     if (undeclared.isNotEmpty()) return undeclared
 
-    return formRequirementProblems(where, layout, type) + linesProblems(where, layout, type) +
-        entryLabelProblems(where, layout, type) + authoritativeLayoutProblems(where, layout, type)
+    return buildList {
+        addAll(formRequirementProblems(where, layout, type))
+        addAll(linesProblems(where, layout, type))
+        addAll(entryLabelProblems(where, layout, type))
+        addAll(authoritativeLayoutProblems(where, layout, type))
+    }
 }
 
 /** How many lines a long text field's box starts with when its form's layout does not say (issue #1550). */
@@ -1022,10 +1028,6 @@ fun entryLabelProblems(where: String, layout: SchLayout, type: SchType): List<Pr
 
 /** Whether [type] is a list a form draws entry by entry (issue #1714): a list, but not one of closed choices. */
 fun isListOfEntries(type: SchType): Boolean = type.jsonType == SCT.array && type.itemType?.options.isNullOrEmpty()
-
-/** Whether [type] is plain text: a string with no choices and no date, binary, or file format -- what a text area can enter. */
-fun isPlainText(type: SchType): Boolean =
-    type.jsonType == SCT.string && type.options == null && !isNonTextFormat(type.format)
 
 /**
  * The problems with [layout]'s **form requirements** against [type] (issue #1022):
@@ -1095,7 +1097,11 @@ fun formRequirementProblems(where: String, layout: SchLayout, type: SchType): Li
  */
 fun fieldsAListMustShow(type: SchType): Set<String> {
     val condition = type.condition
-    val mayRequire = type.required + condition?.thenRequired.orEmpty() + condition?.elseRequired.orEmpty()
+    val mayRequire = buildSet {
+        addAll(type.required)
+        addAll(condition?.thenRequired.orEmpty())
+        addAll(condition?.elseRequired.orEmpty())
+    }
     return mayRequire.filterTo(LinkedHashSet()) { type.properties[it]?.valueType?.derived != true }
 }
 
@@ -1137,7 +1143,7 @@ fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType)
  * rather than silently rendering nothing. The default copy for each is here too ([defaults], issue #1609), read by the
  * pages that show it; a layout carries only the overrides.
  */
-@Suppress("ConstPropertyName")
+@Suppress("ConstPropertyName", "CanConvertToMultiDollarString")
 object LAYSTR {
     /** The heading over a form's internal validation-failure list, shown only when the frontend is in debug
      *  (issue #641). Off debug, the list and this heading are replaced by [formErrorHint]. */
@@ -1249,8 +1255,14 @@ object LayoutErrCtx {
      *  ([SchFailCode.missingRequired], [SchFailCode.additionalProperty]). */
     const val value = "value"
 
-    /** The property's name -- the one param every failure can offer, and all a `default` message may use. */
+    /** The property's name -- which, with [label], every failure can offer, and all a `default` message may use. */
     const val field = "field"
+
+    /**
+     * What a person calls the field (issue #1918): by the rule ([fieldLabelOf]) as the place showing the message has it, and
+     * with no form, its title and then its name in words.
+     */
+    const val label = "label"
 
     /** The field's valid choices as a readable list, for an [SchFailCode.invalidOption] message. */
     const val options = "options"
@@ -1263,7 +1275,7 @@ object LayoutErrCtx {
  * [layoutTemplateProblems] holds an error template's `${'$'}{…}` against, so a placeholder the failure cannot
  * provide (a `${'$'}{max}` for an `invalidOption`, a `${'$'}{value}` for a `missingRequired`) fails the boot like a
  * mistyped key. [code] is null for the `default` key, which may match any failure and so is allowed only the
- * one param present for every one of them ([LayoutErrCtx.field]).
+ * params present for every one of them ([LayoutErrCtx.field] and [LayoutErrCtx.label]).
  */
 fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> =
     errorContextNames(code, hasMin = type.minBound != null, hasMax = type.maxBound != null)
@@ -1274,6 +1286,7 @@ fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> =
  */
 fun errorContextNames(code: SchFailCode?, hasMin: Boolean, hasMax: Boolean): Set<String> = buildSet {
     add(LayoutErrCtx.field)
+    add(LayoutErrCtx.label)
     if (code == null) return@buildSet
     // A value exists for every failure except a property that is missing or one that is not a field at all.
     if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) add(LayoutErrCtx.value)
@@ -1287,8 +1300,8 @@ fun errorContextNames(code: SchFailCode?, hasMin: Boolean, hasMax: Boolean): Set
 
 /**
  * The data a layout error message for [code] resolves against (issue #588) -- the runtime counterpart of
- * [errorContextNames], built where the failure is rendered (the frontend). [fieldName] is the property's name,
- * [value] its current value (the offending one), and [options] the failure's choice list. Only the params
+ * [errorContextNames], built where the failure is rendered (the frontend). [fieldName] is the property's name, [label]
+ * what it is called there, [value] its current value (the offending one), and [options] the failure's choice list. Only the params
  * [errorContextNames] names for [code] are put, so the render and the boot check agree on the vocabulary; a
  * bound comes from [type], the choice list is joined to a readable string. A pure function, defined here beside
  * the names for the same reason [boundsContextData] is.
@@ -1299,8 +1312,10 @@ fun errorContextData(
     fieldName: String,
     value: Any?,
     options: List<SchOption>?,
+    label: String = humanizeFieldName(fieldName),
 ): Map<String, Any?> = buildMap {
     put(LayoutErrCtx.field, fieldName)
+    put(LayoutErrCtx.label, label)
     if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) {
         value?.let { put(LayoutErrCtx.value, it) }
     }
@@ -1462,7 +1477,7 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
  * `schemaFields[2].hint`, `strings.formErrorHint`, `schemaFields[0].errors.maximum` -- and a template fault adds
  * its offset in the copy. The message is the same sentence as ever, naming the type.
  */
-@Suppress("EnumEntryName")
+@Suppress("EnumEntryName", "CanConvertToMultiDollarString")
 enum class LayoutError(
     /** What the code means, in a sentence, for the form layouts reference (issue #1609). */
     val meaning: String,

@@ -331,7 +331,16 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // A unique field (issue #1851): asked about as it is left, of the forms of whoever this form is or is being made for. A
     // trait locked here is not this caller's to change, so it is not asked about.
-    val uniqueChecks = useUniqueChecks(props.client, gedraId.takeIf { isEdit }, pickedUser?.primaryId.takeIf { !isEdit }) { key ->
+    val uniqueChecks = useUniqueChecks(
+        props.client, gedraId.takeIf { isEdit }, pickedUser?.primaryId.takeIf { !isEdit },
+        // Where the form draws the field now: on the task shown, and not one its layout or a gate leaves out.
+        pathOf = { traitId, field ->
+            val shown = shownTask?.let { listOf(it) } ?: wf.tasks
+            shown.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId } }
+                ?.takeIf { drawsField(it.type, valuesOf(traitId), field, fieldOpts) }
+                ?.let { "$traitId$uniqueKeyMark$field" }
+        },
+    ) { key ->
         val traitId = key.substringBefore(uniqueKeyMark)
         wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId && traitId !in wf.lockedTraits } }
             ?.let { uniqueAskOf(traitId, it.type, key.substringAfter(uniqueKeyMark), valuesOf(traitId)) }
@@ -341,6 +350,24 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun takenIn(traitId: String): List<SchFailure> = uniqueChecks.failures
         .filter { it.path.substringBefore(uniqueKeyMark) == traitId }
         .map { it.copy(path = it.path.substringAfter(uniqueKeyMark)) }
+
+    /**
+     * What this form says of [failure], found in [values]: the way to the field as it labels it, led by the trait's name when
+     * [task] has others, and then the words it has for it.
+     */
+    fun failureText(task: WfTaskView, failure: RefusedFailure, values: Map<String, Any?>): String {
+        val trait = wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == failure.traitId } }
+            ?: return labeledMessage(
+                listOf(humanizeFieldName(failure.traitId), failure.path).filter { it.isNotEmpty() }.joinToString(", "),
+                failure.userMessage ?: failure.message,
+            )
+        val opts = FormOpts(friendly = true, fieldLayouts = wf.fieldLayouts, entryLabel = shellFacts.entryLabel)
+        val alone = task.traits.singleOrNull()?.traitId == failure.traitId
+        val label = listOfNotNull(
+            traitName(trait).takeUnless { alone }, failureLabel(trait.type, values, failure.path, opts).ifEmpty { null },
+        ).joinToString(", ")
+        return labeledMessage(label, failureWords(trait.type, values, failure, opts))
+    }
 
     /** [trait]'s values as they stand, checked as its save would be. */
     fun checkTrait(trait: WfTraitView, values: Map<String, Any?> = valuesOf(trait.traitId)): InputCheck =
@@ -427,6 +454,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         var sent = byTrait.filterKeys { it in savedTraitIds }
         savingTask = task.id
         runError = null
+        uniqueChecks.saving()
         refreshError = null
         // The address this save was launched under (#758 review): a create returns to the listing only while the
         // user is still on this page, and carries *this* listing context home -- not whatever page a slow
@@ -517,7 +545,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     updateResolved { it + savedTraitIds }
                 }
             } catch (e: Throwable) {
-                runError = userFacingError(e)
+                runError = if (uniqueChecks.refused(e)) null else saveError(e) { failureText(task, it, sent[it.traitId].orEmpty()) }
             } finally {
                 if (!leaving) savingTask = null
             }
@@ -819,7 +847,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (trait.traitId in unmetTraits) {
                 p {
                     className = ClassName("error-text")
-                    +"This is required — please fill it in."
+                    +"This section is required. Please fill it in."
                 }
             }
             // Design View marks this trait's fields (issue #972); outside it the provider carries null.
@@ -980,7 +1008,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val status = statusFor(task, unsaved)
         val mark = railMark(status)
         // Name a missing trait by its name (issue #1520), so the tooltip and the panel's heading agree.
-        val explanation = railExplanation(status, unsaved, shellFacts.workflowWords.stepSatisfied) { id ->
+        val explanation = railExplanation(
+            status, unsaved, shellFacts.workflowWords.stepSatisfied,
+            // A problem the server found is of the stored values, as one found here is of those being edited.
+            problemText = { failureText(task, it.failure, if (unsaved) valuesOf(it.traitId) else stored[it.traitId].orEmpty()) },
+        ) { id ->
             task.traits.firstOrNull { it.traitId == id }?.let(::traitName) ?: humanizeFieldName(id)
         }
         button {
@@ -1176,7 +1208,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
         }
         counterError?.let { errorText("Couldn't get this form's id.", it) }
-        runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
+        (runError ?: refusedAtField.takeIf { uniqueChecks.refusedShown })
+            ?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
         refreshError?.let { errorText("Saved, but couldn't reload the form, so what it shows may be out of date.", it) }
         designSession?.let { session ->
             DesignInspector {

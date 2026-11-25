@@ -3,7 +3,8 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.counter.CounterService
 import com.dynamicruntime.common.counter.counterFieldsOf
-import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.EntryFailure
+import com.dynamicruntime.common.gedra.entryFailuresException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchFailure
@@ -88,11 +89,9 @@ object WorkflowFormRules {
     fun requireMet(cxt: KdrCxt, declared: WfDeclared, traitIds: Set<String>, entries: List<Map<String, Any?>>, create: Boolean) {
         val failures = failures(cxt, cxt.client, declared, traitIds, entries, create)
         if (failures.isEmpty()) return
-        throw KdrException.mkInput(
-            "This form asks for more than was given: " +
-                failures.entries.joinToString("; ") { (traitId, list) ->
-                    "$traitId: " + list.joinToString(", ") { "${it.path}: ${it.message}" }
-                } + ".",
+        throw entryFailuresException(
+            "This form asks for more than was given:",
+            failures.flatMap { (traitId, list) -> list.map { EntryFailure(traitId, it) } },
         )
     }
 }
