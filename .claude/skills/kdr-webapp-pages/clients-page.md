@@ -687,7 +687,8 @@ under the name starts past every revision it had. A bundle the editor added and 
 (`ClientsApi.workflowCatalog`): the client's workflows -- for a client with a sandbox, as the sandbox runs them, its
 latest configuration with drafts in, so the list shows what a draft made or removed, as Files does -- then the
 deployment's **templates** -- the global workflows, which no client runs as they are -- closed under a disclosure
-that says how many (`templatesSummary`, issue #1891), since making a workflow is mostly a setup task: open to start for
+whose summary, an `h4` so the outline keeps it, says how many and how many are usable now (`templatesSummary`, issue
+#1891), since making a workflow is mostly a setup task: open to start for
 a client with no workflows, and opened whenever a Use… editor is. A workflow's **Steps** are its
 tasks' labels, an approval that names what it shows with that after it (`workflowTaskSummary`, issue #1875:
 "Approve it (shows Grant application)"). A template is greyed with the backend's reason when a workflow cannot be made
@@ -701,7 +702,9 @@ required or not, named as a form names it (the catalog's trait `name`, `catalogT
 for its place in the step's order -- which a form draws its traits in where its layout names none
 (`withTraitMoved`) -- and **Remove**; then **Add a trait…**, a searchable single choice of only the traits the step
 does not collect yet (`traitsToAdd`), and a hint that a step may collect several -- or, with nothing else offered, that
-another is included under Traits first (`collectsHint`). It replaced a multiple choice, which read as a single choice
+another is included under Traits first (`collectsHint`). Each row is a group named for its trait, and a move or a
+removal puts focus back where a keyboard user can go on -- the same arrow, the other at an end, the next row's Remove,
+or the picker (`collectsFocusAfterMove`, `collectsFocusAfterRemove`). It replaced a multiple choice, which read as a single choice
 with one trait chosen and as a wall of long tags past a few, beside a separate line of Required checkboxes -- and say
 in words what the template fixes (`workflowFixedParts`), from the workflow
 the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`

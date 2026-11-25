@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfVisibility
 import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
+import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -487,7 +488,9 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     // #1891) -- open to start for a client with no workflows yet, and opened by a Use… editor being open.
     if (props.configEditable) Disclosure {
         key = "templates-${props.clientId}".unsafeCast<Key>()
-        summaryText = templatesSummary(shown.templates.size)
+        summaryText = templatesSummary(shown.templates.size, shown.templates.count { it.refusal == null })
+        // A heading, as it was before it folded, so the page's outline keeps the section.
+        summaryLevel = 4
         initiallyOpen = shown.workflows.isEmpty()
         openWhen = newOf != null
         div {
@@ -566,9 +569,19 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     }
 }
 
-/** What the closed templates say of themselves (issue #1891): the section's name and how many there are. */
-fun templatesSummary(count: Int): String =
-    "Make a workflow from a template · " + if (count == 1) "1 template" else "$count templates"
+/**
+ * What the closed templates say of themselves (issue #1891): the section's name, how many there are, and -- when some
+ * are refused now (a second creation workflow, a plan's limit) -- how many of them can be used.
+ */
+fun templatesSummary(count: Int, usable: Int): String {
+    val templates = if (count == 1) "1 template" else "$count templates"
+    val now = when (usable) {
+        count -> ""
+        0 -> ", none usable now"
+        else -> ", $usable usable now"
+    }
+    return "Make a workflow from a template · $templates$now"
+}
 
 external interface WorkflowSlotEditorProps : Props {
     var clientId: String
@@ -599,6 +612,15 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
     val base = props.workflow ?: props.template
     val baseline = props.workflow?.let { workflowSlots(it) }
     var draft by useState(baseline ?: newWorkflowSlots(props.template))
+    // A Collects control to focus once the draft is drawn (issue #1891): a move or a removal redraws the rows, and the
+    // button pressed is moved, disabled, or gone, which would drop a keyboard user's focus to the page's start.
+    var focusAfter by useState<String?>(null)
+    useEffect(focusAfter) {
+        focusAfter?.let { id ->
+            document.getElementById(id)?.asDynamic()?.focus()
+            focusAfter = null
+        }
+    }
     var visibility by useState(WfVisibility.adminsOnly)
     var busy by useState(false)
     var saveError by useState<DisplayError?>(null)
@@ -670,11 +692,20 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                 choiceRow("Collects") {
                     div {
                         className = ClassName("collects-list")
+                        val order = task.traits.map { it.traitId }
+                        fun controlId(traitId: String?, control: String) = collectsControlId(task.taskId, CollectsFocus(traitId, control))
+                        fun move(traitId: String, by: Int) {
+                            draft = draft.withTraitMoved(task.taskId, traitId, by)
+                            collectsFocusAfterMove(order, traitId, by).let { focusAfter = collectsControlId(task.taskId, it) }
+                        }
                         task.traits.forEachIndexed { i, trait ->
                             val name = catalogTraitName(props.workflowCatalog, trait.traitId)
                             div {
                                 key = trait.traitId.unsafeCast<Key>()
                                 className = ClassName("collects-row")
+                                // A group named for its trait, so its Required checkbox is heard as this trait's.
+                                asDynamic()["role"] = "group"
+                                asDynamic()["aria-label"] = name
                                 span {
                                     className = ClassName("collects-trait")
                                     span {
@@ -702,27 +733,31 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                                         type = "link"
                                         size = "small"
                                         disabled = busy || i == 0
+                                        asDynamic()["id"] = controlId(trait.traitId, COLF.up)
                                         asDynamic()["title"] = "Move up"
                                         asDynamic()["aria-label"] = "Move $name up"
-                                        onClick = { draft = draft.withTraitMoved(task.taskId, trait.traitId, -1) }
+                                        onClick = { move(trait.traitId, -1) }
                                         +"↑"
                                     }
                                     Button {
                                         type = "link"
                                         size = "small"
                                         disabled = busy || i == task.traits.lastIndex
+                                        asDynamic()["id"] = controlId(trait.traitId, COLF.down)
                                         asDynamic()["title"] = "Move down"
                                         asDynamic()["aria-label"] = "Move $name down"
-                                        onClick = { draft = draft.withTraitMoved(task.taskId, trait.traitId, 1) }
+                                        onClick = { move(trait.traitId, 1) }
                                         +"↓"
                                     }
                                     Button {
                                         type = "link"
                                         size = "small"
                                         disabled = busy
+                                        asDynamic()["id"] = controlId(trait.traitId, COLF.remove)
                                         asDynamic()["aria-label"] = "Remove $name"
                                         onClick = {
-                                            draft = draft.withTaskTraits(task.taskId, task.traits.map { it.traitId } - trait.traitId)
+                                            draft = draft.withTaskTraits(task.taskId, order - trait.traitId)
+                                            focusAfter = collectsControlId(task.taskId, collectsFocusAfterRemove(order, trait.traitId))
                                         }
                                         +"Remove"
                                     }
@@ -734,6 +769,8 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                             Select {
                                 // Always empty: a trait picked is added to the rows above, and the picker is ready for the next.
                                 value = null
+                                // Its id goes to the inner input, which a removal of the last trait focuses.
+                                asDynamic()["id"] = controlId(null, COLF.add)
                                 placeholder = "Add a trait…"
                                 options = choiceOptions(toAdd)
                                 disabled = busy
@@ -742,7 +779,7 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                                 style = js("({ width: '100%', maxWidth: 420 })")
                                 onChange = { v ->
                                     (v as Any?)?.toString()?.let { id ->
-                                        draft = draft.withTaskTraits(task.taskId, task.traits.map { it.traitId } + id)
+                                        draft = draft.withTaskTraits(task.taskId, order + id)
                                     }
                                 }
                             }

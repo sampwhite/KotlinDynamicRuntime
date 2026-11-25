@@ -2164,6 +2164,8 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 @media (max-width: 560px) { .client-def-groups { grid-template-columns: 1fr; } }
 .disclosure > summary { cursor: pointer; color: var(--accent-bright); }
 .disclosure > summary:hover { color: var(--accent-brighter); }
+/* A summary that is a section's heading (issue #1891) reads as the summary line, not as a heading set apart. */
+.disclosure > summary > :is(h3, h4) { display: inline; margin: 0; font: inherit; color: inherit; }
 .disclosure[open] > summary { margin-bottom: 10px; }
 .disclosure > * + * { margin-top: 14px; }
 

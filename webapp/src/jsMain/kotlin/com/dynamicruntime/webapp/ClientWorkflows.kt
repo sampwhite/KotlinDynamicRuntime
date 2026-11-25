@@ -341,6 +341,49 @@ fun traitsToAdd(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<Strin
     return traitChoices(catalog, task).filter { it.second !in chosen }
 }
 
+/** A Collects row's controls (issue #1891), which focus is put back on after a move or a removal; [add] is the picker. */
+@Suppress("ConstPropertyName")
+object COLF {
+    const val up = "up"
+    const val down = "down"
+    const val remove = "remove"
+    const val add = "add"
+}
+
+/** Where focus goes after a Collects row's action (issue #1891): [control] of trait [traitId]'s row, or the picker. */
+data class CollectsFocus(val traitId: String?, val control: String)
+
+/**
+ * Focus after trait [traitId] moves [by] places in [order] (as it was before): the same arrow on its row, so a keyboard
+ * user can press it again -- or the other one, once the row reaches the end where that arrow is disabled.
+ */
+fun collectsFocusAfterMove(order: List<String>, traitId: String, by: Int): CollectsFocus {
+    val at = order.indexOf(traitId) + by
+    val control = when {
+        by < 0 -> if (at <= 0) COLF.down else COLF.up
+        else -> if (at >= order.lastIndex) COLF.up else COLF.down
+    }
+    return CollectsFocus(traitId, control)
+}
+
+/**
+ * Focus after trait [traitId] is removed from [order] (as it was before): the Remove of the row that takes its place,
+ * else of the row above it, else -- the last one gone -- the picker, which offers it again.
+ */
+fun collectsFocusAfterRemove(order: List<String>, traitId: String): CollectsFocus {
+    val at = order.indexOf(traitId)
+    val rest = order - traitId
+    return when {
+        rest.isEmpty() -> CollectsFocus(null, COLF.add)
+        at in rest.indices -> CollectsFocus(rest[at], COLF.remove)
+        else -> CollectsFocus(rest.last(), COLF.remove)
+    }
+}
+
+/** The element id of a Collects control ([CollectsFocus]) in task [taskId]'s list, which focus is put back on by. */
+fun collectsControlId(taskId: String, focus: CollectsFocus): String =
+    listOfNotNull("collects", taskId, focus.traitId, focus.control).joinToString("-")
+
 /** A trait's description as the workflow editor shows it beside the trait's name: the catalog's, or none. */
 fun catalogTraitDescription(catalog: WorkflowCatalogView, traitId: String): String? =
     catalog.traits.firstOrNull { it.traitId == traitId }?.description

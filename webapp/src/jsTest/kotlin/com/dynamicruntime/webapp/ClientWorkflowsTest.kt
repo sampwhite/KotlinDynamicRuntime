@@ -75,6 +75,7 @@ class ClientWorkflowsTest {
         // Each by its name (issue #1438), or its id when the catalog gives none or does not list it.
         assertEquals(listOf("Name — A name." to "kdr:name", "siteVisit" to "siteVisit"), traitChoices(catalog, workflowSlots(own.def).tasks.single()))
         assertEquals("Name", catalogTraitName(catalog, "kdr:name"))
+        assertEquals("gone", catalogTraitName(catalog, "gone"))
         // Collects says a step takes several (issue #1891) -- and, with nothing else offered, where another comes from.
         val record = workflowSlots(own.def).tasks.single()
         assertTrue(collectsHint(catalog, record).endsWith("pick another to add it beside these."))
@@ -86,12 +87,28 @@ class ClientWorkflowsTest {
         assertEquals("A name.", catalogTraitDescription(catalog, "kdr:name"))
         assertNull(catalogTraitDescription(catalog, "siteVisit"))
         // The templates, closed, say how many there are (issue #1891).
-        assertEquals("Make a workflow from a template · 1 template", templatesSummary(1))
-        assertEquals("Make a workflow from a template · 5 templates", templatesSummary(5))
-        assertEquals("gone", catalogTraitName(catalog, "gone"))
+        assertEquals("Make a workflow from a template · 1 template", templatesSummary(1, 1))
+        assertEquals("Make a workflow from a template · 3 templates, 1 usable now", templatesSummary(3, 1))
+        assertEquals("Make a workflow from a template · 2 templates, none usable now", templatesSummary(2, 0))
         // Who sees it (issue #1384), and the labels the client suggests for it.
         assertEquals(WfVisibility(WfVisibilityMode.restricted, listOf("pilot")), own.visibility)
         assertEquals(listOf("pilot", "east"), catalog.userLabels)
+    }
+
+    @Test
+    fun collectsKeepsAKeyboardUsersPlace() {
+        // Issue #1891: after a move, the same arrow on the moved row -- or the other once it reaches an end.
+        val order = listOf("a", "b", "c")
+        assertEquals(CollectsFocus("a", COLF.down), collectsFocusAfterMove(order, "a", 1))
+        assertEquals(CollectsFocus("b", COLF.up), collectsFocusAfterMove(order, "b", 1))
+        assertEquals(CollectsFocus("c", COLF.up), collectsFocusAfterMove(order, "c", -1))
+        assertEquals(CollectsFocus("b", COLF.down), collectsFocusAfterMove(order, "b", -1))
+        // After a removal, the row that takes its place, else the one above, else the picker.
+        assertEquals(CollectsFocus("b", COLF.remove), collectsFocusAfterRemove(order, "a"))
+        assertEquals(CollectsFocus("b", COLF.remove), collectsFocusAfterRemove(order, "c"))
+        assertEquals(CollectsFocus(null, COLF.add), collectsFocusAfterRemove(listOf("a"), "a"))
+        assertEquals("collects-record-kdr:name-up", collectsControlId("record", CollectsFocus("kdr:name", COLF.up)))
+        assertEquals("collects-record-add", collectsControlId("record", CollectsFocus(null, COLF.add)))
     }
 
     @Test

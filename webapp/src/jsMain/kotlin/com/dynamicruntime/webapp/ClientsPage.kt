@@ -557,7 +557,8 @@ private fun ChildrenBuilder.clientDetail(
                 // back up to them: the panel is long, and the page's links are far above.
                 nav {
                     className = ClassName("panel-section-links")
-                    sectionLinks("Forms and data sections", formsSections)
+                    asDynamic()["aria-label"] = "Forms and data sections"
+                    sectionLinks(null, formsSections)
                 }
                 // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the
                 // definition editor, and offered where that editor is: a save lands in the same configuration under the
