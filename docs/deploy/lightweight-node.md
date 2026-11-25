@@ -80,12 +80,15 @@ nothing further to do. Replace `/etc/caddy/Caddyfile` with:
 }
 
 example.org, www.example.org {
+	encode zstd gzip
 	reverse_proxy 127.0.0.1:7070
 }
 ```
 
-The address in the first block is where Let's Encrypt writes if a certificate cannot be renewed. Then reload
-Caddy:
+The address in the first block is where Let's Encrypt writes if a certificate cannot be renewed. The `encode` line
+compresses what Caddy sends to a browser that accepts it, which the application does not do itself: the web app's
+JavaScript is about 4 MB, and 1.2 MB compressed, so a first visit loads sooner. Caddy compresses text (the app's files,
+pages, and API answers) and sends images and video as they are. Then reload Caddy:
 
 ```bash
 sudo systemctl reload caddy
