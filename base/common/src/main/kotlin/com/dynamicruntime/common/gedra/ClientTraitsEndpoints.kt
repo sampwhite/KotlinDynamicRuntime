@@ -59,7 +59,8 @@ object ClientTraitsEdit {
         val narrowings = ClientTraitNarrowEdit.narrowings(cxt, owner)
         // Each trait's name as the client's people see it (issue #1534): for a client with a sandbox, as the sandbox runs
         // it, drafts included.
-        val globalTraits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) }
+        // Not one that joins no group (issue #1902): a client has it by what it defines, and there is nothing to choose.
+        val globalTraits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) && it.joinsGroups }
         val names = formTraitNames(cxt, ClientStoredEdit.editedView(cxt, client), globalTraits.map { it.traitId })
         val traits = globalTraits.map { trait ->
             // The data's `$ref`, as the workflow view reads it: always one, the author's own or the generated one.

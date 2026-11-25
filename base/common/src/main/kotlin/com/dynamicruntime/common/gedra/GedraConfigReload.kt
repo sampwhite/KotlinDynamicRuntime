@@ -193,6 +193,8 @@ object GedraConfigReload {
         FileRefService.getOrNull(cxt)?.reloadClient(cxt, client)
         // And its counters (issue #1849).
         CounterService.getOrNull(cxt)?.reloadClient(cxt, client)
+        // And its form types (issue #1902), which name the traits its schema was just rebuilt with.
+        FormTypeService.getOrNull(cxt)?.reloadClient(cxt, client)
         val evicted = (typeKeys + reportKeys).size
 
         val inherited = taken.count { it.inheritedFrom != null }

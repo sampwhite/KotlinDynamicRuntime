@@ -57,6 +57,7 @@ What a test can see depends on where it is written.
 | A `when` in a workflow's `singletons` | Whether the workflow gives the form the rule's fact. | The form's, and the workflow's own. |
 | A `when` in a workflow's `locks` | Whether the lock holds. | The form's, and the workflow's own. |
 | A lock's `overrideWhen` | Who may change the locked trait anyway. | The request's, for whoever is writing. |
+| A form type's `setWhen` | Who may set a form to the type. | The request's, for whoever is writing. |
 
 `kdr:isOwner` is about one person and one form, so a test where the form is judged whoever looks -- an eligibility
 test, a singleton rule, a lock, or a lock's override -- may not name it, and is refused when its configuration is checked.

@@ -103,6 +103,8 @@ object SandboxConfigs {
             // As they are (issue #1849): the sandbox numbers its forms with its parent's counters, from rows of its
             // own, so trying a form there never uses up an id of the client's.
             counters = config.counters,
+            // As they are (issue #1902): a form made in the sandbox is one of its parent's types.
+            formTypes = config.formTypes,
             // As they are (issue #1599): the sandbox draws its listing as its parent's latest configuration says.
             listing = config.listing,
             origin = config.origin,

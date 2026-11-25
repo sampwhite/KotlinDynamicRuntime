@@ -536,6 +536,12 @@ class DesignViewTest {
         assertEquals("At the office", restated[1].label)
         assertEquals("A hotel", restated.last().label)
         assertNull(formChoiceRowsOf(requirementTypes.properties.getValue("note").valueType, emptyMap()))
+        // Sourced choices (issue #1902) are none of a form's to restate, in the workflow's block and an approval's.
+        val design = parseWfDesign(mapOf(DSV.sourcedFields to mapOf("client.demo.Event" to listOf("venue"))))!!
+        for (block in listOf(design, design.forApproval("accept"))) {
+            assertNull(formChoiceRowsOf(venueType, emptyMap(), block.isSourced("client.demo.Event", "venue")))
+            assertFalse(block.isSourced("client.demo.Event", "note"))
+        }
     }
 
     @Test

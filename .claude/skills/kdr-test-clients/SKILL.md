@@ -286,7 +286,7 @@ id — downstream services can't tell a configured client from a code-defined on
 `"overrides": "code"` (`CCT.overrides`; in the DSL, `overridesCode("tplNote", "tplFlow")` in the `gedraConfig` block,
 or `columns = true` for the forms list's columns). Marked, it stands over the code's entry of the same key, whole, by
 the keys `ConfigKeys` states (the rule a client's own configuration already stands over its template's copies by): a
-trait, type, cfact, workflow, report, file ref, or counter by key, a creation or core details workflow by its kind, the columns
+trait, type, cfact, workflow, report, file ref, counter, or form type by key, a creation or core details workflow by its kind, the columns
 as one set. The load cuts what it stands over out of the code (`CodeOverrides`, `GedraConfigLoadService.cutSource`), so
 a code-defined client such as acme can now be edited through stored configuration. **Unmarked**, a write's trial
 refuses it, saying what it would replace and where ("which template 'tplbase''s 'base' also declares"), and so does a

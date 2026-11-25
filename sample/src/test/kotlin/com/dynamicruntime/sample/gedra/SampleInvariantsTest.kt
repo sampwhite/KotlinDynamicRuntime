@@ -2,7 +2,6 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.KdrSchemaStore
-import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
@@ -18,8 +17,6 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.kdn.Startup
-import com.dynamicruntime.sample.SampleComponent
 import com.dynamicruntime.sample.SampleTestInstances
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.stringSpec
@@ -122,7 +119,8 @@ private fun sourceTraitNamesTests() = stringSpec {
                 val dataType = trait.appliesTo.firstNotNullOfOrNull { kind ->
                     store.types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]?.variants?.byValue?.get(trait.traitId)
                         ?.properties?.get(GE.data)?.valueType
-                }
+                    // A global trait that joins no group (issue #1902) is in no global union, so off its own entry type.
+                } ?: store.types[trait.typeName]?.properties?.get(GE.data)?.valueType
                 val heading = dataType?.name?.let { store.layouts[it] }?.label
                 dataType?.title.isNullOrBlank() && heading.isNullOrBlank()
             }.map { "${config.gedraId.client}: ${it.traitId}" }

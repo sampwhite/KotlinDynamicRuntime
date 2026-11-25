@@ -97,6 +97,9 @@ object GCEL {
 
     /** A counter, or a field naming one (issue #1849). */
     const val counter = "counter"
+
+    /** A form type (issue #1902), by its id. */
+    const val formType = "formType"
 }
 
 /**
@@ -426,6 +429,9 @@ class GedraConfigCollector {
     fun traitsOwnedBy(client: String): List<GedraTrait> = read().traitOwners.entries
         .filter { (key, _) -> key.client == client }
         .map { it.value }
+
+    /** Whether any configuration [client] holds declares a form type (issue #1902). */
+    fun definesFormTypes(client: String): Boolean = configs.any { it.gedraId.client == client && it.formTypes.isNotEmpty() }
 
     /**
      * The trait-usage rules [client] applies (issue #537): **its own if it declared any, otherwise the global

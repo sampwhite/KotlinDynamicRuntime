@@ -41,6 +41,23 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
         property(GT.nameField, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
     }
 
+    // Which of its client's form types a form is (issue #1902). In no group: to a client that defines no form types it
+    // would be a choice with nothing to choose. The choices are the client's types, sourced for each caller; which a form
+    // may be set to is held on every write by `FormTypeHook`, since a sourced list takes no part in validation.
+    trait(
+        GT.formTypeEntry,
+        GT.formType,
+        setOf(GedraDataType.formDoc),
+        "Which kind of form this is, of the form types its client defines.",
+        joinsGroups = false,
+    ) {
+        title = "Form type"
+        property(GT.formTypeField, "The form's type.", required = true) {
+            title = "Type"
+            optionsSource(FTYPE.optionsSource)
+        }
+    }
+
     // The default forms-list presentation (issue #537): a "Name" column pulled from the `name` trait, applied
     // to any client that has not declared usage rules of its own. This is what preserves the name column every
     // deployment showed before presentation became client-configurable -- a client with its own rules

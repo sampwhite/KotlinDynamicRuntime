@@ -243,6 +243,8 @@ class GedraConfigTest : StringSpec({
         ConfigSlotShapes.primaryKey(cxt, CCT.listingDef) shouldBe emptyList()
         // A counter by its counter id (issue #1849).
         ConfigSlotShapes.primaryKey(cxt, CCT.counterDef) shouldBe listOf(CTR.counterId)
+        // A form type by its id (issue #1902).
+        ConfigSlotShapes.primaryKey(cxt, CCT.formTypeDef) shouldBe listOf(FTYPE.formTypeId)
     }
 
     "the referenced slots point at the canonical shapes, and the schema-doc slots parse their body" {

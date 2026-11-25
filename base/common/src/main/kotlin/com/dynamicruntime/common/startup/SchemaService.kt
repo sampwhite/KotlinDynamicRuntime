@@ -252,7 +252,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         // Manufactured last and compiled with everything else: the union's branches are not known until
         // every component has contributed, and by the time anything reads the store, it is an ordinary type.
         // Called once with the global scope; per-client views call the same function with a different one.
-        val globalTraits = collected.gedraConfigs.traitsFor(GID.globalClient)
+        // Without one that joins no group (issue #1902): a client that includes them all runs these unions, and has not it.
+        val globalTraits = collected.gedraConfigs.traitsFor(GID.globalClient).filter { it.joinsGroups }
         // The kinds that carry validated entries -- see `GU.entryKinds`, which the per-client pass reads too.
         for (kind in GU.entryKinds) {
             collected.defs.putAll(entryUnionDefs(cxt, GCFG.globalNamespace, kind, globalTraits))
@@ -2156,7 +2157,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             CounterService.getOrNull(cxt)?.deliveredFor(surface.client, defs)?.takeIf { it.isNotEmpty() }
                 ?.let { result[CTR.counters] = it }
             val providers = svc?.optionsProviders.orEmpty()
-            return resolveOptionsSources(cxt, result, providers)
+            // Bound to the surface's client (issue #1902), as the cfacts above are: a list that is a client's own is the
+            // named client's. Who is asking is unchanged.
+            val bound = surface.client?.takeIf { it != cxt.client }?.let { cxt.mkSubContext("catalogOptions", it) } ?: cxt
+            return resolveOptionsSources(bound, result, providers)
         }
 
         /**

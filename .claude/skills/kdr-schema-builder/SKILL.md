@@ -349,7 +349,10 @@ Two things follow, and both are deliberate:
 
 - **The id never leaves the server.** The catalog resolves it as it renders, writing the answer into
   `g-options` and dropping `g-optionsSource`, so every schema consumer — the form engine, the read-only
-  outline, a future export — sees an ordinary choice list and needs no second way to have options.
+  outline, a future export — sees an ordinary choice list and needs no second way to have options. The workflow view
+  resolves the lists of the traits it draws the same way (issue #1902), and may answer one of them for the form it
+  draws: a form's type offers the types the caller may set and the form's own. A callback's context is bound to the
+  client whose schema is served (`c.client`); who is asking is `c.userProfile`.
 - **A sourced list takes no part in validation.** The callback's answer is never parsed into a `SchType`, so
   there is no path by which one caller's list rejects another caller's value. That is what makes a per-caller
   list safe; a field that must actually be bounded is enforced by its handler, which can say *why*.

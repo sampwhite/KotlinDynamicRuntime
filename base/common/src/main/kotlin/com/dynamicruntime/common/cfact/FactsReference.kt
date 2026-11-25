@@ -4,6 +4,7 @@ package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.assistant.ASST
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.FTYPE
 import com.dynamicruntime.common.gedra.workflow.CFV
 import com.dynamicruntime.common.gedra.workflow.RCF
 import com.dynamicruntime.common.gedra.workflow.ULH
@@ -175,6 +176,9 @@ private fun placesTable(): String {
         Triple("A `${WFD.kWhen}` in a workflow's `${WFD.locks}`", "Whether the lock holds.", formAndWorkflow),
         Triple(
             "A lock's `${WFD.overrideWhen}`", "Who may change the locked trait anyway.", "The request's, for whoever is writing.",
+        ),
+        Triple(
+            "A form type's `${FTYPE.setWhen}`", "Who may set a form to the type.", "The request's, for whoever is writing.",
         ),
     ).map { (where, decides, sees) -> "| $where | $decides | $sees |" }
     return (listOf("| Where | What it decides | The facts it sees |", "|---|---|---|") + rows).joinToString("\n")
