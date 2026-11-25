@@ -52,6 +52,7 @@ class TestUserCaller(private val user: TestUser) : TrialCaller {
  * The trial harness's own working (issue #1859), without the real model: a trial driven in-process against a scripted
  * one, through the same calls a run makes over HTTP, and the checks a report is made of, on configurations made by hand.
  */
+@Suppress("BlockingMethodInNonBlockingContext")
 class TrialHarnessTest : StringSpec({
     val model = ScriptedModel(emptyList())
     val cxt: KdrCxt = Startup.mkTestBootCxt(
@@ -531,7 +532,7 @@ class TrialHarnessTest : StringSpec({
             val second = TrialVariant("second", "Fails to start.", emptyList())
             val third = TrialVariant("third", "Runs after it.", emptyList())
             val trial = Trial("pair", "Several variants.", "Pair", listOf(first, second, third), smoke.expectations)
-            val conversation = conversationOf(Triple(ATOOL.setCopy, emptyMap<String, Any?>(), false))
+            val conversation = conversationOf(Triple(ATOOL.setCopy, emptyMap(), false))
             val info = RunInfo("t2", "http://localhost:0", null, emptyMap(), null, Clock.System.now())
             val seen = mutableListOf<Boolean>()
             val (report, results) = TrialRunner.runAll(trial.variants.map { trial to it }, dir, info) { t, v, email ->
