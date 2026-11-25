@@ -299,6 +299,10 @@ and its menu entry. Explained on the [client](client.md), [talk core details](ta
     {
       "typeName": "kdr.core.NameData",
       "schema": {
+        "g-merge": {"properties": "merge"},
+        "properties": {
+          "name": {"type": "string", "description": "What to call it.", "maxLength": 128, "g-unique": "owner"}
+        },
         "g-layout": {
           "$comment": "The platform's name trait, as the demo's forms show it.",
           "label": "Talk title",

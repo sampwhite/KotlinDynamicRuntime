@@ -77,7 +77,7 @@ ids per finding beside the full count) whose **Publish anyway** resends the same
 with a sandbox beside the "publish from its sandbox" note too, with no publish button in the dialog there. Each
 form id opens the raw trait editor in a new tab (`impactFormHref`) where the session can read it
 (`impactFormsOpenable`); a session in the sandbox is a user of the sandbox and cannot read its parent's forms, so there
-the ids stay plain and a note says to open them from the parent's own page. The `impact-demo` simulation leaves a harmful draft to look at -- run it from the
+the ids stay plain and a note says to open them from the parent's own page. The `impact-demo` simulation leaves a harmful draft to look at (a trait dropped, a field required, and one made unique that two forms share) -- run it from the
 **Simulations** page, which signs you in as the client's administrator, or `kdr-probe --url <your server> impact-demo`. The definition and the configurations are fetched apart and keyed on the open id with a
 monotonic token, so a client this node does not carry still shows what the listing knows above the retrieve's
 404, and a slow answer for a client the user moved on from is dropped. The constants the frontend reads these by
@@ -457,10 +457,11 @@ platform's shows none. Where the platform's is a fragment pull (`CIT.namePulled`
 one given replaces it, and a stored name that is a template or introduction that is a pull is not the editor's
 (`traitNarrowingOf` refuses it). The preview's heading says the name, and the introduction is under it, since the form
 draws only the fields. Then the editor lists the trait's fields (`narrowFieldRows`, labeled from the
-catalog's resolved `layouts`) with **Shown**, **Required**, and **Choices kept**, offering only moves that narrow: hiding
+catalog's resolved `layouts`) with **Shown**, **Required**, **Unique**, and **Choices kept**, offering only moves that narrow: hiding
 is the layout's -- an authoritative field list, the default for every workflow, the data unchanged -- and a field the
-data requires cannot be hidden (`hideLockedReason`); requiring and keeping fewer choices change the data
-(`requireLockedReason`). The model is the kernel's `TraitNarrowing`, whose `toAlteration` the preview merges over the
+data requires cannot be hidden (`hideLockedReason`); requiring, making unique for each owner (issue #1851, plain text a
+person types, `mayBeUnique`), and keeping fewer choices change the data
+(`requireLockedReason`). A new client's name trait starts with **Unique** on. The model is the kernel's `TraitNarrowing`, whose `toAlteration` the preview merges over the
 platform's type (`narrowPreviewDefs`) exactly as the backend writes it: the client's alteration of the trait's data
 type, saved through `/clientAdmin/client/traits/narrow` (`traitNarrowRequest`) into `narrow_<trait>` or where a stored
 alteration is. **As the trait is declared** clears it. A narrowing does not include a trait, and says so for one the

@@ -4,7 +4,9 @@ import com.dynamicruntime.common.content.ComponentImageService
 import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.ColumnWidth
 import com.dynamicruntime.common.gedra.GCFG
@@ -86,5 +88,20 @@ class ConfDemoTalkNameTest : StringSpec({
         val columns = ListingColumn.listFrom(listing[EP.summary].toJsonMapOrEmpty()[GDF.columns])
         columns.map { it.label } shouldBe listOf("Talk", "Talk id", "Track")
         columns.single { it.columnId == ConfDemo.talkId }.width shouldBe ColumnWidth.narrow
+    }
+
+    "a speaker's talks have different titles, and the refusal calls the field by its label on the form (issue #1851)" {
+        val speaker = TestUser.create(cxt, "titles@$client.example", userClient = client)
+        val path = clientPath(GEP.formDocCreate, client)
+        fun talk(title: String) = mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to title))))
+        speaker.postItem(path, talk("Kotlin for Two"))
+        speaker.expectError(EXC.badInput, path, talk("kotlin for two!"))[EP.errorMessage] shouldBe
+            "Title 'kotlin for two!' is already used by another of your forms, as 'Kotlin for Two'. Choose a different one."
+        // Another speaker's talk may have it.
+        TestUser.create(cxt, "titles2@$client.example", userClient = client).postItem(path, talk("Kotlin for Two"))
+        // And an administrator adapts the trait, its uniqueness one of the editor's own moves.
+        val admin = TestUser.create(cxt, "adapter@$client.example", ROLE.admin, userClient = client)
+        val narrowing = admin.getItem(UADEP.clientTraits)[CIT.traits].toJsonListOfMaps().single { it[CIT.traitId] == GT.name }
+        narrowing[CIT.narrowing].toJsonMapOrEmpty()[CIT.unique] shouldBe listOf(GT.nameField)
     }
 })

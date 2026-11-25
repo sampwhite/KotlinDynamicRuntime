@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.normalizeUserLabels
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -121,6 +122,8 @@ object ClientCreate {
                 add(ConfigWrite(config, mustBeNew = true))
                 if (copy.isNotEmpty()) add(ConfigWrite(copyConfig(bound, client, copy), mustBeNew = true))
                 starterConfigs(bound, client, starters).forEach { add(ConfigWrite(it, mustBeNew = true)) }
+                starterUniqueNameConfig(bound, client, request[CLD.extendsFromClientId].toOptStr(), starters)
+                    ?.let { add(ConfigWrite(it, mustBeNew = true)) }
                 add(ConfigWrite(starterReportConfig(bound, client, definition), mustBeNew = true))
             }
             try {
@@ -245,8 +248,11 @@ object ClientCreate {
      */
     private fun caseVariant(cxt: KdrCxt, client: String): String? {
         val clients = ClientService.get(cxt)
-        val ids = clients.clients.keys + clients.declaredClients().map { it.clientId } +
-            GedraConfigService.get(cxt).storedClients(cxt)
+        val ids = buildSet {
+            addAll(clients.clients.keys)
+            clients.declaredClients().mapTo(this) { it.clientId }
+            addAll(GedraConfigService.get(cxt).storedClients(cxt))
+        }
         return caseVariantOf(client, ids)
     }
 
@@ -309,6 +315,23 @@ object ClientCreate {
                 mapOf(CCT.workflowDef to listOf(mapOf(CCT.workflowId to id, CCT.definition to overlay))),
             )
         }
+    }
+
+    /**
+     * The configuration that keeps the names of one owner's forms apart (issue #1851), for a client whose [starters]
+     * collect the form's name: the name trait narrowed as its editor narrows one, in the configuration that editor uses, so
+     * the administrator drops it there. Null for a client that starts without the name, and for one whose [base] adapts the
+     * name trait: the client's version would replace the base's, whole.
+     */
+    private fun starterUniqueNameConfig(bound: KdrCxt, client: String, base: String?, starters: List<WfDef>): GedraConfig? {
+        if (starters.none { w -> w.tasks.any { t -> t.traits.any { it.traitId == GT.name } } }) return null
+        val trait = globalTraitBases(bound)[GT.name] ?: return null
+        if (base != null && trait.typeName in SchemaService.get(bound).overlaidTypesFor(base)) return null
+        val body = TraitNarrowing(GT.name, unique = setOf(GT.nameField)).toAlteration(trait.body) ?: return null
+        return reassembleForWrite(
+            bound, narrowConfigName(GT.name), clientNamespace(client), client,
+            mapOf(CCT.schemaDef to listOf(mapOf(CCT.typeName to trait.typeName, CCT.schema to body))),
+        )
     }
 
     /**

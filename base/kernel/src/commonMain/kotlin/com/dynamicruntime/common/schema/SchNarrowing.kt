@@ -37,6 +37,9 @@ import com.dynamicruntime.common.util.toOptStr
  *     [SCH.items] are judged by these same rules (issue #1119), so a list of several choices narrows as one does.
  *  3. **More required**: [SCH.required] as a superset of the base's.
  *
+ * A field made unique ([SCH.unique], issue #1851) narrows, since fewer values may be stored; one the type holds unique
+ * stays so, in the scope it names.
+ *
  * A file field's kinds and largest size ([SCH.fileKinds], [SCH.fileMaxSize], issue #1834) narrow as a choice list does:
  * fewer kinds, or smaller files of each kind it keeps -- judged by the limit in force, not by the keyword alone. A
  * table field's rows (issue #1882) narrow as an array's items do: an inline row type by these same rules, a `$ref` one
@@ -136,6 +139,9 @@ enum class NarrowingError : ProblemCode {
 
     /** A table field made to hold more rows than the type's does (issue #1882). */
     raisesFileMaxRows,
+
+    /** A field the type holds unique made not to be, or unique in another scope (issue #1851). */
+    dropsUnique,
 }
 
 private fun narrowed(code: NarrowingError, at: String, message: String) =
@@ -182,7 +188,7 @@ private val presentationKeys = setOf(
  * Theme: #NARRW.
  */
 private val narrowingKeys = setOf(
-    SCH.properties, SCH.options, SCH.required, SCH.openOptions, SCH.fileKinds, SCH.fileMaxSize, SCH.fileMaxRows,
+    SCH.properties, SCH.options, SCH.required, SCH.openOptions, SCH.fileKinds, SCH.fileMaxSize, SCH.fileMaxRows, SCH.unique,
 )
 
 /**
@@ -217,6 +223,7 @@ private fun compare(
     checkRequired(path, at, base, variant, out)
     checkFileField(path, at, base, variant, out)
     checkFileMaxRows(path, at, base, variant, out)
+    checkUnique(path, at, base, variant, out)
     // An array's elements are judged by the same rules (issue #1119): elements accepting less make an array that
     // accepts less, so a list of several choices may be narrowed as a single choice is.
     val baseItems = (base[SCH.items] as? Map<*, *>)?.toJsonMap()
@@ -234,7 +241,7 @@ private fun compare(
         if (judgedElsewhere || (key == SCH.items && itemsCompared) || (key == SCH.fileRows && rowsCompared)) {
             continue
         }
-        if (base[key] != variant[key]) {
+        if (!sameSchemaValue(base[key], variant[key])) {
             out += narrowed(
                 NarrowingError.changesKeyword, "$at.$key",
                 "'$path' changes '$key' from ${show(base[key])} to ${show(variant[key])}. That takes part in " +
@@ -244,6 +251,17 @@ private fun compare(
             )
         }
     }
+}
+
+/**
+ * Whether two values of a schema document say the same, a number compared by what it is rather than how it was read: one
+ * declared in code is an `Int`, and the same one read back from a stored configuration a `Long`.
+ */
+fun sameSchemaValue(a: Any?, b: Any?): Boolean = when (a) {
+    is Number if b is Number -> a.toDouble() == b.toDouble()
+    is Map<*, *> if b is Map<*, *> -> a.keys == b.keys && a.keys.all { sameSchemaValue(a[it], b[it]) }
+    is List<*> if b is List<*> -> a.size == b.size && a.indices.all { sameSchemaValue(a[it], b[it]) }
+    else -> a == b
 }
 
 private fun show(value: Any?): String = if (value == null) "absent" else "'$value'"
@@ -376,6 +394,21 @@ private fun checkFileMaxRows(path: String, at: String, base: Map<String, Any?>, 
         NarrowingError.raisesFileMaxRows, "$at.${SCH.fileMaxRows}",
         "'$path' allows a table of up to ${max.toLong()} rows, above the type's ${baseMax.toLong()}. A client may lower " +
             "a table field's most rows, never raise it.",
+    )
+}
+
+/**
+ * A field may be made unique (issue #1851), and one the type holds unique is kept so, in the scope it names.
+ *
+ * Theme: #NARRW.
+ */
+private fun checkUnique(path: String, at: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<Problem>) {
+    val scope = base[SCH.unique] ?: return
+    if (variant[SCH.unique] == scope) return
+    out += narrowed(
+        NarrowingError.dropsUnique, "$at.${SCH.unique}",
+        "'$path' changes '${SCH.unique}' from ${show(scope)} to ${show(variant[SCH.unique])}, which lets two forms share a " +
+            "value the type keeps unique. A client may make a field unique, not undo it.",
     )
 }
 

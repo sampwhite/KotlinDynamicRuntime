@@ -11,6 +11,7 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.ScriptEnv
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.humanizeFieldName
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -93,6 +94,31 @@ fun formTraitData(types: Map<String, SchType>, traitId: String): SchProperty? =
  */
 fun formTraitName(cxt: KdrCxt, client: String?, traitId: String): String =
     formTraitNames(cxt, client, listOf(traitId)).getValue(traitId)
+
+/**
+ * The label of [field] of form trait [traitId] as [client]'s forms show it (issue #1851): its layout's label, then its
+ * title, then its name in words, in the schema [client] runs -- for a message about a value a person typed there. A label's
+ * backend pulls are resolved with [client]'s copy, and one that is a template reads as none. A workflow may relabel a field
+ * on its own pages, which this does not see.
+ */
+fun formFieldLabel(cxt: KdrCxt, client: String, traitId: String, field: String): String {
+    val store = SchemaService.get(cxt).storeFor(client)
+    val union = store.types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+    val type = traitDataTypeIn(union, traitId)
+    val label = type?.name?.let { typeName ->
+        val layout = store.layouts[typeName]
+        layout?.fieldFor(field)?.label?.let { label ->
+            val copyCxt = if (client == cxt.client) cxt else cxt.mkSubContext("fieldLabel", client)
+            val asked = mapOf(SL.schemaFields to listOf(mapOf(SL.field to field, SL.label to label))) +
+                listOfNotNull(layout.fragmentFileId?.let { SL.fragmentFileId to it })
+            resolveDeliveredLayouts(copyCxt, mapOf(typeName to asked))[typeName].toJsonMapOrEmpty()[SL.schemaFields]
+                .toJsonListOfMaps().firstOrNull()?.get(SL.label).toOptStr()
+        }
+    }
+    return label?.let(::headingName)?.takeIf { it.isNotBlank() }
+        ?: type?.properties?.get(field)?.valueType?.title?.trim()?.takeIf { it.isNotBlank() }
+        ?: humanizeFieldName(field)
+}
 
 /**
  * [formTraitName] for each of [traitIds] (issue #1438): the union looked up once and the headings resolved together,

@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.TraitNarrowing
 import com.dynamicruntime.common.gedra.baseChoicesOf
+import com.dynamicruntime.common.gedra.mayBeUnique
 import com.dynamicruntime.common.gedra.traitNarrowingFromInfo
 import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.traitNarrowingProblems
@@ -70,6 +71,8 @@ class NarrowFieldRow(
     val baseRequired: Boolean,
     /** Its choices, value to label, or null for a field with none. */
     val choices: List<Pair<String, String>>?,
+    /** Whether it may be made unique for each owner (issue #1851): plain text a person types, on a trait with one entry. */
+    val mayBeUnique: Boolean = false,
 )
 
 /** [base]'s fields, in the type's order, as the editor lists them. */
@@ -81,6 +84,7 @@ fun narrowFieldRows(base: TraitBaseView): List<NarrowFieldRow> =
             label = base.layout?.fieldFor(field)?.label ?: prop[SCH.title].toOptStr() ?: humanizeFieldName(field),
             baseRequired = field in base.required,
             choices = baseChoicesOf(prop),
+            mayBeUnique = mayBeUnique(prop) && base.body[SCH.primaryKey] == null,
         )
     }
 
@@ -91,10 +95,15 @@ private fun TraitNarrowing.changed(
     choices: Map<String, List<String>> = this.choices,
     name: String? = this.name,
     introduction: String? = this.introduction,
-) = TraitNarrowing(traitId, hidden, required, choices, name, introduction)
+    unique: Set<String> = this.unique,
+) = TraitNarrowing(traitId, hidden, required, choices, name, introduction, unique)
 
 /** This narrowing with [field] hidden from forms, or shown. */
 fun TraitNarrowing.withHidden(field: String, hide: Boolean) = changed(hidden = if (hide) hidden + field else hidden - field)
+
+/** This narrowing with [field] unique for each owner, or not (issue #1851). */
+fun TraitNarrowing.withUnique(field: String, unique: Boolean) =
+    changed(unique = if (unique) this.unique + field else this.unique - field)
 
 /** This narrowing with [field] required in the data, or not. */
 fun TraitNarrowing.withRequired(field: String, require: Boolean) =

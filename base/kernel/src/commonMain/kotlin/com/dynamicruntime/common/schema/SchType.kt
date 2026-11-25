@@ -82,6 +82,11 @@ class SchType(
      */
     val counter: String? = null,
     /**
+     * Custom `g-unique` keyword (resolved, issue #1851): the scope this plain string's value is unique within, or null
+     * for an ordinary field. See [SCH.unique].
+     */
+    val unique: String? = null,
+    /**
      * JSON Schema `pattern`, compiled to mean the same on the JVM and in the browser (issue #823) -- see
      * [SchPattern]. Null unless declared, and only ever set on a plain string type; the parser refuses it
      * elsewhere. Checked after edge whitespace is handled, like the other string checks.

@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.UNQ
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
@@ -18,7 +19,8 @@ import com.dynamicruntime.common.naming.clientNamespace
 /**
  * The publish impact demo (issue #935): a client with a Shadow Sandbox -- so it runs only what it publishes -- forms
  * stored under both of its traits, and an unpublished **draft** of its traits that would strand them: it drops
- * [visit] and makes a [note] require an `owner` no stored note has. Publishing that draft from the sandbox's page is
+ * [visit], makes a [note] require an `owner` no stored note has, and makes a note's text unique for each owner, which two
+ * stored notes share (issue #1851). Publishing that draft from the sandbox's page is
  * refused with the impact report, which the page shows with "Publish anyway"; "Check impact" shows it first.
  */
 @Suppress("ConstPropertyName")
@@ -50,14 +52,14 @@ fun impactDemoMain(cxt: KdrCxtBase, client: String = ImpactDemo.client): GedraCo
     }
 
 /**
- * The demo's traits: [ImpactDemo.note], and [ImpactDemo.visit] unless [harmful] -- which drops `visit` and makes a
- * note require an `owner` every stored note lacks.
+ * The demo's traits: [ImpactDemo.note], and [ImpactDemo.visit] unless [harmful] -- which drops `visit`, makes a note
+ * require an `owner` every stored note lacks, and makes its text unique for each owner.
  */
 fun impactDemoTraits(cxt: KdrCxtBase, client: String = ImpactDemo.client, harmful: Boolean = false): GedraConfig =
     gedraConfig(cxt, ImpactDemo.traits, clientNamespace(client), client) {
         trait("NoteEntry", ImpactDemo.note, setOf(GedraDataType.formDoc), "A note.") {
             title = "Note"
-            property("text", "What it says.")
+            property("text", "What it says.") { if (harmful) unique = UNQ.owner }
             if (harmful) property("owner", "Who owns the note.", required = true)
         }
         if (!harmful) {
@@ -70,7 +72,7 @@ fun impactDemoTraits(cxt: KdrCxtBase, client: String = ImpactDemo.client, harmfu
 
 /**
  * Provisions the impact demo (issue #935): the client `impactdemo<suffix>` with its two configurations published,
- * three forms holding its traits, then the harmful draft of its traits, left unpublished. A rerun first puts the
+ * four forms holding its traits, then the harmful draft of its traits, left unpublished. A rerun first puts the
  * harmless traits back and publishes them, so it is safe to repeat; the forms accumulate.
  */
 fun provisionImpactDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
@@ -87,6 +89,8 @@ fun provisionImpactDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     Simulations.createForm(cxt, owner, listOf(entry(ImpactDemo.visit, "site", "North yard"), entry(ImpactDemo.note, "text", "Gate code changed.")))
     Simulations.createForm(cxt, owner, listOf(entry(ImpactDemo.visit, "site", "Dock 4")))
     Simulations.createForm(cxt, owner, listOf(entry(ImpactDemo.note, "text", "Nothing to report.")))
+    // The same note but for its spelling, so making the text unique finds two forms that share it.
+    Simulations.createForm(cxt, owner, listOf(entry(ImpactDemo.note, "text", "nothing to report")))
 
     // The draft: written and reloaded, so the sandbox runs it while the client keeps what it published.
     Simulations.provisionConfig(cxt, impactDemoTraits(cxt, client, harmful = true), publish = false)

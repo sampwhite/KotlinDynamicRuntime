@@ -61,6 +61,11 @@ val CreateForUserPage = FC<Props> {
     // Load the chosen user's client's create schema when a user is picked (issue #714 mechanism: resolve the
     // endpoint on that client's surface). Re-runs when the picked user changes -- including to null (the box was
     // cleared or edited), which resets the form so a stale one is never left under a changed pick.
+    // A unique field (issue #1851): asked about as it is left, of the picked user's forms.
+    val uniqueChecks = useUniqueChecks(client = picked?.client, userRef = picked?.primaryId) { path ->
+        uniqueAskInEntries(values, path) { entryDataType(catalog?.let { cat -> endpoint?.let { cat.inputType(it) } }, GDF.entries, it) }
+    }
+
     // A counter's field (issue #1849): given its id, from the picked user's client, as its section is added -- unless its
     // counter gives ids when the form is saved (issue #1852), when the field is left to the server and not drawn.
     val counterIds = useCounterIds(
@@ -152,8 +157,9 @@ val CreateForUserPage = FC<Props> {
                     fieldLayouts = cat.fieldLayouts
                     // The fields the page answers itself, not the form (issue #762): the one list both create pages use.
                     omit = formCreateOmittedFields
-                    this.failures = failures
+                    this.failures = withTaken(failures, uniqueChecks.failures)
                     onChange = { values = it }
+                    onFieldCommit = { path -> uniqueChecks.left(path) }
                     onFieldEdit = { path ->
                         failures?.let { current ->
                             failures = current.clearedAt(path).ifEmpty { null }

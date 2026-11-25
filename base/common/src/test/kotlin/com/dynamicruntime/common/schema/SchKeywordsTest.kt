@@ -6,6 +6,8 @@ import com.dynamicruntime.common.counter.counterFieldsOf
 import com.dynamicruntime.common.counter.counterPrefix
 import com.dynamicruntime.common.counter.counterValueText
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.UNQ
+import com.dynamicruntime.common.gedra.uniqueFieldsOf
 import com.dynamicruntime.common.startup.DefRepairContext
 import com.dynamicruntime.common.startup.repairTypeDef
 import com.dynamicruntime.common.util.toJsonMap
@@ -111,6 +113,33 @@ private fun schCounterTests() = stringSpec {
         val optional = parse { counter = "receipt" }
         formRequirementFailures(optional, layouts, mapOf("note" to "cash"), excused = setOf("number")).shouldBeEmpty()
         formRequirementFailures(optional, layouts, mapOf("note" to "cash")).map { it.path } shouldContainExactly listOf("number")
+    }
+
+    "a unique field is a plain string a person types, at the top of a type with no key (issue #1851)" {
+        uniqueFieldsOf(parse { unique = UNQ.owner }) shouldBe mapOf("number" to UNQ.owner)
+        // A value with nothing to compare is refused, and blank text is no answer; so is a choice or default that has nothing.
+        val held = parse { unique = UNQ.owner }
+        validate(held, mapOf("number" to "!!!")).map { it.path to it.code } shouldContainExactly
+            listOf("number" to SchFailCode.noLetterOrDigit)
+        // Reworded by its own code, as any failure is.
+        validate(parse { unique = UNQ.owner; errors { noLetterOrDigit("Say more.") } }, mapOf("number" to "!!!"))
+            .map { it.userMessage } shouldContainExactly listOf("Say more.")
+        for (fine in listOf("A!", "", "  ")) validate(held, mapOf("number" to fine)).shouldBeEmpty()
+        refusal { option("-"); unique = UNQ.owner } shouldContain "no letter or digit"
+        refusal { default = "?"; unique = UNQ.owner } shouldContain "no letter or digit"
+        refusal { unique = "everyone" } shouldContain SCH.unique
+        refusal { type = SCT.integer; unique = UNQ.owner } shouldContain "compares plain strings"
+        refusal { dayOnlyDate(); unique = UNQ.owner } shouldContain "compares plain strings"
+        refusal { counter = "receipt"; unique = UNQ.owner } shouldContain SCH.counter
+        refusal { derived = true; unique = UNQ.owner } shouldContain SCH.derived
+        refusal {
+            type = SCT.kObject
+            property("inner", "Nested.") { unique = UNQ.owner }
+        } shouldContain "nested object or a list"
+        refusal {
+            type = SCT.array
+            items { type = SCT.string; unique = UNQ.owner }
+        } shouldContain "nested object or a list"
     }
 
     "a counter is refused off a plain string, and beside a derivation or a list" {
@@ -1342,7 +1371,7 @@ private fun schStdKeywordsTests() = stringSpec {
             mapOf(SCH.type to SCT.string, SCH.format to 5L) to "'format'",
             mapOf(SCH.type to SCT.string, SCH.description to listOf("x")) to "'description'",
             mapOf(SCH.type to SCT.string, SCH.title to true) to "'title'",
-            mapOf(SCH.dRef to mapOf("to" to "s.Other")) to "'\$ref'",
+            mapOf(SCH.dRef to mapOf("to" to "s.Other")) to $$"'$ref'",
             mapOf(SCH.type to SCT.string, SCH.minLength to "three") to "'minLength'",
             mapOf(SCH.type to SCT.integer, SCH.maximum to listOf(5L)) to "'maximum'",
             mapOf(SCH.oneOf to "s.Other") to "'oneOf'",
@@ -1358,7 +1387,7 @@ private fun schStdKeywordsTests() = stringSpec {
             parseSchemaTypes(
                 mapOf(
                     "s.Other" to mapOf(SCH.type to SCT.string),
-                    "s.Holder" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("o" to mapOf(SCH.dRef to "#/\$defs/s.Other") + own)),
+                    "s.Holder" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("o" to mapOf(SCH.dRef to $$"#/$defs/s.Other") + own)),
                 ),
             )
         }.message.orEmpty()
@@ -1373,7 +1402,7 @@ private fun schStdKeywordsTests() = stringSpec {
         refusal(mapOf(SCH.type to SCT.string, SCH.minLength to 3L, SCH.maxLength to "64")) shouldBe null
         refusal(mapOf(SCH.type to null, SCH.required to null, SCH.items to null)) shouldBe null
         // A keyword this layer does not read is the document's own: a stock validator's document still parses.
-        refusal(mapOf(SCH.type to SCT.string, "examples" to "not a list", "\$comment" to 5L, "multipleOf" to "x")) shouldBe null
+        refusal(mapOf(SCH.type to SCT.string, "examples" to "not a list", $$"$comment" to 5L, "multipleOf" to "x")) shouldBe null
         refusal(mapOf(SCH.type to SCT.string, "x-note" to mapOf(SCH.type to "strng"))) shouldBe null
         // Nor is a keyword's word in a value: a default is data.
         refusal(mapOf(SCH.type to SCT.kObject, SCH.default to mapOf(SCH.type to "refund", SCH.required to "soon"))) shouldBe null

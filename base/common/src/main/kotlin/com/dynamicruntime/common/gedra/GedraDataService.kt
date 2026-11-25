@@ -168,6 +168,10 @@ class GedraDataService : ServiceInitializer {
         return GedraDataRow.extract(gedraService, row.value)
     }
 
+    /** Whether [scope] admits [row] (issue #1838): [admitsRow]'s test, on a row already extracted. */
+    fun admitsGedra(scope: ReadScope, row: GedraDataRow): Boolean =
+        admitsRow(scope, mapOf(PF.client to row.client, PF.org to row.org, PF.userId to row.userId))
+
     /**
      * Whether a stored gedra [row] is admitted by [scope] -- the exact set `SqlScopeUtil.scopeConditions`
      * composes into the SQL `where`, applied to one row in memory. The by-id read and the listing both go
@@ -180,10 +184,6 @@ class GedraDataService : ServiceInitializer {
      *
      * Theme: #RDSCP.
      */
-    /** Whether [scope] admits [row] (issue #1838): [admitsRow]'s test, on a row already extracted. */
-    fun admitsGedra(scope: ReadScope, row: GedraDataRow): Boolean =
-        admitsRow(scope, mapOf(PF.client to row.client, PF.org to row.org, PF.userId to row.userId))
-
     private fun admitsRow(scope: ReadScope, row: Map<String, Any?>): Boolean {
         if (scope.client != null && row[PF.client].toOptStr() != scope.client) return false
         if (!scope.admitsOrg(row[PF.org].toOptStr()?.ifEmpty { null })) return false
@@ -1112,6 +1112,8 @@ class GedraDataService : ServiceInitializer {
         // One document's survivors and the traits excluded from it, computed in the validate phase and written
         // in the insert phase.
         val plans = mutableListOf<Pair<List<Map<String, Any?>>, List<String>>>()
+        // The unique values the documents planned so far hold (issue #1851), by claim kind and key.
+        val importedUnique = HashSet<Pair<String, String>>()
 
         // Phase one -- validate everything, write nothing. An unforgivable fault throws here, before any insert,
         // which is what makes "reject the entire call" true across documents rather than only within one: a bad
@@ -1215,7 +1217,25 @@ class GedraDataService : ServiceInitializer {
                     excluded.add(traitId)
                     continue
                 }
+                // A value one of the owner's forms already holds (issue #1851), or an earlier document of this import does, is an
+                // invalid entry like any other. The write's own check decides a race.
+                val shared = UniqueClaims.slotsOf(union, listOf(stored)).values.filter { slot ->
+                    (slot.claimKind to slot.key) in importedUnique ||
+                        UniqueClaims.heldElsewhere(cxt, cxt.client, cxt.userId, slot) != null
+                }
+                if (shared.isNotEmpty()) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw KdrException.mkInput(
+                            "An imported entry for trait '$traitId' is invalid: " +
+                                UniqueClaims.takenText(cxt, cxt.client, cxt.userId, shared.first(), null),
+                        )
+                    }
+                    discard(GIF.invalidEntry, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
                 survivors.add(stored)
+                UniqueClaims.slotsOf(union, listOf(stored)).values.forEach { importedUnique.add(it.claimKind to it.key) }
             }
             if (survivors.isEmpty()) {
                 continue
@@ -1369,10 +1389,12 @@ class GedraDataService : ServiceInitializer {
             // falls back to now, which is harmless: the enabled-only update then matches nothing and the delete
             // reports nothing to do.
             val current = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, mapOf(GD.gedraId to row.gedraId.fullId))
+            var deleted: GedraDataRow? = null
             // The write guards (issue #857), under the same lock: deleting a gedra removes every trait it holds, so a
             // guard refusing a change to any of them -- a trait lock -- refuses the delete too. There is no override.
             current?.let { raw ->
                 val held = GedraDataRow.extract(gedraService, raw)
+                deleted = held
                 val guarded = GedraGuardedWrite(
                     held, held.entries.mapNotNull { it[GE.traitId].toOptStr() }.toSet(), null, deletesGedra = true,
                 ) {
@@ -1383,6 +1405,8 @@ class GedraDataService : ServiceInitializer {
             }
             SqlTopicUtil.prepForStdUpdate(cxt, table, data, current)
             changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
+            // What the hooks let go of with it (issue #1851), in the delete's own transaction.
+            if (changed > 0) deleted?.let { held -> SchemaService.get(cxt).writeHooks().forEach { it.afterDelete(cxt, sqlCxt, held) } }
         }
         return changed > 0
     }
@@ -1887,6 +1911,15 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
+     * Whether [cxt]'s caller is offered [field] of [traitId]'s data: it has no `g-visibleWhen` gate, or the caller passes
+     * it. For a read that answers about one field by name.
+     */
+    fun offersField(cxt: KdrCxt, kind: GedraDataType, traitId: String, field: String): Boolean {
+        val gate = traitDataTypeIn(clientUnion(cxt, kind), traitId)?.properties?.get(field)?.visibleWhen ?: return true
+        return gatedWrite(cxt, kind).offers(gate)
+    }
+
+    /**
      * Trait data of [kind] as its `g-onWrite` functions leave it (issue #1501), given the trait and the data a write
      * would store: the functions of the trait's data type in [cxt]'s client -- the data's, as [clientUnion] reads it --
      * run in order. The data unchanged for a trait whose type declares none, or that this client does not carry.
@@ -2385,16 +2418,16 @@ interface GatedWrite {
     fun checkRemoval(traitId: String, stored: Map<String, Any?>)
 }
 
+/** The data type of [traitId]'s entries in [union], an entry union, or null when it carries no such trait. */
+fun traitDataTypeIn(union: SchType?, traitId: String): SchType? =
+    union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+
 /**
  * An entry's `data` as a write takes it (issue #818): the object it carries, or a 400 -- absent `data` is not `{}`,
  * and a value that is not an object is not data at all. An explicit `{}` is data ("these fields, none of them") and
  * is taken. [missingHint] is appended to the absent case's message: what the caller probably meant instead (on an
  * edit, a delete).
  */
-/** The data type of [traitId]'s entries in [union], an entry union, or null when it carries no such trait. */
-fun traitDataTypeIn(union: SchType?, traitId: String): SchType? =
-    union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
-
 fun entryDataOf(entry: Map<String, Any?>, traitId: String, missingHint: String = ""): Map<String, Any?> =
     when (val raw = entry[GE.data]) {
         null -> throw KdrException.mkInput("The '$traitId' entry carries no ${GE.data}.$missingHint")

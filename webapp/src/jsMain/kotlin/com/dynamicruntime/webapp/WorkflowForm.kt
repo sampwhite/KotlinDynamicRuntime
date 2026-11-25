@@ -37,6 +37,9 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 
 private val wfFormScope = MainScope()
 
+/** Between a trait's id and a field of it, in the key its uniqueness is asked under (issue #1851). */
+private const val uniqueKeyMark = '\u0000'
+
 external interface WorkflowFormProps : Props {
     /** The resolved workflow view to render -- a creation workflow, or a core details workflow resolved against a form. */
     var view: WorkflowView
@@ -326,6 +329,19 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         else -> fieldsGivenAtSave(trait.type, valuesOf(trait.traitId), fieldOpts)
     }
 
+    // A unique field (issue #1851): asked about as it is left, of the forms of whoever this form is or is being made for. A
+    // trait locked here is not this caller's to change, so it is not asked about.
+    val uniqueChecks = useUniqueChecks(props.client, gedraId.takeIf { isEdit }, pickedUser?.primaryId.takeIf { !isEdit }) { key ->
+        val traitId = key.substringBefore(uniqueKeyMark)
+        wf.tasks.firstNotNullOfOrNull { t -> t.traits.firstOrNull { it.traitId == traitId && traitId !in wf.lockedTraits } }
+            ?.let { uniqueAskOf(traitId, it.type, key.substringAfter(uniqueKeyMark), valuesOf(traitId)) }
+    }
+
+    /** The unique fields of the trait [traitId] whose value is taken, as failures of its form. */
+    fun takenIn(traitId: String): List<SchFailure> = uniqueChecks.failures
+        .filter { it.path.substringBefore(uniqueKeyMark) == traitId }
+        .map { it.copy(path = it.path.substringAfter(uniqueKeyMark)) }
+
     /** [trait]'s values as they stand, checked as its save would be. */
     fun checkTrait(trait: WfTraitView, values: Map<String, Any?> = valuesOf(trait.traitId)): InputCheck =
         checkFormInput(trait.type, values, wf.fieldLayouts, givenAtSave(trait))
@@ -554,6 +570,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun onFieldCommit(trait: WfTraitView, path: String) {
         committedByTrait = committedByTrait + (trait.traitId to (committedByTrait[trait.traitId].orEmpty() + path))
         pendingChecks = pendingChecks + trait.traitId
+        uniqueChecks.left("${trait.traitId}$uniqueKeyMark$path")
     }
     useEffect(pendingChecks) {
         if (pendingChecks.isEmpty()) return@useEffect
@@ -831,7 +848,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             this.failures = shownFailures(
                                 failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
                                 trait.traitId in wholeChecked,
-                            )
+                            ) + takenIn(trait.traitId)
                             this.prefill = prefillFor(trait.traitId)
                             onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
                             onFieldEdit = { field ->

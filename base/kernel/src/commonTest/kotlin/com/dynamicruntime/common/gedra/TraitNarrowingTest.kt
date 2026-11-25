@@ -4,6 +4,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
+import com.dynamicruntime.common.schema.NarrowingError
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.narrowingProblems
@@ -101,6 +102,17 @@ class TraitNarrowingTest {
     @Test
     fun anEmptyNarrowingIsNoAlteration() {
         assertNull(TraitNarrowing("kdr:survey").toAlteration(base))
+        // A field made unique (issue #1851) reads back as the narrowing that made it so, beside the others.
+        val unique = TraitNarrowing("kdr:survey", name = "Views", unique = setOf("notes"))
+        val uniqueBody = assertNotNull(unique.toAlteration(base))
+        assertEquals(unique.toInfo(), assertNotNull(traitNarrowingOf("kdr:survey", base, uniqueBody).narrowing).toInfo())
+        assertEquals(unique.toInfo(), traitNarrowingFromInfo(unique.toInfo()).toInfo())
+        assertNull(TraitNarrowing("kdr:survey").toAlteration(base, uniqueBody))
+        assertTrue(narrowingProblems("t", base, uniqueBody).isEmpty())
+        val uniqueNotes = uniqueBody[SCH.properties].toJsonMapOrEmpty()["notes"]
+        val madeUnique = base + (SCH.properties to base[SCH.properties].toJsonMapOrEmpty() + ("notes" to uniqueNotes))
+        val dropped = narrowingProblems("t", madeUnique, mapOf(SCH.properties to base[SCH.properties]))
+        assertEquals(listOf(NarrowingError.dropsUnique), dropped.map { it.code })
         // What a stored alteration says beyond the narrowing -- a field's copy -- survives the narrowing being emptied.
         val stored = mapOf(SCH.layout to mapOf(SL.schemaFields to listOf(mapOf(SL.field to "name", SL.label to "Who"))))
         val kept = assertNotNull(TraitNarrowing("kdr:survey").toAlteration(base, stored))

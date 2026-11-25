@@ -1062,7 +1062,8 @@ object AssistantTools {
                 ATOOL.narrowTrait,
                 "Narrows a global trait for the client, as a draft -- moves that only narrow: '${CIT.hidden}' fields left " +
                     "off its forms (the data still accepts them), '${CIT.required}' fields its data requires, and " +
-                    "'${CIT.choices}' a field's choices restricted, by field key to the values kept. '${CIT.label}' renames " +
+                    "'${CIT.choices}' a field's choices restricted, by field key to the values kept, and '${CIT.unique}' fields no two " +
+                    "forms of one owner may share a value of. '${CIT.label}' renames " +
                     "it and '${CIT.description}' introduces it on the client's forms. Each list is the narrowing as it " +
                     "should stand; an empty narrowing takes the trait back as declared. **Dry run first**: a narrowing " +
                     "leaving stored forms with data the trait refuses is reported.",
@@ -1071,6 +1072,7 @@ object AssistantTools {
                         CIT.traitId to stringSchema("The global trait."),
                         CIT.hidden to arraySchema("Fields its forms leave out.", stringSchema("A field's key.")),
                         CIT.required to arraySchema("Fields its data requires.", stringSchema("A field's key.")),
+                        CIT.unique to arraySchema("Plain text fields unique for each owner.", stringSchema("A field's key.")),
                         CIT.choices to mapOf(
                             "type" to "object",
                             "description" to "By field key, the choice values kept.",

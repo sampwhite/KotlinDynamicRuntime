@@ -419,6 +419,10 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             type = SCT.array
             items { type = SCT.string }
         }
+        property(CIT.unique, "The plain text fields no two forms of one owner may share a value of (issue #1851).") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
         property(CIT.choices, "Per field, the trait's choices the client keeps; a field not named keeps them all.") {
             type = SCT.kObject
         }
@@ -437,7 +441,8 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
     generalEndpoint(
         UADEP.clientTraitNarrow,
         "Narrows a global trait for a client (issue #1119): hides fields from its forms (in the layout, so the data " +
-            "still accepts them), requires fields in its data, and restricts fields' choices -- moves that only narrow. " +
+            "still accepts them), requires fields in its data, makes fields unique for each owner, and restricts fields' choices " +
+            "-- moves that only narrow. " +
             "Written as the client's alteration of the trait's data type, in a stored configuration of its own on the " +
             "first narrowing, or where a stored alteration is; an empty narrowing removes it. Then as every editor's " +
             "save: published and reloaded, or a draft for a client with a Shadow Sandbox, whose impact on the live " +

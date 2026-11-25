@@ -15,7 +15,7 @@ import java.sql.SQLException
 object VCL {
     const val gedraValueClaims = "GedraValueClaims"
 
-    /** What the claim is of: `counter:<counterId>` for a counter's id; a unique field's kind later (issue #1851). */
+    /** What the claim is of: `counter:<counterId>` for a counter's id, `unique:<traitId>.<field>` for a unique field's (issue #1851). */
     const val claimKind = "claimKind"
 
     /** What the claim is unique within, beside its client: a counter's scope, or -- for a unique field -- its owner. */
@@ -45,8 +45,8 @@ object VCL {
  * hold. In the gedra data topic, so a claim is written in the transaction of the gedra that holds it, and its primary
  * key is what keeps two gedras from holding one value, whatever two writes race. Any kind of gedra that holds entries
  * may claim -- a form first, and a container workflow's data or a list of terms as readily -- since the claim names the
- * gedra by its id. A counter's ids are the first kind; a field unique for each owner is to share it (issue #1851), keyed
- * by a hash of its normalized value.
+ * gedra by its id. A counter's ids are one kind (`CounterClaimHook`), and a field unique for each owner another (issue
+ * #1851, `UniqueClaims`), keyed by a hash of its normalized value.
  */
 fun valueClaimTables(cxt: KdrCxt): List<KdrTable> = tableModule(cxt, namespace = "gedraValueClaims", topic = gedraDataTopic) {
     table(VCL.gedraValueClaims, "Which gedra holds each value no other gedra in its scope may hold (issue #1849).") {
@@ -118,6 +118,6 @@ object ValueClaims {
     private fun isIntegrityViolation(e: Throwable): Boolean =
         generateSequence(e) { it.cause }.take(10).any { (it as? SQLException)?.sqlState?.startsWith(VCL.integrityViolationClass) == true }
 
-    private fun table(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[VCL.gedraValueClaims]
+    internal fun table(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[VCL.gedraValueClaims]
         ?: throw KdrException("The ${VCL.gedraValueClaims} table is not registered in the schema store.")
 }

@@ -44,6 +44,8 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.gedra.UNQ
+import com.dynamicruntime.common.overlay.MCH
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayoutBuilder
@@ -339,8 +341,14 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client, 
         }
 
         // The platform's name trait, as the demo's forms show it (issue #1545): renamed and introduced, and its field
-        // relabeled, by its layout alone, which is what the Clients page's Adapt writes. Its data is every client's.
+        // relabeled, by its layout, and its field made unique for each speaker (issue #1851): what the Clients page's Adapt
+        // writes. A field changed is restated whole, as the platform declares it, with what is added.
         type("${GCFG.globalNamespace}.${traitDataTypeName(GT.nameEntry)}") {
+            data[SCH.merge] = mapOf(SCH.properties to MCH.merge)
+            property(GT.nameField, "What to call it.") {
+                maxLength = GT.nameMaxLength
+                unique = UNQ.owner
+            }
             layout(
                 label = "Talk title",
                 comment = "The platform's name trait, as the demo's forms show it.",

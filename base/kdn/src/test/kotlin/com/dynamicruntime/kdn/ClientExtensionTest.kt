@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.ClientExtension
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.CustomerDef
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
@@ -27,12 +28,14 @@ import com.dynamicruntime.common.gedra.copyOverrides
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
@@ -460,6 +463,18 @@ class ExtensionTemplateComponent : ComponentDefinition {
             // What a client started from the template makes forms with, until it writes its own.
             workflow(creationWorkflow, WfEntry.creation) { task("n", "Name") { trait(GT.name); save("c", "Create") } }
         },
+        // One with a New form, no core details workflow, and the name trait under a name of its own (issue #1851).
+        gedraConfig(cxt, "named", "client.tplnamed", namedTemplate) {
+            defineClient(
+                ClientDef(
+                    clientId = namedTemplate, name = "Named template", usageType = ClientUsageType.template,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    includedTraits = listOf(GT.name),
+                ),
+            )
+            type("${GCFG.globalNamespace}.${traitDataTypeName(GT.nameEntry)}") { layout(label = "Project") {} }
+            workflow("namedCreate", WfEntry.creation) { task("n", "Name") { trait(GT.name); save("c", "Create") } }
+        },
         gedraConfig(cxt, "gone", "client.tplgone", retiredTemplate) {
             defineClient(
                 ClientDef(
@@ -566,6 +581,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
     companion object {
         const val template = "tplbase"
         const val publicTemplate = "tplpub"
+        const val namedTemplate = "tplnamed"
         const val retiredTemplate = "tplgone"
         const val plainClient = "tplplain"
         const val creationWorkflow = "pubCreate"

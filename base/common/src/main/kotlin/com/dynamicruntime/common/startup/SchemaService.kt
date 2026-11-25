@@ -53,6 +53,8 @@ import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.checkMode
 import com.dynamicruntime.common.gedra.issue
+import com.dynamicruntime.common.gedra.misplacedUnique
+import com.dynamicruntime.common.gedra.nestedUniqueProblems
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
@@ -317,7 +319,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         }
         // A `g-onWrite` function that cannot run on its type (issue #1501): reported as source config, and skipped where
         // the type is written. Nothing is dropped from the document, so the type is served as it was declared.
-        checkGlobalWriteFunctions(cxt, collected, types)
+        checkGlobalWrites(cxt, collected, types)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
@@ -662,12 +664,15 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         return dropped
     }
 
-    /** Reports each global type's `g-onWrite` problems (issue #1501) -- see [writeFunctionProblems]. */
-    private fun checkGlobalWriteFunctions(cxt: KdrCxt, collected: SchemaCollector, types: Map<String, SchType>) {
+    /** Reports each global type's `g-onWrite` and `g-unique` problems -- see [writeFunctionProblems] and [nestedUniqueProblems]. */
+    private fun checkGlobalWrites(cxt: KdrCxt, collected: SchemaCollector, types: Map<String, SchType>) {
         val issues = mutableListOf<GedraConfigIssue>()
         val creations = collected.schemaFunctions.associateBy { it.fn }
         for ((name, message) in writeFunctionProblems(cxt, creations, types, types.keys)) {
             reportConfigProblem(cxt, globalTypeIssue(collected, name, message, skippedWriteFunction), issues)
+        }
+        for ((name, message) in nestedUniqueProblems(types, types.keys)) {
+            reportConfigProblem(cxt, globalTypeIssue(collected, name, message, misplacedUnique), issues)
         }
     }
 

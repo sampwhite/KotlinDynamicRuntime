@@ -36,6 +36,8 @@ on a list only how many items it has. A parameter in parentheses is offered only
 | `aboveMaximum` | The value is over the field's upper bound: a number too large, text too long, or a list or object with too many entries. | `maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties` | `${field}`, `${value}`, (`${max}`) |
 | `patternMismatch` | Text does not match the field's pattern. | `pattern` | `${field}`, `${value}` |
 | `duplicateItem` | A list holds the same item twice, or two items with the same key. | `uniqueItems`, `g-primaryKey` | `${field}`, `${value}` |
+| `noLetterOrDigit` | A unique value has no letter or digit, so it has nothing to be compared by. | `g-unique` | `${field}`, `${value}` |
+| `valueTaken` | Another form of the same owner holds the value. A form's page reports it as the field is left, not a request's check. | `g-unique` | `${field}`, `${value}` |
 | `default` | Not a code: the message for any code a message list does not name. | Any of the above | `${field}` |
 
 ## The parameters
@@ -77,7 +79,8 @@ does not name.
 **Which message a reader sees.** On a form, the form's own message for the code, then its `default`; then
 the schema's message for the code, then its `default`; then the platform's. A request's refusal always
 carries the platform's message in `message`, and the schema's in `userMessage` when there is
-one, so a program can show either.
+one, so a program can show either. A message for `valueTaken` is a page's alone: a save refused
+because another form holds the value is not one of the failures listed, and says so in the platform's words.
 
 **What a message may hold.** Plain text, and the parameters above. Neither kind may pull its wording from a fragment
 file, as a layout's labels can, since a message is filled in wherever the failure is shown. A message whose parameter

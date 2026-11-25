@@ -273,6 +273,17 @@ object SCH {
     const val counter = "g-counter"
 
     /**
+     * That a plain string field's value is one no two gedras in a scope may share (issue #1851), compared after
+     * normalizing, so a change of case or punctuation is no difference. `owner` is the one scope: the forms of one
+     * owner. A rule about stored data that spans rows, so the write that stores a value is what holds it; validating
+     * one value says only that it has a letter or digit to be compared by.
+     *
+     * On a field of a single-entry trait's data. Refused on anything but a plain string, on a type with a [primaryKey],
+     * and with [derived], [counter], or [sensitive].
+     */
+    const val unique = "g-unique"
+
+    /**
      * The functions run on an object's data each time it is written (issue #1501): a list of function usages, each
      * a `{fn, ...}` object naming a registered kind and carrying that kind's settings (see [SchFunctionUsage]). The
      * first of the data's life-cycle events a schema may attach functions to ([SchEventType]); on a trait's data

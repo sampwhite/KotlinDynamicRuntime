@@ -32,6 +32,9 @@ fun globalTraitBases(cxt: KdrCxt): Map<String, GlobalTraitBase> {
     }.toMap()
 }
 
+/** The stored configuration a client's narrowing of the global trait [traitId] is written to, when it has none yet. */
+fun narrowConfigName(traitId: String): String = CIT.narrowPrefix + traitId.replace(':', '_')
+
 /**
  * Narrowing a global trait for a client (issue #1119): the write behind `POST /clientAdmin/client/traits/narrow`, and
  * the read the catalog shows each global trait's narrowing by. The moves and what they write are [TraitNarrowing]'s.
@@ -148,7 +151,7 @@ object ClientTraitNarrowEdit {
         val body = narrowing.toAlteration(base.body, existing?.body)
         val written: GedraConfigRow
         val issues: List<GedraConfigIssue>
-        val name = CIT.narrowPrefix + narrowing.traitId.replace(':', '_')
+        val name = narrowConfigName(narrowing.traitId)
         // The editor's own configuration for the trait outlives a narrowing taken back to nothing, which leaves it empty;
         // narrowing again writes into it, since a configuration once written is never made anew.
         val holder = existing?.row ?: GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.configId.baseId == name }

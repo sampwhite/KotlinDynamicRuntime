@@ -76,7 +76,8 @@ val changeGroups: List<ChangeGroup> = listOf(
                 traitsPanel, UADEP.clientTraitDesign, ATOOL.designTrait, dryRun = true,
             ),
             ChangeWay(
-                "One of the platform's traits narrowed: fields hidden or required, choices kept, a name of its own",
+                "One of the platform's traits narrowed: fields hidden or required, choices kept, a field made unique for each " +
+                    "owner (`g-unique`), a name of its own",
                 traitsPanel, UADEP.clientTraitNarrow, ATOOL.narrowTrait, dryRun = true,
             ),
             // No editor offers counters yet (issue #1849): a counter, and a field taking its ids, are written as JSON.

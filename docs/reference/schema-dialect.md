@@ -79,6 +79,7 @@ Wherever a schema is written: a type declared by name, a field's own schema, or 
 | `g-fileMaxRows` | A whole number of rows | On a file field holding a CSV table, the most rows its table may hold: 1 to 5,000, and 1,000 when unset. |
 | `g-derived` | True, false or an object | Marks a property the caller does not supply, because something else produces it. |
 | `g-counter` | Text | The client's counter that numbers this plain string: a form shows the next id before it is saved, and it does not change once stored. |
+| `g-unique` | One of [owner] | That no two forms in a scope may share this plain string's value, compared without regard to case or punctuation: 'owner' for the forms of one owner. A value needs at least one letter or digit. |
 | `g-schemaDocument` | True or false | Marks a property whose value is itself a schema, checked by parsing it. |
 | `g-options` | A list | The choices a property offers, each a label and a value. |
 | `g-openOptions` | True or false | Whether the options are suggestions rather than a bound, so another value is allowed. |

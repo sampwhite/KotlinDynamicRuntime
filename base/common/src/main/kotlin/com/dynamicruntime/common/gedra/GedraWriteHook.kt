@@ -35,16 +35,17 @@ class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow, val priorEntr
  * whose failure must not fail the write (a recomputable projection) swallows its own faults -- as the built-in
  * [DerivedStateWriteHook] does.
  *
- * **Four hooks, all registered by `CommonComponent`, in this order:** `CounterClaimHook` (issue #1849), which holds a
+ * **Five hooks, all registered by `CommonComponent`, in this order:** `CounterClaimHook` (issue #1849), which holds a
  * counter's field to the ids issued to the **caller**, first so a refused claim fails before the rest is done;
  * `FormTypeHook` (issue #1902), which holds a form's type to those its client defines and the **caller** may set;
+ * [UniqueClaimHook] (issue #1851), which refuses a value another of the owner's forms holds;
  * `DataFileLinkHook` (issue #1838), which links a form to the data files its fields name and judges a newly linked file
  * against the **caller's** read scope; then [DerivedStateWriteHook]. The order matters: all hooks in one firing are
  * handed the **same** `cxt`, and the state hook rebinds its owner
  * ([com.dynamicruntime.common.context.KdrCxt.bindTransactionOwner]) to own its state to the gedra, which a later hook
  * would see.
  *
- * **Future: a `priority` for ordering, and a per-hook context.** All four are the common component's, so registration
+ * **Future: a `priority` for ordering, and a per-hook context.** All five are the common component's, so registration
  * order is one decision in one file, not an accident of component load order. When a hook comes from another
  * component, or one that must run after the state hook needs the actor's scope, this interface should advertise a
  * priority the fire loop sorts on, and each hook should get its own transaction-scoped context (a fresh
@@ -53,6 +54,12 @@ class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow, val priorEntr
 fun interface GedraWriteHook {
     /** Run after [write]'s data write, inside its transaction. */
     fun afterWrite(cxt: KdrCxt, write: GedraWriteContext)
+
+    /**
+     * Run after [row] is deleted (issue #1851), inside the delete's transaction ([sqlCxt]), with [row] as it stood. Nothing
+     * by default: most of what a gedra has beside it is kept with the disabled row.
+     */
+    fun afterDelete(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {}
 }
 
 /**
