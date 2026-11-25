@@ -123,6 +123,7 @@ object GrantsBasics {
             },
             Expectation("The review's approval shows the applicant's answers") { r -> Checks.approvalShowsNewForm(r) },
             Expectation("The review highlights its Start, for whoever takes its first step") { r -> Checks.reviewHighlightsStart(r) },
+            Expectation("The administrator is told a reviewer needs the editor role too") { r -> Checks.reviewersToldRole(r) },
             Expectation("Home's introduction names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, program) },
             Expectation("The invitation mail names the program") { r -> Checks.copyMentions(r, AFRAG.mail, MAILNS.invitation, program) },
             Expectation("A Home card to start an application, which opens the New form") { r -> Checks.homeCardStartsForm(r) },

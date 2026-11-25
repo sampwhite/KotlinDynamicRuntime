@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -363,6 +364,28 @@ private fun highlightedApprovalTests() = stringSpec {
         // Once the form is in, the approval is the current task, and no longer a Start.
         owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "review"))
         turn(reviewer, gid) shouldBe ("approve" to false)
+    }
+
+    "a reviewer sees the forms to review only with the editor role or at the administrator level, whatever the label" {
+        fun labeled(name: String, level: String? = null, capabilities: List<String> = emptyList()): TestUser =
+            TestUser.create(cxt, "$name@$client.test", level = level ?: ROLE.user, capabilities = capabilities, userClient = client).also {
+                admin.postData(UADEP.userSetLabels, mapOf(ADF.userId to it.userId, ADF.labels to listOf("reviewer")))
+            }
+        // The label says who may act, and what a person reads is their role's to say (issue #1911): with the label alone, the
+        // form is not theirs to see, so there is none to list, open, start, or approve.
+        val labelOnly = labeled("labelonly")
+        val gid = create(mapOf(GE.traitId to "ask", GE.data to mapOf("amount" to "500")))
+        turn(labelOnly, gid) shouldBe null
+        labelOnly.expectError(EXC.notFound, GEP.formDoc, args = mapOf(GDF.gedraId to gid))
+        labelOnly.expectError(EXC.notFound, GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "review"))
+        // An administrator sees every form, and needs the label as anyone does.
+        turn(admin, gid) shouldBe null
+        turn(labeled("chief", level = ROLE.admin), gid) shouldBe ("approve" to true)
+        owner.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "review"))
+        val approve = mapOf(GDF.gedraId to gid, WFD.workflowId to "review", GDF.taskId to "approve")
+        labelOnly.expectError(EXC.notFound, GEP.workflowApprove, approve)
+        admin.expectError(EXC.notAuthorized, GEP.workflowApprove, approve)
+        reviewer.postData(GEP.workflowApprove, approve)
     }
 
     "a form whose core details are not complete is nobody's to start" {

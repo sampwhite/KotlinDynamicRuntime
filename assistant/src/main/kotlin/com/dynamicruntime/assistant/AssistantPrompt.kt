@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
@@ -172,6 +173,12 @@ object AssistantPrompt {
             |  'userLabels', and the fact the approval asserts is declared in '${CCT.cfactDef}'. Save a new label with
             |  ${ATOOL.setClientDefinition} before you dry run the workflow: a dry run judges it against the client as
             |  saved, so a label only dry-run is not there yet.
+            |- A reviewer needs two things, and you can give neither, so always tell the administrator to give both, on the
+            |  Users page: the label, which lets them act, and the '${ROLE.editor}' role (the Editor box, under More
+            |  options), which lets them see forms that are not their own. With the label alone, the forms to review are
+            |  not in their list, and they cannot open one. Someone at the administrator level has that reach already,
+            |  and needs only the label. Where the client groups its users in organizations, an editor or administrator
+            |  with a primary one sees that organization's forms and those of none: say so, if it uses them.
             |- An approval shows, read-only above its button, what it approves. To show the form's answers, name their
             |  traits in the approval's 'showTraits': it shows them as the form holds them, whichever workflow collected
             |  them, and the eligibility test makes sure they are there. Never add a task only to give an approval
