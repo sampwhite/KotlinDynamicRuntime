@@ -482,6 +482,7 @@ that configure a fresh client through prompts alone and report what came of it.
 ./gradlew :assistantTrials:runTrials -Ptrials=grantsBasics -Pprovider=fake  # the plumbing alone: no model, no cost
 ./gradlew :assistantTrials:stopTrials                                     # the nodes still running; -Pport=<port>|all
 ./gradlew :assistantTrials:restartTrials -Prun=<runId>                    # a run's node again, as the run left it
+./gradlew :assistantTrials:recheckTrials -Prun=<runId>                    # a saved run under the checks as they are now; or all
 ```
 
 - **A run costs money, so ask before starting one** -- name the trials and variants -- unless the person asked for the
@@ -497,12 +498,15 @@ that configure a fresh client through prompts alone and report what came of it.
   building or testing while it runs leaves it alone, and `restartTrials` brings it back on its port and database after
   anything that stopped it.
 - **The report** (`assistantTrials/build/trialRuns/<runId>/report.md`) never fails a run. Per trial it gives each
-  expectation as met, varied, or not met, with what was found; how the assistant worked (read `making-changes` first,
-  dry-ran its changes, its refusals, its `patch_config` writes); each turn's tool calls and reply; the cost, from the
-  weighted tokens; and the client's whole configuration, also written a file per bundle under `config/`.
+  expectation as met, varied, or not met, with what was found; how the assistant worked (dry-ran its changes,
+  read `making-changes`, its refusals, its `patch_config` writes); each turn's tool calls and reply; the cost, from the
+  weighted tokens; and the client's whole configuration, also written a file per bundle under `config/`. It is written
+  again as each variant ends, so a later one's failure loses nothing. `recheckTrials` holds saved runs to the checks as
+  they are now, free, writing `recheck.md` beside the report.
 - **A trial** is a Kotlin object (`GrantsBasics` is the first): a goal, its variants -- the same requests phrased
   `explicit`, `loose`, or in the organization's `ownWords` -- and its expectations, which match by meaning (a field
-  about an amount, typed as a number) because the model chooses its own names. Add it to `Trials.all`. A new capability
+  about an amount, typed as a number) because the model chooses its own names. A variant that names something exactly has
+  expectations of its own for it. Add the trial to `Trials.all`. A new capability
   extends one trial or starts another, so each stays small enough to run alone.
 - **The harness's own test** (`TrialHarnessTest`) runs a trial in-process against a `ScriptedModel`, through the same
   calls, and is in the gate.

@@ -17,7 +17,7 @@ dependencies {
 
 val launchProject = project(":launch")
 
-/** What both tasks hand the harness: where the node's classpath is, and where runs are kept. */
+/** What each task hands the harness: where the node's classpath is, and where runs are kept. */
 fun JavaExec.harness(command: String) {
     group = "verification"
     classpath = sourceSets.main.get().runtimeClasspath
@@ -44,6 +44,14 @@ tasks.register<JavaExec>("stopTrials") {
     description = "Lists the trial nodes still running, and stops the ones -Pport names (a port, or all)."
     harness("stop")
     providers.gradleProperty("port").orNull?.let { args("--port", it) }
+}
+
+// `./gradlew :assistantTrials:recheckTrials -Prun=20261119-093707` holds a saved run to the checks as they are now, from its
+// transcripts and configuration (`-Prun=all` for every one). It starts nothing and costs nothing.
+tasks.register<JavaExec>("recheckTrials") {
+    description = "Holds saved trial runs to the checks as they are now (-Prun=<runId>, or all)."
+    harness("recheck")
+    providers.gradleProperty("run").orNull?.let { args("--run", it) }
 }
 
 // `./gradlew :assistantTrials:restartTrials -Prun=20261119-093707` starts a run's node again, on its port and database and

@@ -262,7 +262,7 @@ object AssistantTools {
                     ATOOL.readDoc,
                     "Reads a reference document as Markdown: '${HDOC.whatAClientIs}' (a client as a whole: its definition, " +
                             "bundles, sandbox, the layers its people see, and its pages), '${HDOC.makingChanges}' (for each kind " +
-                            "of change, the tool to make it with -- read it before choosing one), '${HDOC.clientConfiguration}' " +
+                            "of change, the tool to make it with -- read it when that is not plain), '${HDOC.clientConfiguration}' " +
                             "(every config slot and its fields), the design notes that open with a guide: '${HDOC.sandboxes}' " +
                             "(trying a change and publishing it), '${HDOC.reporting}' (making, running, and keeping the history of " +
                             "a report), '${HDOC.configFileRefs}' (a named image the client's copy shows: a configuration file ref), " +

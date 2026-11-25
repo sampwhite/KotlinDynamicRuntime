@@ -259,9 +259,11 @@ read-only, and the administrator starts a new one. A new build that changes the 
 conversation. The prompt names the client by its id alone, so renaming a client does not.
 
 **The whole client** (#1768). The prompt frames the job as configuring the client -- its workflows, traits, how its
-forms read, its wording, its menu and Home, its forms list, and its reports -- not only building workflows. Before
-choosing how to make a change, the model reads [Making changes](../reference/making-changes.md) with `read_doc`, and
-[What a client is](../reference/what-a-client-is.md) for how the parts fit together. It prefers a targeted tool to
+forms read, its wording, its menu and Home, its forms list, and its reports -- not only building workflows. When it is
+not plain which tool makes a change, the model reads [Making changes](../reference/making-changes.md) with `read_doc`,
+and [What a client is](../reference/what-a-client-is.md) for how the parts fit together. (It was to read the first before
+any change, until the trials showed it skipping that in most conversations, and the tool it went straight to being a
+suitable one, issue #1914.) It prefers a targeted tool to
 `patch_config` wherever one makes the change, and within `patch_config` the `addOrMerge` action. It dry-runs wherever a
 tool offers it, and reads the answer before writing. A section per area carries the rule a tool cannot say for itself:
 a client's own trait is designed and a platform's narrowed, never redefined; a field's words change on one workflow's

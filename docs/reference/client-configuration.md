@@ -477,7 +477,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 
 | Field | Type | Required | What it is |
 |---|---|---|---|
-| `id` | string | yes | The step's id, unique in its task: what its record is kept under. |
+| `id` | string | yes | The step's id, unique in its task, and not the task's own: what its record is kept under. |
 | `label` | string |  | What the record shows once the step is given -- a template, like a task's label. |
 | `prompt` | string | yes | The text above the step's button -- a template, evaluated in two passes. |
 | `button` | string | yes | The step's button text -- a template, evaluated in two passes. |

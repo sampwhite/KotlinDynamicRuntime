@@ -1,13 +1,12 @@
 package com.dynamicruntime.trials
 
-import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.home.HFRAG
-import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.MAILNS
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -25,6 +24,27 @@ object GrantsBasics {
     // Not "type" or "field": a description's own words use them, and the check would point at it.
     private val categoryTerms = listOf("category", "area", "focus")
     private val descriptionTerms = listOf("description", "narrative", "summary", "about", "project", "purpose")
+
+    /** What `explicit` and `ownWords` name exactly (issue #1914), where `loose` only means it. */
+    private val namedExactly = listOf(
+        Expectation("The category's choices are the four named") { r ->
+            Checks.newFormField(r, "the four named", categoryTerms) {
+                it.optionNames == setOf("arts", "environment", "education", "health")
+            }
+        },
+        Expectation("Home's introduction names the program") { r ->
+            Checks.copyMentions(r, HFRAG.home, HFRAG.homeNs, program, HFRAG.intro)
+        },
+        Expectation("The invitation mail's subject names the program") { r ->
+            Checks.copyMentions(r, AFRAG.mail, MAILNS.invitation, program, MCOPY.subject)
+        },
+    )
+
+    /** What `loose` asks for with "make the site and its emails feel like they're ours". */
+    private val feelsTheirs = listOf(
+        Expectation("Home names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, program) },
+        Expectation("The mails name the program") { r -> Checks.copyMentions(r, AFRAG.mail, null, program) },
+    )
 
     private val explicit = TrialVariant(
         "explicit", "Each request in the documentation's own words, saying exactly what is wanted.",
@@ -51,6 +71,7 @@ object GrantsBasics {
                     "amount requested.",
             ),
         ),
+        namedExactly,
     )
 
     private val loose = TrialVariant(
@@ -65,6 +86,7 @@ object GrantsBasics {
             TrialPrompt("People should be able to find where to apply from the home page."),
             TrialPrompt("I'd like to see totals by area."),
         ),
+        feelsTheirs,
     )
 
     private val ownWords = TrialVariant(
@@ -82,6 +104,7 @@ object GrantsBasics {
             TrialPrompt("Put a tile on the landing page that takes submitters straight to a new intake sheet."),
             TrialPrompt("I want a breakdown of submissions per focus area, with the dollars asked for added up."),
         ),
+        namedExactly,
     )
 
     val trial = Trial(
@@ -97,8 +120,8 @@ object GrantsBasics {
             Expectation("The New form asks for a start date, as a date") { r ->
                 Checks.newFormField(r, "a date", dateTerms) { it.isDate }
             },
-            Expectation("The New form asks for a category, as a choice of the four") { r ->
-                Checks.newFormField(r, "a choice of four", categoryTerms) { it.options.size >= 4 }
+            Expectation("The New form asks for a category, as a choice") { r ->
+                Checks.newFormField(r, "a choice", categoryTerms) { it.options.size > 1 }
             },
             Expectation("The New form asks for a description, as long text") { r ->
                 Checks.newFormField(r, "long text", descriptionTerms) { it.longText }
@@ -124,22 +147,8 @@ object GrantsBasics {
             Expectation("The review's approval shows the applicant's answers") { r -> Checks.approvalShowsNewForm(r) },
             Expectation("The review highlights its Start, for whoever takes its first step") { r -> Checks.reviewHighlightsStart(r) },
             Expectation("The administrator is told a reviewer needs the editor role too") { r -> Checks.reviewersToldRole(r) },
-            Expectation("Home's introduction names the program") { r -> Checks.copyMentions(r, HFRAG.home, null, program) },
-            Expectation("The invitation mail names the program") { r -> Checks.copyMentions(r, AFRAG.mail, MAILNS.invitation, program) },
             Expectation("A Home card to start an application, which opens the New form") { r -> Checks.homeCardStartsForm(r) },
-            Expectation("A report by category, counting and totaling the amount") { r ->
-                val reports = r.view.reports
-                val good = reports.firstOrNull { report ->
-                    val text = report.toJsonStr(compact = true).lowercase()
-                    val sums = report[RDEF.columns].toJsonListOfMaps().any { it[RDEF.rollup] == "sum" || it[RDEF.combine] == "sum" }
-                    categoryTerms.any { text.contains(it) } && sums
-                }
-                when {
-                    good != null -> Outcome.met(reportSummary(good))
-                    reports.isNotEmpty() -> Outcome.varied(reports.joinToString("; ") { reportSummary(it) })
-                    else -> Outcome.notMet("No report.")
-                }
-            },
+            Expectation("A report grouped by category, totaling the amount") { r -> Checks.reportTotals(r, categoryTerms, amountTerms) },
             Expectation("The report is made whole by create_report, not patched afterward") { r -> Checks.reportMadeWhole(r) },
         ),
     )

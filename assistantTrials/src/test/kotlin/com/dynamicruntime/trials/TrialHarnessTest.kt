@@ -7,10 +7,14 @@ import com.dynamicruntime.assistant.ScriptedModel
 import com.dynamicruntime.common.assistant.ABLK
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ATOOL
+import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.ClientCreate
+import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFT
@@ -20,6 +24,7 @@ import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.kdn.Startup
@@ -32,6 +37,8 @@ import io.kotest.matchers.string.shouldEndWith
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import java.io.File
+import java.nio.file.Files
 
 /** A test's user as a [TrialCaller]: the same calls, in-process. */
 class TestUserCaller(private val user: TestUser) : TrialCaller {
@@ -82,7 +89,7 @@ class TrialHarnessTest : StringSpec({
 
         val outcomes = result.outcomes().associate { it.first.name to it.second.kind }
         outcomes["Home's introduction names the program"] shouldBe OutcomeKind.met
-        outcomes[MethodChecks.readsMakingChanges.name] shouldBe OutcomeKind.met
+        outcomes[MethodChecks.readsMakingChanges.name] shouldBe OutcomeKind.info
         outcomes[MethodChecks.turnsEnded.name] shouldBe OutcomeKind.met
 
         val info = RunInfo("t1", "http://localhost:0", null, emptyMap(), null, Clock.System.now())
@@ -280,9 +287,10 @@ class TrialHarnessTest : StringSpec({
             ),
         )
         fun create(dryRun: Boolean, refused: Boolean = false) = call(ATOOL.createReport, mapOf(CFEP.dryRun to dryRun), refused)
-        fun patch(slot: String, dryRun: Boolean = false) = call(
+        fun patch(slot: String, dryRun: Boolean = false, refused: Boolean = false) = call(
             ATOOL.patchConfig,
             mapOf(CFEP.dryRun to dryRun, CFEP.configs to listOf(mapOf(CFEP.edits to listOf(mapOf(CFEP.slot to slot))))),
+            refused,
         )
         fun outcome(vararg messages: List<Map<String, Any?>>): OutcomeKind {
             val now = Clock.System.now()
@@ -298,6 +306,10 @@ class TrialHarnessTest : StringSpec({
         outcome(create(true, refused = true), create(true), create(false), patch(CCT.reportDef)) shouldBe OutcomeKind.varied
         outcome(patch(CCT.reportDef)) shouldBe OutcomeKind.varied
         outcome(create(false, refused = true)) shouldBe OutcomeKind.notMet
+        // A patch refused changed nothing, and one made before the report was made is of another.
+        outcome(create(false), patch(CCT.reportDef, refused = true)) shouldBe OutcomeKind.met
+        outcome(patch(CCT.reportDef), create(false)) shouldBe OutcomeKind.met
+        outcome(patch(CCT.reportDef, refused = true)) shouldBe OutcomeKind.notMet
     }
 
     "a change made without saying dryRun, through a tool that offers one, was not dry-run" {
@@ -343,11 +355,204 @@ class TrialHarnessTest : StringSpec({
         val ordered = TrialConversation("c", emptyList(), messages)
         MethodChecks.readsMakingChanges.check(
             TrialResult(smoke, smoke.variants.single(), "c", null, listOf(ordered), emptyMap(), emptyList(), now, now),
-        ).kind shouldBe OutcomeKind.met
+        ).detail shouldBe "All 1 that changed something."
         // A turn that never dry-ran, and a call that never said: both made outright.
         dryRunOutcome(call("t", mapOf(CFEP.dryRun to true)), call("t", mapOf(CFEP.dryRun to false)), call("u", emptyMap())).let {
             it.kind shouldBe OutcomeKind.varied
             it.detail shouldContain "Made without a dry run: ${ATOOL.patchConfig}."
+        }
+    }
+
+    /** [smoke]'s result with [slots] as its one bundle's, and [conversations]. */
+    fun resultOf(
+        slots: Map<String, Any?>,
+        conversations: List<TrialConversation> = emptyList(),
+        variant: TrialVariant = smoke.variants.single(),
+    ): TrialResult {
+        val now = Clock.System.now()
+        return TrialResult(smoke, variant, "c", null, conversations, mapOf("b" to mapOf(CFEP.slots to slots)), emptyList(), now, now)
+    }
+
+    /** A conversation of the calls given, each a tool, its input, and whether it was refused. */
+    fun conversationOf(vararg calls: Triple<String, Map<String, Any?>, Boolean>): TrialConversation = TrialConversation(
+        "c", emptyList(),
+        calls.flatMapIndexed { i, (name, input, refused) ->
+            listOf(
+                mapOf(
+                    ACNV.role to ABLK.assistant, ACNV.turnId to "t",
+                    ACNV.content to listOf(mapOf(ABLK.type to ABLK.toolUse, ABLK.id to "x$i", ABLK.name to name, ABLK.input to input)),
+                ),
+                mapOf(
+                    ACNV.role to ABLK.user, ACNV.turnId to "t",
+                    ACNV.content to listOf(
+                        mapOf(ABLK.type to ABLK.toolResult, ABLK.toolUseId to "x$i", ABLK.content to "ok", ABLK.isError to refused),
+                    ),
+                ),
+            )
+        },
+    )
+
+    "reading making-changes is told of each conversation that changes something, and judged of none" {
+        val read = Triple(ATOOL.readDoc, mapOf<String, Any?>(ATOOL.doc to HDOC.makingChanges), false)
+        val change = Triple(ATOOL.setCopy, emptyMap<String, Any?>(), false)
+        fun said(vararg conversations: TrialConversation): String {
+            val outcome = MethodChecks.readsMakingChanges.check(resultOf(emptyMap(), conversations.toList()))
+            outcome.kind shouldBe OutcomeKind.info
+            return outcome.detail
+        }
+        said(conversationOf(read, change), conversationOf(read, change)) shouldBe "All 2 that changed something."
+        // A conversation has only what was read in it.
+        said(conversationOf(read, change), conversationOf(change)) shouldContain "1 of the 2 that changed something. Without it:"
+        // A refused read read nothing, and a conversation that changes nothing is not counted.
+        said(conversationOf(read.copy(third = true), change)) shouldContain "0 of the 1"
+        said(conversationOf(read, change), conversationOf(read)) shouldBe "All 1 that changed something."
+        said(conversationOf(read)) shouldBe "It changed nothing."
+    }
+
+    "a change is rehearsed by a dry run of the same change that was accepted" {
+        fun save(workflow: String, dryRun: Boolean, refused: Boolean = false) =
+            Triple(ATOOL.saveTemplateWorkflow, mapOf<String, Any?>(WFD.workflowId to workflow, CFEP.dryRun to dryRun), refused)
+        fun outcome(vararg calls: Triple<String, Map<String, Any?>, Boolean>) =
+            MethodChecks.dryRunsFirst.check(resultOf(emptyMap(), listOf(conversationOf(*calls)))).kind
+        outcome(save("newForm", true), save("details", true), save("newForm", false), save("details", false)) shouldBe OutcomeKind.met
+        // Another change's dry run, and one refused, rehearse nothing. Both were met while any dry run of the tool would do.
+        outcome(save("newForm", true), save("newForm", false), save("details", false)) shouldBe OutcomeKind.varied
+        outcome(save("newForm", true, refused = true), save("newForm", false)) shouldBe OutcomeKind.varied
+    }
+
+    "a copy check titled for one line is not met by another" {
+        val copy = mapOf(
+            CCT.fragmentDef to listOf(
+                mapOf(
+                    CCT.fileId to HFRAG.home,
+                    CCT.content to mapOf(HFRAG.homeNs to mapOf("brand" to "Riverbend", HFRAG.intro to "Hello.")),
+                ),
+            ),
+        )
+        fun outcome(namespace: String?, key: String?) = Checks.copyMentions(resultOf(copy), HFRAG.home, namespace, "Riverbend", key).kind
+        outcome(null, null) shouldBe OutcomeKind.met
+        outcome(HFRAG.homeNs, "brand") shouldBe OutcomeKind.met
+        outcome(HFRAG.homeNs, HFRAG.intro) shouldBe OutcomeKind.varied
+        outcome(HFRAG.homeNs, "title") shouldBe OutcomeKind.notMet
+        // A namespace is matched whole, not by how it begins.
+        outcome("hom", null) shouldBe OutcomeKind.notMet
+    }
+
+    "a report is held to grouping by the category and totaling the amount, by the fields its columns read" {
+        val trait = mapOf(
+            CCT.traitId to "ask",
+            CCT.dataSchema to mapOf(
+                SCH.properties to mapOf(
+                    "amount" to mapOf(SCH.type to "number"),
+                    "category" to mapOf(SCH.options to listOf(mapOf("value" to "arts", "label" to "Arts"))),
+                ),
+            ),
+        )
+        fun report(id: String, groupBy: String?, rollup: String?) = mapOf(
+            CCT.reportId to id,
+            CCT.definition to buildMap<String, Any?> {
+                put(RDEF.reportId, id)
+                put(RDEF.label, "By category, with the amount's sum")
+                put(
+                    RDEF.columns,
+                    listOf(
+                        mapOf(RDEF.columnId to "cat", RDEF.path to "form.ask.category"),
+                        mapOf(RDEF.columnId to "amt", RDEF.path to "form.ask.amount", RDEF.rollup to rollup),
+                        mapOf(RDEF.columnId to "made", RDEF.path to "meta.createdAt", RDEF.rollup to "count"),
+                    ),
+                )
+                groupBy?.let { put(RDEF.groupBy, listOf(it)) }
+            },
+        )
+        val starter = report(ClientCreate.starterReport, null, null)
+        fun outcome(vararg reports: Map<String, Any?>): OutcomeKind {
+            val result = resultOf(mapOf(CCT.traitDef to listOf(trait), CCT.reportDef to listOf(starter) + reports))
+            return Checks.reportTotals(result, listOf("category"), listOf("amount")).kind
+        }
+        outcome(report("r", "cat", "sum")) shouldBe OutcomeKind.met
+        outcome(report("r", "cat", "count")) shouldBe OutcomeKind.varied
+        // Its words say category and sum, and it groups by neither: met while the check read the report's text.
+        outcome(report("r", "made", "sum")) shouldBe OutcomeKind.varied
+        outcome(report("r", null, null)) shouldBe OutcomeKind.notMet
+        // The starter report, which every client has, kept this from ever being so.
+        outcome() shouldBe OutcomeKind.notMet
+    }
+
+    "a card an applicant is not shown starts nothing for one" {
+        fun outcome(condition: String?): OutcomeKind {
+            val card = buildMap<String, Any?> {
+                put("id", "start")
+                put(HCARD.title, "Start")
+                put(UIB.action, HMENU.pageNewForm)
+                put(HCARD.actionLabel, "Start")
+                condition?.let { put(UIB.cfactExpression, it) }
+            }
+            val block = mapOf(CCT.blockId to HCARD.block, CCT.content to mapOf(HCARD.cards to listOf(card)))
+            return Checks.homeCardStartsForm(resultOf(mapOf(CCT.uiBlockDef to listOf(block)))).kind
+        }
+        outcome(null) shouldBe OutcomeKind.met
+        outcome("${CFACTS.loggedIn},${CFACTS.app}") shouldBe OutcomeKind.met
+        outcome("${CFACTS.loggedIn},~${CFACTS.seesClientForms},${CFACTS.app}") shouldBe OutcomeKind.met
+        outcome("${CFACTS.administersClient},${CFACTS.app}") shouldBe OutcomeKind.varied
+        outcome("${CFACTS.anonymous},${CFACTS.app}") shouldBe OutcomeKind.varied
+        outcome(CFACT.neverName) shouldBe OutcomeKind.varied
+    }
+
+    "a choice is held to the options named, by their labels or their values" {
+        fun names(options: List<Any?>) = FieldView("ask", "category", mapOf(SCH.options to options)).optionNames
+        names(listOf(mapOf("value" to "a1", "label" to "Arts"), mapOf("value" to "health"))) shouldBe setOf("arts", "health")
+        names(listOf("Arts", "Health")) shouldBe setOf("arts", "health")
+        // A field's label is in its type's layout, and counts among its words.
+        val trait = mapOf(
+            CCT.traitId to "ask",
+            CCT.dataSchema to mapOf(
+                SCH.properties to mapOf("f1" to emptyMap<String, Any?>()),
+                SCH.layout to mapOf(SL.schemaFields to listOf(mapOf(SL.field to "f1", SL.label to "Focus area"))),
+            ),
+        )
+        resultOf(mapOf(CCT.traitDef to listOf(trait))).view.fields.single().mentions(listOf("focus")) shouldBe true
+    }
+
+    "a variant's own expectations are held beside its trial's" {
+        val own = TrialVariant("own", "One of its own.", emptyList(), listOf(Expectation("Its own") { Outcome.met("yes") }))
+        fun names(variant: TrialVariant) = resultOf(emptyMap(), variant = variant).outcomes().map { it.first.name }
+        names(own).take(2) shouldBe listOf("Home's introduction names the program", "Its own")
+        names(smoke.variants.single()).contains("Its own") shouldBe false
+        // Every variant of the first trial is held to the program's name on Home and in its mails, however exactly.
+        for (variant in GrantsBasics.trial.variants) {
+            variant.expectations.count { Regex("names? the program").containsMatchIn(it.name) } shouldBe 2
+        }
+    }
+
+    "a run that fails to start is its own problem, and what ran before it is kept and read back" {
+        val dir = Files.createTempDirectory("trials1914").toFile()
+        try {
+            val first = TrialVariant("first", "Runs.", emptyList())
+            val second = TrialVariant("second", "Fails to start.", emptyList())
+            val third = TrialVariant("third", "Runs after it.", emptyList())
+            val trial = Trial("pair", "Several variants.", "Pair", listOf(first, second, third), smoke.expectations)
+            val conversation = conversationOf(Triple(ATOOL.setCopy, emptyMap<String, Any?>(), false))
+            val info = RunInfo("t2", "http://localhost:0", null, emptyMap(), null, Clock.System.now())
+            val seen = mutableListOf<Boolean>()
+            val (report, results) = TrialRunner.runAll(trial.variants.map { trial to it }, dir, info) { t, v, email ->
+                email shouldBe "pair-${v.name}-t2@trials.test"
+                // The report is there, with what ran before, when the next begins.
+                seen.add(File(dir, "report.md").isFile)
+                if (v === second) error("no node")
+                val now = Clock.System.now()
+                TrialResult(t, v, "c", null, listOf(conversation), mapOf("main" to mapOf("name" to "main")), emptyList(), now, now)
+            }
+            seen shouldBe listOf(false, true, true)
+            results.map { it.first.problems } shouldBe listOf(emptyList(), listOf("The run failed: no node"), emptyList())
+            report.readText() shouldContain "- The run failed: no node"
+            // Read back from the files alone, as a recheck does: what a check reads is as it was.
+            val back = TrialReport.read(dir, listOf(trial))
+            back.map { it.variant.name } shouldBe listOf("first", "second", "third")
+            back.first().calls.map { it.name } shouldBe listOf(ATOOL.setCopy)
+            back.first().config.keys shouldBe setOf("main")
+            TrialReport.renderRecheck("t2", back) shouldContain "## pair, first"
+        } finally {
+            dir.deleteRecursively()
         }
     }
 
