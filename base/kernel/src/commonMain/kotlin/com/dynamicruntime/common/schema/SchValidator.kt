@@ -169,10 +169,10 @@ const val commentRefusedMessage: String =
  * only ever wrapped and concatenated — which was right while a failure was read solely as the tail of
  * `path: message`. Since issue #197 a failure has also stood on its own beneath the field that caused it, beside
  * field descriptions written as sentences, and there a fragment reads as truncated. The composed forms lose
- * nothing: `input.score: This must be of type 'integer'.` reads correctly.
+ * nothing: `input.score: Value must be a whole number.` reads correctly.
  *
  * A message that opens by quoting a supplied value begins with the quote rather than a capital
- * (`'abc' is not a valid number.`). That is deliberate — the value is the caller's, not ours to re-case.
+ * (`'abc' is not a number.`). That is deliberate — the value is the caller's, not ours to re-case.
  */
 data class SchFailure(
     val path: String,
@@ -193,7 +193,12 @@ data class SchFailure(
      * the schema's own, so a layout's `errors` override words both kinds alike; this is what tells them apart.
      */
     val formRequirement: Boolean = false,
-)
+    /** The author's message behind [userMessage], when it gives the field's label (issue #1918); null otherwise. */
+    val wording: SchWording? = null,
+) {
+    /** This failure with its author's message naming the field [label], when the message names it. */
+    fun called(label: String): SchFailure = wording?.let { copy(userMessage = it.text(label)) } ?: this
+}
 
 /**
  * This failure as a plain JSON-ready map, for reporting one to a caller (issue #198).
@@ -285,11 +290,13 @@ private fun SchType.resolvedUserMessage(
     if ('$' !in template) {
         return template
     }
-    val field = path.substringAfterLast('.').substringBefore('[')
     // Copy whose substitution fails (a placeholder the context does not supply) is shown as written.
-    return template.analyzeTemplate(evaluateWith = errorContextData(code, this, field, value, options)).value
-        ?: template
+    return template.analyzeTemplate(evaluateWith = messageContext(code, path, value, options)).value ?: template
 }
+
+/** What an authored message for a failure at [path] resolves against, the field called by its name in words. */
+private fun SchType.messageContext(code: SchFailCode, path: String, value: Any?, options: List<SchOption>?): Map<String, Any?> =
+    errorContextData(code, this, path.substringAfterLast('.').substringBefore('['), value, options)
 
 /**
  * A failure against this field, carrying whatever the field's `g-errors` says about [code] -- with its `${'$'}{…}`
@@ -306,7 +313,11 @@ fun SchType.failure(
     options: List<SchOption>? = null,
     value: Any? = null,
     cause: KdrException? = null,
-): SchFailure = SchFailure(path, code, message, options, cause, resolvedUserMessage(code, path, value, options))
+): SchFailure = SchFailure(
+    path, code, message, options, cause, resolvedUserMessage(code, path, value, options),
+    wording = userMessage(code)?.takeIf { '$' in it && LayoutErrCtx.label in it }
+        ?.let { SchWording(it, messageContext(code, path, value, options)) },
+)
 
 /**
  * The problems with a field's `g-errors` message **templates** (issue #589) -- the boot check for §10's
@@ -491,6 +502,11 @@ data class SchOpts(
      * one fact this flag states: the body is a piece of a document, held apart from it.
      */
     val schemaDocumentsUnparsed: Boolean = false,
+    /**
+     * What the form this is validated for calls a field (issue #1918), for an author's message that gives the label; null
+     * where there is no form, and the field's title then stands.
+     */
+    val labelOf: SchLabelSource? = null,
 ) {
     /**
      * These options with [skipCompleteness] set to [v] -- the same instance when it already matches, so the
@@ -729,6 +745,7 @@ fun validateObject(
     failures: MutableList<SchFailure>,
     opts: SchOpts,
 ): Any {
+    val failuresBefore = failures.size
     // Only build a new map when coercing; otherwise the input is returned untouched.
     val out: MutableMap<String, Any?>? = if (coerce) LinkedHashMap(map.size) else null
     // Keys present in the input but dropped by the emptyIsAbsent rule. Tracked separately rather than read
@@ -837,7 +854,23 @@ fun validateObject(
     // itself, so "given approved, is rejectionReason required?" cannot be answered here at all (issue #487).
     // It is answered on the assembled whole -- `checkStoredEntries`, whose existence this is the reason for.
     if (!opts.skipCompleteness) type.condition?.let { checkCondition(type, it, map, dropped, path, failures, opts) }
+    callFields(type, map, path, failures, failuresBefore, opts)
     return out ?: map
+}
+
+/**
+ * Has each failure of a field of [type] -- those [failures] gained since [from], the object at [path] being where a field's
+ * property is known -- call the field what it is called ([fieldLabelOf]) where its author's message does (issue #1918). One
+ * of a field deeper in was called by the object it is in; one of an element of a list of values is the list's.
+ */
+private fun callFields(type: SchType, map: Map<*, *>, path: String, failures: MutableList<SchFailure>, from: Int, opts: SchOpts) {
+    for (i in from until failures.size) {
+        val failure = failures[i]
+        if (failure.wording == null) continue
+        val name = childKeyOf(failure.path, path) ?: continue
+        if ('.' in failure.path.substring(childPath(path, name).length)) continue
+        failures[i] = failure.called(fieldLabelOf(name, type.properties[name], opts.labelOf?.invoke(type, name, map)))
+    }
 }
 
 /**

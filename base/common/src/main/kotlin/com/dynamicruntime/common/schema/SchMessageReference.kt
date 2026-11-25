@@ -130,6 +130,8 @@ private fun parametersOf(code: SchFailCode?): String {
 /** Each parameter a message may name, and what it is, in the order the codes offer them. */
 private val parameterMeanings = listOf(
     LayoutErrCtx.field to "The field's name, as the data has it. Every message may use it, a `${SCH.errorDefault}` one included.",
+    LayoutErrCtx.label to "What a person calls the field: its label on the form the message is shown on, and with no form, its " +
+        "title or its name in words. Every message may use it.",
     LayoutErrCtx.value to "The value refused, as it was given. Absent for a field that is missing, or one the type does not declare.",
     LayoutErrCtx.options to "The field's choices, by their labels, joined into one line.",
     LayoutCtx.min to "The field's lower bound: its least number, length, or count.",

@@ -124,6 +124,11 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
             required = true,
         )
         property(IMP.traitId, "The trait a trait finding is about.")
+        property(
+            IMP.field,
+            "The field of the trait's data a finding of invalid or shared values is about, with `[]` for an element of a list.",
+        )
+        property(IMP.code, "Why that field would no longer validate: a validation failure's code.")
         property(IMP.workflowId, "The workflow a workflow finding is about.")
         property(IMP.taskId, "The task a stranded-state finding is about.")
         property(IMP.count, "How many rows; a row counts once however many of its entries are affected.", required = true) {

@@ -27,19 +27,19 @@ on a list only how many items it has. A parameter in parentheses is offered only
 
 | Code | What it means | Raised by | A message may use |
 |---|---|---|---|
-| `missingRequired` | A field the data requires, or this form asks for, was not supplied. | `required` | `${field}` |
-| `wrongType` | The value is not of the field's type, such as text where a number belongs. | `type` | `${field}`, `${value}` |
-| `badValue` | The value was read and found wrong: text that is not a date, a number, or a yes or no where one is expected, a character that does not show, or spaces at the ends of text that refuses them. | `type`, `format`, `g-visibleOnly`, `g-outerWhitespace`, `g-schemaDocument` | `${field}`, `${value}` |
-| `invalidOption` | The value is not one of the field's choices. | `g-options` | `${field}`, `${value}`, `${options}` |
-| `additionalProperty` | The data holds a field its type does not declare. | `additionalProperties` | `${field}` |
-| `notAllowed` | The field is declared, but a rule about another field says it may not be supplied now. | `if` | `${field}`, `${value}` |
-| `belowMinimum` | The value is under the field's lower bound: a number too small, text too short, or a list or object with too few entries. | `minimum`, `exclusiveMinimum`, `minLength`, `minItems`, `minProperties` | `${field}`, `${value}`, (`${min}`) |
-| `aboveMaximum` | The value is over the field's upper bound: a number too large, text too long, or a list or object with too many entries. | `maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties` | `${field}`, `${value}`, (`${max}`) |
-| `patternMismatch` | Text does not match the field's pattern. | `pattern` | `${field}`, `${value}` |
-| `duplicateItem` | A list holds the same item twice, or two items with the same key. | `uniqueItems`, `g-primaryKey` | `${field}`, `${value}` |
-| `noLetterOrDigit` | A unique value has no letter or digit, so it has nothing to be compared by. | `g-unique` | `${field}`, `${value}` |
-| `valueTaken` | Another form of the same owner holds the value. A form's page reports it as the field is left, and a save is refused for it. | `g-unique` | `${field}`, `${value}` |
-| `default` | Not a code: the message for any code a message list does not name. | Any of the above | `${field}` |
+| `missingRequired` | A field the data requires, or this form asks for, was not supplied. | `required` | `${field}`, `${label}` |
+| `wrongType` | The value is not of the field's type, such as text where a number belongs. | `type` | `${field}`, `${label}`, `${value}` |
+| `badValue` | The value was read and found wrong: text that is not a date, a number, or a yes or no where one is expected, a character that does not show, or spaces at the ends of text that refuses them. | `type`, `format`, `g-visibleOnly`, `g-outerWhitespace`, `g-schemaDocument` | `${field}`, `${label}`, `${value}` |
+| `invalidOption` | The value is not one of the field's choices. | `g-options` | `${field}`, `${label}`, `${value}`, `${options}` |
+| `additionalProperty` | The data holds a field its type does not declare. | `additionalProperties` | `${field}`, `${label}` |
+| `notAllowed` | The field is declared, but a rule about another field says it may not be supplied now. | `if` | `${field}`, `${label}`, `${value}` |
+| `belowMinimum` | The value is under the field's lower bound: a number too small, text too short, or a list or object with too few entries. | `minimum`, `exclusiveMinimum`, `minLength`, `minItems`, `minProperties` | `${field}`, `${label}`, `${value}`, (`${min}`) |
+| `aboveMaximum` | The value is over the field's upper bound: a number too large, text too long, or a list or object with too many entries. | `maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties` | `${field}`, `${label}`, `${value}`, (`${max}`) |
+| `patternMismatch` | Text does not match the field's pattern. | `pattern` | `${field}`, `${label}`, `${value}` |
+| `duplicateItem` | A list holds the same item twice, or two items with the same key. | `uniqueItems`, `g-primaryKey` | `${field}`, `${label}`, `${value}` |
+| `noLetterOrDigit` | A unique value has no letter or digit, so it has nothing to be compared by. | `g-unique` | `${field}`, `${label}`, `${value}` |
+| `valueTaken` | Another form of the same owner holds the value. A form's page reports it as the field is left, and a save is refused for it. | `g-unique` | `${field}`, `${label}`, `${value}` |
+| `default` | Not a code: the message for any code a message list does not name. | Any of the above | `${field}`, `${label}` |
 
 ## The parameters
 
@@ -51,6 +51,7 @@ out, with an issue on the client saying why.
 | Parameter | What it is |
 |---|---|
 | `${field}` | The field's name, as the data has it. Every message may use it, a `default` one included. |
+| `${label}` | What a person calls the field: its label on the form the message is shown on, and with no form, its title or its name in words. Every message may use it. |
 | `${value}` | The value refused, as it was given. Absent for a field that is missing, or one the type does not declare. |
 | `${options}` | The field's choices, by their labels, joined into one line. |
 | `${min}` | The field's lower bound: its least number, length, or count. |

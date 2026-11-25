@@ -1612,3 +1612,13 @@ A field marked `g-unique: "owner"` (issue #1851) is held for the forms of one ow
   two values, while a symbol in it, such as ★, is punctuation and makes none. Telling them alike needs Unicode's categories
   for every character, which Kotlin's common code lacks. Trigger: a person reports two names that look the same, or a name
   of symbols they cannot use.
+
+## When someone has to fix an import that left entries out
+
+An import's messages are for whoever runs it, and say less than the validator knows (issue #1918).
+
+- **What a forgiving import left out, by field** *(#1918, deferred here 2026-11-25).* Its counts are by trait and category
+  (`GedraImportDiscard`). The validator says which field and why, as the impact report's findings do; adding them changes
+  the shape of the endpoint's answer.
+- **Which document a refused import stopped at** *(#1918, deferred here 2026-11-25).* A refusal names the trait and the field
+  and not the document's place in the import ("document 3").

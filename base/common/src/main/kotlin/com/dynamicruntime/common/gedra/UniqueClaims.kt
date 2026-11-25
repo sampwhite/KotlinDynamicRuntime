@@ -59,6 +59,9 @@ object UniqueClaims {
     /** The trait of the claim kind [kind] ([kindOf]): a trait id may hold a `.`, and a field may not. */
     fun traitOfKind(kind: String): String = kind.removePrefix(kindPrefix).substringBeforeLast('.')
 
+    /** The field of the claim kind [kind] ([kindOf]). */
+    fun fieldOfKind(kind: String): String = kind.substringAfterLast('.')
+
     private fun sharedKey(key: String, gedraId: String): String = "$key$sharedMark$gedraId"
 
     private fun scopeOf(row: GedraDataRow): String = row.userId.toString()

@@ -650,15 +650,16 @@ class SchLayoutTest : StringSpec({
     "errorContextNames and errorContextData agree, per failure code" {
         val topic = errType!!.properties["topic"]!!.valueType
         val year = errType.properties["year"]!!.valueType
-        errorContextNames(SchFailCode.invalidOption, topic) shouldBe setOf("field", "value", "options")
-        errorContextNames(SchFailCode.missingRequired, topic) shouldBe setOf("field")
-        errorContextNames(SchFailCode.belowMinimum, year) shouldBe setOf("field", "value", "min")
-        errorContextNames(null, topic) shouldBe setOf("field") // the `default` key
+        errorContextNames(SchFailCode.invalidOption, topic) shouldBe setOf("field", "label", "value", "options")
+        errorContextNames(SchFailCode.missingRequired, topic) shouldBe setOf("field", "label")
+        errorContextNames(SchFailCode.belowMinimum, year) shouldBe setOf("field", "label", "value", "min")
+        errorContextNames(null, topic) shouldBe setOf("field", "label") // the `default` key
 
         val opts = listOf(SchOption("a", "Apples"), SchOption("b", "Bananas"))
         errorContextData(SchFailCode.invalidOption, topic, "topic", "x", opts) shouldBe
-            mapOf("field" to "topic", "value" to "x", "options" to "Apples, Bananas")
-        errorContextData(SchFailCode.belowMinimum, year, "year", 1999L, null).keys shouldBe setOf("field", "value", "min")
-        errorContextData(SchFailCode.missingRequired, topic, "topic", null, null) shouldBe mapOf("field" to "topic")
+            mapOf("field" to "topic", "label" to "Topic", "value" to "x", "options" to "Apples, Bananas")
+        errorContextData(SchFailCode.belowMinimum, year, "year", 1999L, null).keys shouldBe setOf("field", "label", "value", "min")
+        errorContextData(SchFailCode.missingRequired, topic, "topic", null, null, "Subject") shouldBe
+            mapOf("field" to "topic", "label" to "Subject")
     }
 })

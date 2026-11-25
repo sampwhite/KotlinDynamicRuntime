@@ -263,12 +263,13 @@ internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, 
  * The layout's wording for failure [f] on field [name] of type [prop] (issue #588), or null to leave the
  * framework's own message (or the `g-errors` floor) in place. The override is looked up by the failure's code,
  * then `default`, and resolved -- fail-safe, like all layout copy -- against the failure's params
- * ([errorContextData]: the offending [value], the option list, the bound), the same `${'$'}{…}` machinery the
+ * ([errorContextData]: the offending [value], the label, the option list, the bound), the same `${'$'}{…}` machinery the
  * templated hint uses. This is where message *variation* is homed, so it wins over the built-in wording.
  */
 internal fun layoutErrorMessage(copy: LayoutCopy?, prop: SchProperty, name: String, value: Any?, f: SchFailure): String? {
     val template = copy?.errors?.let { it[f.code.name] ?: it[SCH.errorDefault] } ?: return null
-    return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options))
+    val label = fieldLabelOf(name, prop, copy.label)
+    return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options, label))
 }
 
 /** The label a field shows: what a person calls it in friendly mode ([fieldLabelOf]), else the raw wire key. */
@@ -1264,7 +1265,9 @@ private fun ChildrenBuilder.fieldFrame(
     // thing for an output type; this is the input side, which is the one someone is about to type into. The
     // layout's `hint` (issue #587), already resolved against the field's bounds, shadows the derived range.
     boundHint(prop.valueType, copy?.hint)
-    fieldErrors(path, messages) { f -> layoutErrorMessage(copy, prop, name, value, f) }
+    // The schema author's message names the field as this form does, when it names it (issue #1918).
+    val named = messages.map { it.called(fieldLabel(name, prop, opts, copy)) }
+    fieldErrors(path, named) { f -> layoutErrorMessage(copy, prop, name, value, f) }
 }
 
 /**

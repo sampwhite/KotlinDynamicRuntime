@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
+import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaService
@@ -121,7 +122,9 @@ object ConfigImpact {
             }
         }
         for ((at, rows) in holders) {
-            if (rows.size > 1) rows.forEach { report.add(ImpactKind.valuesShared, it, traitId = UniqueClaims.traitOfKind(at.first)) }
+            if (rows.size < 2) continue
+            val (traitId, field) = UniqueClaims.traitOfKind(at.first) to UniqueClaims.fieldOfKind(at.first)
+            rows.forEach { report.add(ImpactKind.valuesShared, it, traitId = traitId, field = field) }
         }
         return report
     }
@@ -249,18 +252,30 @@ object ConfigImpact {
             val knownNext = next?.variants?.isKnown(traitId) == true
             if (knownNow && !knownNext) {
                 report.add(ImpactKind.traitGone, row, traitId = traitId)
-            } else if (next != null && knownNext && validate(next, entry).isNotEmpty() &&
-                (now == null || !knownNow || validate(now, entry).isEmpty())
-            ) {
-                // A trait newly supported counts too: its entries were never checked, and every edit now checks them.
-                report.add(ImpactKind.dataInvalid, row, traitId = traitId)
-            } else if (knownNext &&
-                recomputes(cxt, entry, now?.variants?.select(traitId)?.takeIf { knownNow }, next.variants?.select(traitId))
-            ) {
+                continue
+            }
+            if (!knownNext) continue
+            val failures = validate(next, entry)
+            if (failures.isNotEmpty() && (now == null || !knownNow || validate(now, entry).isEmpty())) {
+                // A trait newly supported counts too: its entries were never checked, and every edit now checks them. For
+                // each field and failure (issue #1918), so forms that fail for different reasons are told apart.
+                for ((field, code) in failures.map { fieldAnywhere(it.path) to it.code }.distinct()) {
+                    report.add(ImpactKind.dataInvalid, row, traitId = traitId, field = field, code = code)
+                }
+            } else if (recomputes(cxt, entry, now?.variants?.select(traitId)?.takeIf { knownNow }, next.variants?.select(traitId))) {
                 report.add(ImpactKind.valuesRecomputed, row, traitId = traitId)
             }
         }
     }
+
+    /**
+     * The field a failure at [path] of an entry is about (issue #1918), wherever it is in a list: `lines[].amount`, for
+     * `data.lines[3].amount`. Empty for the data as a whole.
+     */
+    private fun fieldAnywhere(path: String): String =
+        path.removePrefix(GE.data).removePrefix(".").replace(elementIndex, "[]")
+
+    private val elementIndex = Regex("""\[\d+\]""")
 
     /**
      * Whether the `g-onWrite` functions of [next]'s data type would store other values for [entry] than the running
@@ -354,9 +369,18 @@ class ImpactReport(
     /** Whether a publish needs acknowledging: something found, or nothing could be examined. */
     val blocks: Boolean get() = tooLarge || byKey.isNotEmpty()
 
-    fun add(kind: ImpactKind, row: GedraDataRow, traitId: String? = null, workflowId: String? = null, taskId: String? = null) {
-        byKey.getOrPut(listOf(kind.name, traitId, workflowId, taskId)) { ImpactFinding(kind, traitId, workflowId, taskId) }
-            .rows.add(row.gedraId.fullId)
+    fun add(
+        kind: ImpactKind,
+        row: GedraDataRow,
+        traitId: String? = null,
+        workflowId: String? = null,
+        taskId: String? = null,
+        field: String? = null,
+        code: SchFailCode? = null,
+    ) {
+        byKey.getOrPut(listOf(kind.name, traitId, workflowId, taskId, field, code?.name)) {
+            ImpactFinding(kind, traitId, workflowId, taskId, field?.takeIf { it.isNotEmpty() }, code)
+        }.rows.add(row.gedraId.fullId)
     }
 
     fun toMap(): Map<String, Any?> = linkedMapOf(
@@ -369,15 +393,26 @@ class ImpactReport(
 }
 
 /** Rows one publish would affect the same way: a [kind] and what it is about. */
-class ImpactFinding(val kind: ImpactKind, val traitId: String?, val workflowId: String?, val taskId: String?) {
+class ImpactFinding(
+    val kind: ImpactKind,
+    val traitId: String?,
+    val workflowId: String?,
+    val taskId: String?,
+    /** The field of the trait's data it is about (issue #1918), by its name: its reader wants the schema's, not a label. */
+    val field: String? = null,
+    /** Why the field would no longer validate. */
+    val code: SchFailCode? = null,
+) {
     /** The rows affected, by gedra id; a row counts once however many of its entries are. */
     val rows: MutableSet<String> = LinkedHashSet()
 
     fun describe(): String {
         val what = when (kind) {
             ImpactKind.traitGone -> "trait '$traitId' would no longer be supported"
-            ImpactKind.dataInvalid -> "entries of trait '$traitId' would no longer validate"
-            ImpactKind.valuesShared -> "values of trait '$traitId' that would have to be unique are shared by forms of one owner"
+            ImpactKind.dataInvalid -> "${field?.let { "'$it' of trait '$traitId'" } ?: "entries of trait '$traitId'"} would no " +
+                "longer validate${code?.let { " (${it.name})" }.orEmpty()}"
+            ImpactKind.valuesShared ->
+                "values of '$field' of trait '$traitId', which would have to be unique, are shared by forms of one owner"
             ImpactKind.workflowGone -> "workflow '$workflowId' would no longer exist"
             ImpactKind.stateStranded -> "workflow '$workflowId' would no longer define task '$taskId'"
             ImpactKind.workflowFrozen -> "workflow '$workflowId' would stop being tracked now, freezing what it shows"
@@ -393,6 +428,8 @@ class ImpactFinding(val kind: ImpactKind, val traitId: String?, val workflowId: 
         traitId?.let { put(IMP.traitId, it) }
         workflowId?.let { put(IMP.workflowId, it) }
         taskId?.let { put(IMP.taskId, it) }
+        field?.let { put(IMP.field, it) }
+        code?.let { put(IMP.code, it.name) }
         put(IMP.count, rows.size)
         put(IMP.sampleIds, rows.take(IMP.sampleLimit))
     }

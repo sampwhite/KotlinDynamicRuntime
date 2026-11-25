@@ -213,7 +213,10 @@ class UniqueValuesTest : StringSpec({
         val finding = ConfigImpact.reportFor(cxt, client, listOf(latestOf(client)), anyTier = true).findings
             .single { it.kind == ImpactKind.valuesShared }
         finding.traitId shouldBe "budget"
+        finding.field shouldBe "title"
         finding.rows shouldBe setOf(first, second)
+        finding.describe() shouldBe
+            "2 row(s), values of 'title' of trait 'budget', which would have to be unique, are shared by forms of one owner"
 
         GedraConfigReload.reloadClient(cxt, client)
         mine.refused("SHARED") shouldContain "already used"
@@ -252,7 +255,10 @@ class UniqueValuesTest : StringSpec({
         val bare = mine.make("!!!")
         storeUnique(client, true)
         ConfigImpact.reportFor(cxt, client, listOf(latestOf(client)), anyTier = true).findings
-            .single { it.kind == ImpactKind.dataInvalid }.rows shouldBe setOf(bare)
+            .single { it.kind == ImpactKind.dataInvalid }.let {
+                it.rows shouldBe setOf(bare)
+                it.describe() shouldBe "1 row(s), 'title' of trait 'budget' would no longer validate (noLetterOrDigit)"
+            }
         GedraConfigReload.reloadClient(cxt, client)
         mine.expectError(EXC.badInput, GEP.patch, patchBody(bare, mapOf("note" to "n")))
         mine.rename(bare, "Named")

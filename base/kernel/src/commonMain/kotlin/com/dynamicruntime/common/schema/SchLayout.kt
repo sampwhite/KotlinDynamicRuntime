@@ -6,6 +6,7 @@ import com.dynamicruntime.common.overlay.KeyedElement
 import com.dynamicruntime.common.overlay.MergeRule
 import com.dynamicruntime.common.overlay.MergeSpec
 import com.dynamicruntime.common.overlay.OnNew
+import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
@@ -1249,8 +1250,14 @@ object LayoutErrCtx {
      *  ([SchFailCode.missingRequired], [SchFailCode.additionalProperty]). */
     const val value = "value"
 
-    /** The property's name -- the one param every failure can offer, and all a `default` message may use. */
+    /** The property's name -- which, with [label], every failure can offer, and all a `default` message may use. */
     const val field = "field"
+
+    /**
+     * What a person calls the field (issue #1918): by the rule ([fieldLabelOf]) as the place showing the message has it, and
+     * with no form, its title and then its name in words.
+     */
+    const val label = "label"
 
     /** The field's valid choices as a readable list, for an [SchFailCode.invalidOption] message. */
     const val options = "options"
@@ -1263,7 +1270,7 @@ object LayoutErrCtx {
  * [layoutTemplateProblems] holds an error template's `${'$'}{…}` against, so a placeholder the failure cannot
  * provide (a `${'$'}{max}` for an `invalidOption`, a `${'$'}{value}` for a `missingRequired`) fails the boot like a
  * mistyped key. [code] is null for the `default` key, which may match any failure and so is allowed only the
- * one param present for every one of them ([LayoutErrCtx.field]).
+ * params present for every one of them ([LayoutErrCtx.field] and [LayoutErrCtx.label]).
  */
 fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> =
     errorContextNames(code, hasMin = type.minBound != null, hasMax = type.maxBound != null)
@@ -1274,6 +1281,7 @@ fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> =
  */
 fun errorContextNames(code: SchFailCode?, hasMin: Boolean, hasMax: Boolean): Set<String> = buildSet {
     add(LayoutErrCtx.field)
+    add(LayoutErrCtx.label)
     if (code == null) return@buildSet
     // A value exists for every failure except a property that is missing or one that is not a field at all.
     if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) add(LayoutErrCtx.value)
@@ -1287,8 +1295,8 @@ fun errorContextNames(code: SchFailCode?, hasMin: Boolean, hasMax: Boolean): Set
 
 /**
  * The data a layout error message for [code] resolves against (issue #588) -- the runtime counterpart of
- * [errorContextNames], built where the failure is rendered (the frontend). [fieldName] is the property's name,
- * [value] its current value (the offending one), and [options] the failure's choice list. Only the params
+ * [errorContextNames], built where the failure is rendered (the frontend). [fieldName] is the property's name, [label]
+ * what it is called there, [value] its current value (the offending one), and [options] the failure's choice list. Only the params
  * [errorContextNames] names for [code] are put, so the render and the boot check agree on the vocabulary; a
  * bound comes from [type], the choice list is joined to a readable string. A pure function, defined here beside
  * the names for the same reason [boundsContextData] is.
@@ -1299,8 +1307,10 @@ fun errorContextData(
     fieldName: String,
     value: Any?,
     options: List<SchOption>?,
+    label: String = humanizeFieldName(fieldName),
 ): Map<String, Any?> = buildMap {
     put(LayoutErrCtx.field, fieldName)
+    put(LayoutErrCtx.label, label)
     if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) {
         value?.let { put(LayoutErrCtx.value, it) }
     }
