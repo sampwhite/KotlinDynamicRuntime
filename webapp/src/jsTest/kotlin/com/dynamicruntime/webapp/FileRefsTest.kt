@@ -194,7 +194,7 @@ class FileRefsTest {
         val noId = fileRefNewIdProblem("", existing)
         val taken = fileRefNewIdProblem("logo", existing)
         assertTrue(noId != null && taken != null && noId != taken)
-        assertTrue("logo" in taken!!)
+        assertTrue("logo" in taken)
         // The kernel's own rule, which the backend holds an id to: said before anything is sent.
         for (bad in listOf("my logo", "logo.png", "2logo", "a/b")) assertNotNull(fileRefNewIdProblem(bad, existing), "should refuse '$bad'")
         // What stands where a ref's id would for the form that adds one can be no ref's id.

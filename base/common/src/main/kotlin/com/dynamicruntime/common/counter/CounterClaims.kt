@@ -111,9 +111,11 @@ object CounterClaimHook : GedraWriteHook {
             }
         }
         ValueClaims.claim(cxt, write.sqlCxt, claims) { claim, holder ->
-            "The id '${claim.value}' in '${claim.field}' of '${claim.traitId}' is already stored" +
-                (if (holder == claim.gedraId) " on this ${kindWord(row.kind)}." else " elsewhere.") +
-                " Ask the counter '${claim.claimKind.removePrefix(CNT.claimKindPrefix)}' for another."
+            KdrException.mkInput(
+                "The id '${claim.value}' in '${claim.field}' of '${claim.traitId}' is already stored" +
+                    (if (holder == claim.gedraId) " on this ${kindWord(row.kind)}." else " elsewhere.") +
+                    " Ask the counter '${claim.claimKind.removePrefix(CNT.claimKindPrefix)}' for another.",
+            )
         }
         claims.forEach {
             LogGedra.info(cxt) { "Gedra '${it.gedraId}' stores '${it.value}' from a counter in '${it.field}' of '${it.traitId}'." }

@@ -1445,7 +1445,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         buildMap {
             put(UNQ.taken, held != null)
             if (slot != null && held != null) {
-                put(UNQ.message, UniqueClaims.takenText(c, c.client, owner, slot, held.value))
+                put(UNQ.message, UniqueClaims.takenText(c, owner, slot, held.value))
                 put(UNQ.heldAs, held.value)
                 put(GDF.gedraId, held.gedraId)
             }

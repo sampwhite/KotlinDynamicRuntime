@@ -267,9 +267,9 @@ class SchemaSkillExamplesTest : StringSpec({
             listOf(SchFailCode.patternMismatch, SchFailCode.belowMinimum, SchFailCode.duplicateItem)
         // The built-in message quotes the pattern; the schema's own wording rides beside it.
         val mismatch = failures.single { it.code == SchFailCode.patternMismatch }
-        mismatch.message shouldBe "This must match the pattern '^[0-9]{5}$'."
+        mismatch.message shouldBe "Value must match the pattern '^[0-9]{5}$'."
         mismatch.userMessage shouldBe "A postal code is five digits."
-        failures.single { it.code == SchFailCode.belowMinimum }.message shouldBe "This must be more than 0."
+        failures.single { it.code == SchFailCode.belowMinimum }.message shouldBe "Value must be more than 0."
     }
 
     // Transcribed from the skill's "Keys: `g-primaryKey`" section (issue #1521).

@@ -5,6 +5,7 @@ import com.dynamicruntime.common.schema.offeredChoices
 import com.dynamicruntime.common.schema.formRequirementFailures
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchLayoutField
+import com.dynamicruntime.common.schema.SchLabelSource
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
@@ -42,8 +43,8 @@ class InputCheck(val failures: List<SchFailure>, val coerced: Any?) {
  * Pure -- the shared kernel does the work -- so both the endpoint catalog and the new-form page check input
  * identically, and the rule is covered by `jsNodeTest` rather than only by driving a browser.
  */
-fun checkInput(type: SchType, values: Map<String, Any?>): InputCheck {
-    val result = coerceAndValidate(type, values, SchOpts(keepAdditionalProperties = true, forInput = true))
+fun checkInput(type: SchType, values: Map<String, Any?>, labelOf: SchLabelSource? = null): InputCheck {
+    val result = coerceAndValidate(type, values, SchOpts(keepAdditionalProperties = true, forInput = true, labelOf = labelOf))
     return InputCheck(result.failures, result.value)
 }
 
@@ -60,8 +61,11 @@ fun checkFormInput(
     layouts: Map<String, SchLayout>,
     given: Set<String> = emptySet(),
 ): InputCheck {
-    val check = checkInput(type, values)
-    val form = formRequirementFailures(type, layouts, check.coerced as? Map<*, *> ?: values, excused = given)
+    // What the form calls a field (issue #1918), for a message that gives its label.
+    val opts = FormOpts(friendly = true, fieldLayouts = layouts)
+    val labelOf: SchLabelSource = { owner, field, data -> layoutCopy(owner, field, data.toJsonMapOrEmpty(), opts)?.label }
+    val check = checkInput(type, values, labelOf)
+    val form = formRequirementFailures(type, layouts, check.coerced as? Map<*, *> ?: values, excused = given, labelOf = labelOf)
     return if (form.isEmpty()) check else InputCheck(check.failures + form, check.coerced)
 }
 

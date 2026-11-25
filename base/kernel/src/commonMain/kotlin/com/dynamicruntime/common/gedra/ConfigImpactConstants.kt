@@ -54,6 +54,12 @@ object IMP {
     /** The task a stranded-state finding is about. */
     const val taskId = "taskId"
 
+    /** The field of the trait's data a finding is about (issue #1918), with `[]` for an element of a list. */
+    const val field = "field"
+
+    /** Why that field would no longer validate: a validation failure's code. */
+    const val code = "code"
+
     /** How many rows the finding applies to. */
     const val count = "count"
 

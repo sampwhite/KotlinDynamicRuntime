@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.KdrException
@@ -60,7 +61,10 @@ class FormRequirementsTest : StringSpec({
                 option("hotel", "A hotel")
                 option("park", "A park")
             }
-            property("attendees", "How many are expected.") { type = SCT.integer }
+            property("attendees", "How many are expected.") {
+                type = SCT.integer
+                errors { missingRequired($$"${label} is needed.") }
+            }
             property("rainPlan", "What happens if it rains.")
             // The rain plan is asked for only in the park; elsewhere the schema withdraws it.
             presentWhen("rainPlan", on = "venue", value = "park")
@@ -81,7 +85,7 @@ class FormRequirementsTest : StringSpec({
             }
         }
         workflow("review", WfEntry.coreDetails) {
-            alterType(eventType, alteration(asksForAttendees))
+            alterType(eventType, alteration(asksForAttendees + (SL.label to "Head count")))
             task("check", "Check") {
                 trait("event")
                 save("save", "Save", WfSaveKind.edit)
@@ -110,6 +114,19 @@ class FormRequirementsTest : StringSpec({
         user.postData(savePath, saveArgs("plan", "venue" to "office", "attendees" to 12))["saved"] shouldBe true
         // The schema does not ask for it, so a general data edit saves without it.
         plainForm("venue" to "office")
+    }
+
+    "an author's message names the field as the workflow does, and a refusal sends it (issue #1918)" {
+        fun refused(workflowId: String, gedraId: String? = null) =
+            user.expectError(400, savePath, saveArgs(workflowId, "venue" to "office", gedraId = gedraId))[EP.extraData]
+                .toJsonMapOrEmpty()[EP.failures].toJsonListOfMaps().single()
+        val plan = refused("plan")
+        plan[GE.traitId] shouldBe "event"
+        plan[EP.failurePath] shouldBe "data.attendees"
+        plan[EP.failureMessage] shouldBe "A value is required on this form."
+        plan[EP.failureUserMessage] shouldBe "Attendees is needed."
+        // The other workflow calls the same field by a label of its own.
+        refused("review", plainForm("venue" to "office"))[EP.failureUserMessage] shouldBe "Head count is needed."
     }
 
     "a choice the form does not offer is refused on its save, and accepted elsewhere" {

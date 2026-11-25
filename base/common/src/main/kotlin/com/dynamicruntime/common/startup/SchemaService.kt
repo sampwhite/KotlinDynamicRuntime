@@ -1764,7 +1764,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 // free-form until integrations land.
                 property(CX.extras, "Free-form JSON object; any keys are accepted, none are declared.") {
                     type = SCT.kObject
-                    // The validator's own wording for this is "This must be of type 'object'", which is true
+                    // The validator's own wording for this is "Value must be an object.", which is true
                     // and unhelpful to someone looking at a text box: what they need to hear is that the text
                     // did not parse. The field editor names the line and column; this is what the failure
                     // listing and any API caller see.

@@ -418,7 +418,7 @@ class FormCountersTest : StringSpec({
                     gedraConfig(cxt, "extra", clientNamespace(client), client) { counter("later", "L-", issue = "eventually") },
                 ),
             ),
-        ).toString() shouldContain "'eventually' is not a valid option"
+        ).toString() shouldContain "'eventually' is not one of the choices"
 
         // The workflow view and the catalog say how each counter their types name gives its ids.
         val clerk = TestUser.create(cxt, "clerk2@$client.test", userClient = client)

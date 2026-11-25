@@ -65,7 +65,7 @@ fun List<SchFailure>.atOrBelow(prefix: String): List<SchFailure> =
  *   re-indexes the rest, so a failure held against `contacts[1].handle` no longer refers to the value it was
  *   reported for, and keeping it would point a message at whatever moved into that slot.
  * - **Ancestors**, because a container's failure was computed from contents that just changed. Supplying
- *   `input.name` is precisely what brings `input` into existence, so *"Required property 'input' is missing"*
+ *   `input.name` is precisely what brings `input` into existence, so *"A value is required"*
  *   is provably stale the moment the child is filled in — and leaving it up tells the person the opposite of
  *   what they just did.
  *

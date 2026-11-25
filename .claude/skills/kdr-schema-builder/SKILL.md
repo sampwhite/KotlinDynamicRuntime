@@ -187,7 +187,7 @@ the other standard keywords read more closely than a shape -- is in the schema d
   with `^…$`, since a pattern matches anywhere. There are no flags; write `[Aa]`. The default message quotes the
   pattern, so say what it is *for* in `g-errors`. `SchPattern` translates it for the JVM and the browser alike, and
   its KDoc lists each construct refused and why.
-- **`exclusiveMinimum` / `exclusiveMaximum`** share `belowMinimum` / `aboveMaximum` with the inclusive pair ("This
+- **`exclusiveMinimum` / `exclusiveMaximum`** share `belowMinimum` / `aboveMaximum` with the inclusive pair ("Value
   must be more than 0.").
 - **`uniqueItems`** fails as `duplicateItem` ("Item 3 repeats item 1…"), comparing elements as validated values, so
   `"5"` coerced to an integer equals `5`.
@@ -821,7 +821,10 @@ validation even when no output is requested:
 - A `binary`-format field is exempt from all of it (see above), though `required` still applies.
 
 A failure's code is a `SchFailCode`; the codes, what raises each, and the parameters a message for it may use are in
-[validation messages](../../../docs/reference/validation-messages.md). A parse-driven `badValue` carries the parser
+[validation messages](../../../docs/reference/validation-messages.md). A platform message names no field (issue #1918); an
+authored one may give `${label}`, what a person calls the field (`fieldLabelOf`: the layout's label, the field's own title,
+its name in words). The validator fills it with the title, or with `SchOpts.labelOf` when the caller has a form; a page
+words the failure again with its own heading (`SchFailure.called`). A parse-driven `badValue` carries the parser
 exception in `SchFailure.cause`.
 
 ## Casts

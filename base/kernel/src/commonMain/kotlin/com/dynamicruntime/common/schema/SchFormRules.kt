@@ -43,6 +43,9 @@ fun offeredChoices(vt: SchType, field: SchLayoutField?): List<SchOption>? {
  * [excused] are top-level fields the form asks nothing for though its layout requires them: those a counter is about to
  * fill (issue #1852), on a create or at an edit's Save. A form already stored without one is still held to it.
  *
+ * [labelOf] is what the form calls a field, for an author's message that gives its label (issue #1918): the layouts' own,
+ * with nothing filled in, when the caller does not say.
+ *
  * Only what the form adds is reported: a value the schema itself refuses is the validator's failure, not this one.
  * Pure, and in the kernel, so the page runs the rule the backend runs.
  */
@@ -52,9 +55,10 @@ fun formRequirementFailures(
     data: Map<*, *>,
     path: String = "",
     excused: Set<String> = emptySet(),
+    labelOf: SchLabelSource = plainLabels(layouts),
 ): List<SchFailure> {
     val out = mutableListOf<SchFailure>()
-    collectFormFailures(type, layouts, data, path, out, depth = 0, excused)
+    collectFormFailures(type, layouts, data, path, out, depth = 0, labelOf, excused)
     return out
 }
 
@@ -68,6 +72,7 @@ private fun collectFormFailures(
     path: String,
     out: MutableList<SchFailure>,
     depth: Int,
+    labelOf: SchLabelSource,
     excused: Set<String> = emptySet(),
 ) {
     if (depth >= maxFormRuleDepth) return
@@ -83,9 +88,10 @@ private fun collectFormFailures(
         val vt = prop.valueType
         val value = data[name]
         val at = childPath(path, name)
+        fun called(failure: SchFailure) = failure.called(fieldLabelOf(name, prop, labelOf(type, name, data))).copy(formRequirement = true)
         layout?.fieldFor(name)?.let { entry ->
             if (entry.required && name !in schemaRequires && name !in excused && isAbsentForForm(value)) {
-                out.add(vt.failure(at, SchFailCode.missingRequired, "'$name' is required on this form.").copy(formRequirement = true))
+                out.add(called(vt.failure(at, SchFailCode.missingRequired, "A value is required on this form.")))
             }
             // Blank is no answer, which `required` speaks to; only a given value can be one the form does not offer.
             val given = value.toOptStr()?.takeIf { it.isNotBlank() }
@@ -93,20 +99,18 @@ private fun collectFormFailures(
                 val offered = offeredChoices(vt, entry).orEmpty()
                 val schemaAllows = vt.options?.any { it.value == given } == true
                 if (schemaAllows && offered.none { it.value == given }) {
-                    out.add(
-                        vt.failure(at, SchFailCode.invalidOption, "'$given' is not offered on this form.", offered, value = given)
-                            .copy(formRequirement = true),
-                    )
+                    val message = "'$given' is not offered on this form."
+                    out.add(called(vt.failure(at, SchFailCode.invalidOption, message, offered, value = given)))
                 }
             }
         }
-        collectNestedFormFailures(vt, layouts, value, at, out, depth)
+        collectNestedFormFailures(vt, layouts, value, at, out, depth, labelOf)
     }
     // A map's entries (issue #1055): each is a value of the map's value type, judged under that type's layout.
     type.additionalValueType?.let { entryType ->
         for ((key, value) in data) {
             if (key !is String || key in type.properties) continue
-            collectNestedFormFailures(entryType, layouts, value, childPath(path, key), out, depth)
+            collectNestedFormFailures(entryType, layouts, value, childPath(path, key), out, depth, labelOf)
         }
     }
 }
@@ -119,13 +123,14 @@ private fun collectNestedFormFailures(
     at: String,
     out: MutableList<SchFailure>,
     depth: Int,
+    labelOf: SchLabelSource,
 ) {
     when (value) {
-        is Map<*, *> if vt.holdsFields() -> collectFormFailures(vt, layouts, value, at, out, depth + 1)
+        is Map<*, *> if vt.holdsFields() -> collectFormFailures(vt, layouts, value, at, out, depth + 1, labelOf)
 
         is List<*> -> vt.itemType?.takeIf { it.holdsFields() }?.let { item ->
             value.forEachIndexed { i, element ->
-                if (element is Map<*, *>) collectFormFailures(item, layouts, element, indexPath(at, i), out, depth + 1)
+                if (element is Map<*, *>) collectFormFailures(item, layouts, element, indexPath(at, i), out, depth + 1, labelOf)
             }
         }
     }

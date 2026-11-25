@@ -18,6 +18,7 @@ import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.fieldsAListMustShow
 import com.dynamicruntime.common.schema.isListOfEntries
+import com.dynamicruntime.common.schema.fieldLabelOf
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -1052,7 +1053,7 @@ fun shownFieldRows(type: SchType, layout: SchLayout?, chosen: List<String>): Lis
             shown && entry?.required == true -> "This form requires it; stop requiring it first."
             else -> null
         }
-        return ShownFieldRow(name, entry?.label ?: type.properties[name]?.title ?: humanizeFieldName(name), shown, locked)
+        return ShownFieldRow(name, fieldLabelOf(name, type.properties[name], entry?.label), shown, locked)
     }
     val listed = chosen.filter { it in type.properties }
     return listed.map { row(it, true) } + type.properties.keys.filter { it !in listed }.map { row(it, false) }

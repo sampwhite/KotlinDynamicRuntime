@@ -656,10 +656,10 @@ class SchValidatorTest : StringSpec({
             "bag" to SchFailCode.belowMinimum,
         )
         // One code, but wording that suits what each type measures.
-        failures.single { it.path == "score" }.message shouldBe "This must be at least 1."
-        failures.single { it.path == "nick" }.message shouldBe "This must be at least 2 characters."
-        failures.single { it.path == "tags" }.message shouldBe "This must have at least 1 item."
-        failures.single { it.path == "bag" }.message shouldBe "This must have at least 1 property."
+        failures.single { it.path == "score" }.message shouldBe "Value must be at least 1."
+        failures.single { it.path == "nick" }.message shouldBe "Value must be at least 2 characters."
+        failures.single { it.path == "tags" }.message shouldBe "Value must have at least 1 item."
+        failures.single { it.path == "bag" }.message shouldBe "Value must have at least 1 property."
     }
 
     "each of the four pairs reports above its maximum" {
@@ -672,8 +672,8 @@ class SchValidatorTest : StringSpec({
             ),
         )
         failures.map { it.code }.toSet() shouldBe setOf(SchFailCode.aboveMaximum)
-        failures.single { it.path == "nick" }.message shouldBe "This must be at most 5 characters."
-        failures.single { it.path == "bag" }.message shouldBe "This must have at most 2 properties."
+        failures.single { it.path == "nick" }.message shouldBe "Value must be at most 5 characters."
+        failures.single { it.path == "bag" }.message shouldBe "Value must have at most 2 properties."
     }
 
     "the bounds are inclusive at both ends" {
@@ -741,7 +741,7 @@ class SchValidatorTest : StringSpec({
         val f = validate(t, mapOf("age" to 17)).single()
         f.code shouldBe SchFailCode.belowMinimum
         f.userMessage shouldBe "You have to be 18 or over."
-        f.message shouldBe "This must be at least 18."
+        f.message shouldBe "Value must be at least 18."
     }
 
     // --- g-errors: the schema's own wording for a failure (issue #202) ------------------------------------
@@ -775,7 +775,7 @@ class SchValidatorTest : StringSpec({
         f.code shouldBe SchFailCode.missingRequired
         f.userMessage shouldBe "A score is needed."
         // Beside, not instead of: the wire wording is still there for a surface that documents the wire.
-        f.message shouldBe "Required property 'score' is missing."
+        f.message shouldBe "A value is required."
     }
 
     "a field default covers a code the block does not name" {
@@ -797,7 +797,7 @@ class SchValidatorTest : StringSpec({
         val t = errorCopyTypes()["e.Form"].shouldNotBeNull()
         val f = validate(t, mapOf("score" to 1, "plain" to "x")).single { it.path == "plain" }
         f.userMessage shouldBe null
-        f.message shouldBe "'x' is not a valid integer."
+        f.message shouldBe "'x' is not a whole number."
     }
 
     // A misspelled code is the failure mode worth catching: the schema looks like it says something, and the
@@ -862,7 +862,7 @@ class SchValidatorTest : StringSpec({
         f.code shouldBe SchFailCode.invalidOption
         f.userMessage shouldBe """We don't offer "cherry". Try: Apples, Bananas."""
         // Beside, not instead of: the built-in wording still stands for a wire-documenting surface.
-        f.message shouldBe "'cherry' is not a valid option."
+        f.message shouldBe "'cherry' is not one of the choices."
     }
 
     "a bound message substitutes the bound and the value" {

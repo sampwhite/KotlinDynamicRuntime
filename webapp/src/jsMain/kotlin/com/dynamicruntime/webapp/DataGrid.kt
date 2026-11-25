@@ -582,7 +582,7 @@ private fun ChildrenBuilder.choiceEditor(options: List<SchOption>, selected: Str
         allowClear = !required
         style = js("({ width: '100%' })")
         // Cleared, the value is undefined: the cell is emptied.
-        onChange = { v -> handlers.choose((v as Any?)?.toString().orEmpty()) }
+        onChange = { v -> handlers.choose(v?.toString().orEmpty()) }
         asDynamic()["onKeyDown"] = { e: dynamic ->
             val key = e.key as String
             if ((key == "Escape" || key == "Tab") && handlers.editorKey(key, e.shiftKey == true)) {

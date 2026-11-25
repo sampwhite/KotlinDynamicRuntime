@@ -16,6 +16,8 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.plainLabels
+import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
@@ -169,13 +171,15 @@ fun coreDetailsContentFailures(
     entries: List<Map<String, Any?>>,
     declared: WfDeclared? = null,
 ): Map<String, List<SchFailure>> {
-    val union = SchemaService.get(cxt).storeFor(client)
-        .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"] ?: return emptyMap()
+    val store = SchemaService.get(cxt).storeFor(client)
+    val union = store.types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"] ?: return emptyMap()
+    // Named as the workflow's pages name a field, where an author's message does (issue #1918).
+    val labels = plainLabels((declared?.let { workflowSchemaStore(store, it) } ?: store).layouts)
     val content = entries
         .filter { it[GE.traitId].toOptStr() in traitIds && it[GE.data] != null }
         .mapNotNull { entry ->
             val traitId = entry[GE.traitId].toOptStr() ?: return@mapNotNull null
-            val content = validate(union, entry).filter { it.code != SchFailCode.missingRequired }
+            val content = validate(union, entry, SchOpts(labelOf = labels)).filter { it.code != SchFailCode.missingRequired }
             if (content.isEmpty()) null else traitId to content
         }
         .groupBy({ it.first }, { it.second })

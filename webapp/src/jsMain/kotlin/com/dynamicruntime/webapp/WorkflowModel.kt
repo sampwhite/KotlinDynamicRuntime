@@ -81,7 +81,11 @@ class WfSaveView(val id: String, val label: String, val kind: String)
  * wording to show -- the schema author's `userMessage` when the field declares one, else the validator's
  * `message`, the same rule a reported failure is read by anywhere else.
  */
-class WfProblem(val traitId: String, val path: String, val message: String)
+class WfProblem(val failure: RefusedFailure) {
+    val traitId: String get() = failure.traitId
+    val path: String get() = failure.path
+    val message: String get() = failure.userMessage ?: failure.message
+}
 
 /**
  * A task's status for the task rail (issue #700), as the view computed it: presence ([complete], [missingTraits])
@@ -327,11 +331,7 @@ private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
         // Each problem is the kernel's own failure wire map (`SchFailure.toWireMap`) plus the trait it belongs to,
         // read by the same constants every other reported failure is.
         problems = s[WVF.problems].toJsonListOfMaps().map {
-            WfProblem(
-                traitId = it[GE.traitId].toOptStr() ?: "",
-                path = it[EP.failurePath].toOptStr() ?: "",
-                message = it[EP.failureUserMessage].toOptStr() ?: it[EP.failureMessage].toOptStr() ?: "",
-            )
+            WfProblem(refusedFailure(it[GE.traitId].toOptStr().orEmpty(), it))
         },
     )
 }
@@ -623,14 +623,15 @@ fun nextTaskAfter(tasks: List<WfTaskView>, shownId: String?, shownMark: RailMark
 /**
  * What a rail mark means, in words, for the entry's tooltip and screen-reader label (issue #700): unsaved edits,
  * the required traits still missing (named by [nameOf] -- the rail passes the same heading the panel uses, so
- * the two agree; the default humanizes the id), each friendly problem, or -- when nothing else applies --
- * [satisfied], that the step asks nothing more (issue #1694: never "Complete", since it can still be changed). One line
- * each, in that order.
+ * the two agree; the default humanizes the id), each friendly problem as [problemText] has it -- with the label its form
+ * gives the field, for the rail -- or, when nothing else applies, [satisfied], that the step asks nothing more (issue
+ * #1694: never "Complete", since it can still be changed). One line each, in that order.
  */
 fun railExplanation(
     status: WfTaskStatus?,
     unsaved: Boolean,
     satisfied: String = WorkflowCellWords().stepSatisfied,
+    problemText: (WfProblem) -> String = { it.message },
     nameOf: (String) -> String = ::humanizeFieldName,
 ): String {
     val lines = buildList {
@@ -639,7 +640,7 @@ fun railExplanation(
             val missing = status?.missingTraits.orEmpty()
             add(if (missing.isEmpty()) "Not started" else "Needs information: " + missing.joinToString(", ") { nameOf(it) })
         }
-        status?.problems?.forEach { add(it.message) }
+        status?.problems?.forEach { add(problemText(it)) }
         if (isEmpty()) add(satisfied)
     }
     return lines.joinToString("\n")
@@ -718,8 +719,9 @@ fun localTaskStatus(
         if (!trait.required && comparableValues(working).isEmpty()) continue
         val failures = checkFormInput(trait.type, working, layouts, givenAtSave(trait)).failures
         if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
-        failures.filter { it.code != SchFailCode.missingRequired }
-            .forEach { problems.add(WfProblem(trait.traitId, it.path, it.userMessage ?: it.message)) }
+        failures.filter { it.code != SchFailCode.missingRequired }.forEach {
+            problems.add(WfProblem(RefusedFailure(trait.traitId, it.path, it.code.name, it.message, it.userMessage, it.options)))
+        }
     }
     return WfTaskStatus(
         complete = missing.isEmpty(),

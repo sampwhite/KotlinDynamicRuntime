@@ -39,6 +39,7 @@ import com.dynamicruntime.common.user.labelNotesOfText
 import com.dynamicruntime.common.user.labelNotesText
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.USF
+import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -1731,6 +1732,9 @@ class ImpactFindingView(
     val taskId: String?,
     val count: Int,
     val sampleIds: List<String>,
+    /** The field of the trait's data it is about, by name, and why it would no longer validate (issue #1918). */
+    val field: String? = null,
+    val code: String? = null,
 )
 
 /**
@@ -1764,6 +1768,8 @@ fun parseImpactReport(raw: Map<String, Any?>): ImpactReportView = ImpactReportVi
             taskId = it[IMP.taskId].toOptStr(),
             count = (it[IMP.count] as? Number)?.toInt() ?: 0,
             sampleIds = it[IMP.sampleIds].toJsonListOfStrings(),
+            field = it[IMP.field].toOptStr(),
+            code = it[IMP.code].toOptStr(),
         )
     },
 )
@@ -1787,10 +1793,12 @@ fun impactFindingText(f: ImpactFindingView): String {
         ImpactKind.traitGone.name ->
             "$forms ${verb("holds", "hold")} entries of trait ${f.traitId}, which the client would no longer support."
         ImpactKind.dataInvalid.name ->
-            "$forms ${verb("holds", "hold")} entries of trait ${f.traitId} that would no longer be valid, and could " +
-                "not be edited until they are fixed."
+            "$forms ${verb("holds", "hold")} entries of trait ${f.traitId} ${f.field?.let { "whose $it" } ?: "that"} would no " +
+                "longer be valid, and could not be edited until they are fixed." +
+                SchFailCode.entries.firstOrNull { it.name == f.code }?.let { " ${it.meaning}" }.orEmpty()
         ImpactKind.valuesShared.name ->
-            "$forms ${verb("shares", "share")} a value of trait ${f.traitId} with another form of the same owner. " +
+            "$forms ${verb("shares", "share")} a value of ${f.field?.let { "$it of " }.orEmpty()}trait ${f.traitId} with " +
+                "another form of the same owner. " +
                 "${verb("It is", "They are")} kept as ${verb("it is", "they are")}; only a new use of the value is refused."
         ImpactKind.workflowGone.name ->
             "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which would no longer exist."

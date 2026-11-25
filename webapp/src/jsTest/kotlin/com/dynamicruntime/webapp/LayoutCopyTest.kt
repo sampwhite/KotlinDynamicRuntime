@@ -112,6 +112,30 @@ class LayoutCopyTest {
     )
 
     @Test
+    fun theErrorOverrideMayGiveTheLabelThisFormHas() {
+        fun shown(label: String?) = layoutErrorMessage(
+            layoutCopy(
+                type, "topic", mapOf("notes" to "n"),
+                optsWith(
+                    SchLayout(
+                        fragmentFileId = null, label = null,
+                        fields = listOf(
+                            SchLayoutField(
+                                "topic", label = label, description = null, hint = null,
+                                errors = mapOf(SCH.errorDefault to $$"${label} is needed."),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            type.properties.getValue("topic"), "topic", null, SchFailure("topic", SchFailCode.missingRequired, "m"),
+        )
+        assertEquals("Subject is needed.", shown("Subject"))
+        assertEquals("Subject for n is needed.", shown($$"Subject for ${notes}"))
+        assertEquals("Schema topic title is needed.", shown(null))
+    }
+
+    @Test
     fun theErrorOverrideResolvesAgainstTheFailuresParams() {
         val copy = layoutCopy(type, "topic", emptyMap(), optsWith(withErrors))
         val prop = type.properties.getValue("topic")

@@ -16,6 +16,9 @@ refused value. A form shows the same failures beside its fields. Each failure ho
 | `code` | Why it was refused: one of the codes below. A program branches on this. |
 | `message` | The platform's own words for the failure, written for whoever is reading the data. |
 | `userMessage` | The schema's own words for the failure, from its `g-errors`, when it gives some. A form shows these in place of the platform's. |
+| `traitId` | When a write is refused for what its entries would hold: the trait of the entry, which the path starts from (`data.title`). |
+| `entryKey` | The key of that entry, each key field with its value, for a trait that may have several. |
+| `value` | For a value that is taken (`valueTaken`), the value as it was sent. |
 | `options` | For a choice refused, the choices there are, each a value and its label. |
 | `formRequirement` | Present and true when the data is valid but the form asks for more: a field its layout requires, or a choice it does not offer. |
 
@@ -26,19 +29,19 @@ on a list only how many items it has. A parameter in parentheses is offered only
 
 | Code | What it means | Raised by | A message may use |
 |---|---|---|---|
-| `missingRequired` | A field the data requires, or this form asks for, was not supplied. | `required` | `${field}` |
-| `wrongType` | The value is not of the field's type, such as text where a number belongs. | `type` | `${field}`, `${value}` |
-| `badValue` | The value was read and found wrong: text that is not a date, a number, or a yes or no where one is expected, a character that does not show, or spaces at the ends of text that refuses them. | `type`, `format`, `g-visibleOnly`, `g-outerWhitespace`, `g-schemaDocument` | `${field}`, `${value}` |
-| `invalidOption` | The value is not one of the field's choices. | `g-options` | `${field}`, `${value}`, `${options}` |
-| `additionalProperty` | The data holds a field its type does not declare. | `additionalProperties` | `${field}` |
-| `notAllowed` | The field is declared, but a rule about another field says it may not be supplied now. | `if` | `${field}`, `${value}` |
-| `belowMinimum` | The value is under the field's lower bound: a number too small, text too short, or a list or object with too few entries. | `minimum`, `exclusiveMinimum`, `minLength`, `minItems`, `minProperties` | `${field}`, `${value}`, (`${min}`) |
-| `aboveMaximum` | The value is over the field's upper bound: a number too large, text too long, or a list or object with too many entries. | `maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties` | `${field}`, `${value}`, (`${max}`) |
-| `patternMismatch` | Text does not match the field's pattern. | `pattern` | `${field}`, `${value}` |
-| `duplicateItem` | A list holds the same item twice, or two items with the same key. | `uniqueItems`, `g-primaryKey` | `${field}`, `${value}` |
-| `noLetterOrDigit` | A unique value has no letter or digit, so it has nothing to be compared by. | `g-unique` | `${field}`, `${value}` |
-| `valueTaken` | Another form of the same owner holds the value. A form's page reports it as the field is left, not a request's check. | `g-unique` | `${field}`, `${value}` |
-| `default` | Not a code: the message for any code a message list does not name. | Any of the above | `${field}` |
+| `missingRequired` | A field the data requires, or this form asks for, was not supplied. | `required` | `${field}`, `${label}` |
+| `wrongType` | The value is not of the field's type, such as text where a number belongs. | `type` | `${field}`, `${label}`, `${value}` |
+| `badValue` | The value was read and found wrong: text that is not a date, a number, or a yes or no where one is expected, a character that does not show, or spaces at the ends of text that refuses them. | `type`, `format`, `g-visibleOnly`, `g-outerWhitespace`, `g-schemaDocument` | `${field}`, `${label}`, `${value}` |
+| `invalidOption` | The value is not one of the field's choices. | `g-options` | `${field}`, `${label}`, `${value}`, `${options}` |
+| `additionalProperty` | The data holds a field its type does not declare. | `additionalProperties` | `${field}`, `${label}` |
+| `notAllowed` | The field is declared, but a rule about another field says it may not be supplied now. | `if` | `${field}`, `${label}`, `${value}` |
+| `belowMinimum` | The value is under the field's lower bound: a number too small, text too short, or a list or object with too few entries. | `minimum`, `exclusiveMinimum`, `minLength`, `minItems`, `minProperties` | `${field}`, `${label}`, `${value}`, (`${min}`) |
+| `aboveMaximum` | The value is over the field's upper bound: a number too large, text too long, or a list or object with too many entries. | `maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties` | `${field}`, `${label}`, `${value}`, (`${max}`) |
+| `patternMismatch` | Text does not match the field's pattern. | `pattern` | `${field}`, `${label}`, `${value}` |
+| `duplicateItem` | A list holds the same item twice, or two items with the same key. | `uniqueItems`, `g-primaryKey` | `${field}`, `${label}`, `${value}` |
+| `noLetterOrDigit` | A unique value has no letter or digit, so it has nothing to be compared by. | `g-unique` | `${field}`, `${label}`, `${value}` |
+| `valueTaken` | Another form of the same owner holds the value. A form's page reports it as the field is left, and a save is refused for it. | `g-unique` | `${field}`, `${label}`, `${value}` |
+| `default` | Not a code: the message for any code a message list does not name. | Any of the above | `${field}`, `${label}` |
 
 ## The parameters
 
@@ -50,6 +53,7 @@ out, with an issue on the client saying why.
 | Parameter | What it is |
 |---|---|
 | `${field}` | The field's name, as the data has it. Every message may use it, a `default` one included. |
+| `${label}` | What a person calls the field: its label on the form the message is shown on, and with no form, its title or its name in words. Every message may use it. |
 | `${value}` | The value refused, as it was given. Absent for a field that is missing, or one the type does not declare. |
 | `${options}` | The field's choices, by their labels, joined into one line. |
 | `${min}` | The field's lower bound: its least number, length, or count. |
@@ -79,8 +83,8 @@ does not name.
 **Which message a reader sees.** On a form, the form's own message for the code, then its `default`; then
 the schema's message for the code, then its `default`; then the platform's. A request's refusal always
 carries the platform's message in `message`, and the schema's in `userMessage` when there is
-one, so a program can show either. A message for `valueTaken` is a page's alone: a save refused
-because another form holds the value is not one of the failures listed, and says so in the platform's words.
+one, so a program can show either. No platform message names the field it is about: a reader has the field in
+front of them, and a list of failures puts the field's label, or its path, before each.
 
 **What a message may hold.** Plain text, and the parameters above. Neither kind may pull its wording from a fragment
 file, as a layout's labels can, since a message is filled in wherever the failure is shown. A message whose parameter

@@ -95,7 +95,7 @@ fun checklistStepOf(id: String, done: Boolean, client: String, sandbox: String? 
 fun checklistSteps(read: ChecklistRead, assistantOffered: Boolean, assistantView: AssistantView?): List<ChecklistStep> {
     if (assistantOffered && (assistantView == null || assistantView == AssistantView.loading)) return emptyList()
     val assistant = if (assistantOffered && (assistantView?.isOn == true || assistantView == AssistantView.switchOn)) {
-        ChecklistStep(CHKL.assistant, "Switch on the configuration assistant", assistantView?.isOn == true, listOf(HP.page to ASST.page))
+        ChecklistStep(CHKL.assistant, "Switch on the configuration assistant", assistantView.isOn, listOf(HP.page to ASST.page))
     } else {
         null
     }
