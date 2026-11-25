@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.WfVisibilityMode
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
+import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -79,6 +80,14 @@ class ClientWorkflowsTest {
         assertTrue(collectsHint(catalog, record).endsWith("pick another to add it beside these."))
         val full = WfTaskSlot(record.taskId, record.label, record.traits + WfTraitRef("siteVisit", required = false))
         assertTrue(collectsHint(catalog, full).endsWith("include one under Traits above to collect it here."))
+        // "Add a trait" offers what the step does not collect yet, and the list shows each with its description.
+        assertEquals(listOf("siteVisit" to "siteVisit"), traitsToAdd(catalog, record))
+        assertEquals(emptyList(), traitsToAdd(catalog, full))
+        assertEquals("A name.", catalogTraitDescription(catalog, "kdr:name"))
+        assertNull(catalogTraitDescription(catalog, "siteVisit"))
+        // The templates, closed, say how many there are (issue #1891).
+        assertEquals("Make a workflow from a template · 1 template", templatesSummary(1))
+        assertEquals("Make a workflow from a template · 5 templates", templatesSummary(5))
         assertEquals("gone", catalogTraitName(catalog, "gone"))
         // Who sees it (issue #1384), and the labels the client suggests for it.
         assertEquals(WfVisibility(WfVisibilityMode.restricted, listOf("pilot")), own.visibility)
@@ -143,6 +152,14 @@ class ClientWorkflowsTest {
         val optional = slots.withTraitRequired("record", "kdr:name", false)
         // A trait kept keeps whether it is required; one added is required.
         val traits = optional.withTaskTraits("record", listOf("kdr:name", "siteVisit")).task("record")!!.traits
+        // Moved within the step's order (issue #1891), and left as it is past either end.
+        val two = optional.withTaskTraits("record", listOf("kdr:name", "siteVisit"))
+        fun order(moved: WfTemplateSlots) = moved.task("record")!!.traits.map { it.traitId }
+        assertEquals(listOf("siteVisit", "kdr:name"), order(two.withTraitMoved("record", "siteVisit", -1)))
+        assertEquals(listOf("siteVisit", "kdr:name"), order(two.withTraitMoved("record", "kdr:name", 1)))
+        assertEquals(listOf("kdr:name", "siteVisit"), order(two.withTraitMoved("record", "kdr:name", -1)))
+        // Its required flag moves with it.
+        assertFalse(two.withTraitMoved("record", "kdr:name", 1).task("record")!!.traits[1].required)
         assertEquals(listOf(false, true), traits.map { it.required })
         assertFalse(workflowSlotsChanged(slots, slots))
         assertTrue(workflowSlotsChanged(slots.withLabel("Visit review"), slots))

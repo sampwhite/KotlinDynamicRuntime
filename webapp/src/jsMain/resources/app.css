@@ -1388,6 +1388,20 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
     background: color-mix(in oklab, var(--surface-raised), var(--surface-page) 75%);
 }
 .trait-designer .row { gap: 8px; flex-wrap: wrap; align-items: center; }
+/* A workflow step's Collects (issue #1891): a row per trait -- its name and description, then Required, the order
+   arrows, and Remove -- and the picker that adds one. The description wraps beside the name rather than widening a tag. */
+.collects-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; max-width: 720px; }
+/* Its label beside the list's top, not its middle: a row of controls centers its label, and the list is tall. */
+.row:has(> .collects-list) { align-items: flex-start; }
+.row:has(> .collects-list) > .field-label { padding-top: 7px; }
+.collects-row {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
+}
+.collects-trait { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.collects-name { font-weight: 600; }
+.collects-actions { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.collects-actions .ant-checkbox-wrapper { margin-right: 6px; }
 .trait-field {
     margin: 10px 0;
     padding: 8px 0 8px 12px;
@@ -2105,6 +2119,9 @@ body.dv-resizing, body.dv-resizing * { cursor: col-resize !important; }
 /* A panel's links to its own sections (issue #1891), beside its link, and the sections they scroll to kept clear of the
    fixed app bar as a panel is. */
 .panel-sublinks { margin-left: 6px; color: var(--text-muted); }
+/* Inside a long panel (issue #1891): its sections' links under its heading, and at each section's end a link back up. */
+.panel-section-links { font-size: .9rem; color: var(--text-muted); }
+.section-back-link { font-size: .85rem; color: var(--text-muted); text-align: right; }
 .panel h3[id] { scroll-margin-top: 84px; }
 .panel {
     margin-top: 20px;

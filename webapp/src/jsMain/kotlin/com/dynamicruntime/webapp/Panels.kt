@@ -118,25 +118,34 @@ fun ChildrenBuilder.panelLinks(panels: List<Pair<String, String>>, sections: Map
                 key = id.unsafeCast<Key>()
                 panelLink(id, title)
                 sections[id]?.takeIf { it.isNotEmpty() }?.let { subs ->
-                    // A group named for its panel, its parentheses and separators hidden from a screen reader, which
-                    // reads the links alone.
                     span {
                         className = ClassName("panel-sublinks")
-                        asDynamic()["role"] = "group"
-                        asDynamic()["aria-label"] = "$title sections"
-                        punctuation("(")
-                        subs.forEachIndexed { i, (subId, subTitle) ->
-                            span {
-                                key = subId.unsafeCast<Key>()
-                                if (i > 0) punctuation(" · ")
-                                panelLink(subId, subTitle)
-                            }
-                        }
-                        punctuation(")")
+                        sectionLinks("$title sections", subs, parenthesized = true)
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Links to a panel's sections (issue #1891) -- [sections] as `id to heading` -- scrolled to as a [panelLink] is: a group
+ * named [label], the links separated by dots and, when [parenthesized], in parentheses, that punctuation hidden from a
+ * screen reader, which reads the links alone. Beside a panel's link at the page's top, and inside a long panel.
+ */
+fun ChildrenBuilder.sectionLinks(label: String, sections: List<Pair<String, String>>, parenthesized: Boolean = false) {
+    span {
+        asDynamic()["role"] = "group"
+        asDynamic()["aria-label"] = label
+        if (parenthesized) punctuation("(")
+        sections.forEachIndexed { i, (id, title) ->
+            span {
+                key = id.unsafeCast<Key>()
+                if (i > 0) punctuation(" · ")
+                panelLink(id, title)
+            }
+        }
+        if (parenthesized) punctuation(")")
     }
 }
 

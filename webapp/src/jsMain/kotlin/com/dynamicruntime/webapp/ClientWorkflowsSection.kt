@@ -483,57 +483,64 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     }
 
-    if (props.configEditable) h4 { +"Make a workflow from a template" }
-    if (props.configEditable) div {
-        className = ClassName(if (newOf != null) "op-table-scroll detail-open" else "op-table-scroll")
-        table {
-            className = ClassName("op-table")
-            thead {
-                tr {
-                    th { +"Template" }
-                    th { +"Kind" }
-                    th { +"Steps" }
-                    th { +"" }
-                }
-            }
-            tbody {
-                shown.templates.forEach { t ->
+    // Making a workflow from a template is mostly a setup task, so the templates wait closed under a disclosure (issue
+    // #1891) -- open to start for a client with no workflows yet, and opened by a Use… editor being open.
+    if (props.configEditable) Disclosure {
+        key = "templates-${props.clientId}".unsafeCast<Key>()
+        summaryText = templatesSummary(shown.templates.size)
+        initiallyOpen = shown.workflows.isEmpty()
+        openWhen = newOf != null
+        div {
+            className = ClassName(if (newOf != null) "op-table-scroll detail-open" else "op-table-scroll")
+            table {
+                className = ClassName("op-table")
+                thead {
                     tr {
-                        key = t.def.workflowId.unsafeCast<Key>()
-                        td {
-                            +workflowName(t.def)
-                            t.def.comment?.let {
-                                div {
-                                    className = ClassName("type-hint")
-                                    +it
-                                }
-                            }
-                        }
-                        td { +workflowEntryText(t.def.entry) }
-                        td { +t.def.tasks.joinToString(", ") { it.label } }
-                        td {
-                            val refusal = t.refusal
-                            if (refusal == null) {
-                                Button {
-                                    size = "small"
-                                    disabled = open != null
-                                    onClick = { open = openKey(t.def.workflowId, null); note = null }
-                                    +"Use…"
-                                }
-                            } else {
-                                span {
-                                    className = ClassName("type-hint")
-                                    +refusal
-                                }
-                            }
-                        }
+                        th { +"Template" }
+                        th { +"Kind" }
+                        th { +"Steps" }
+                        th { +"" }
                     }
-                    if (newOf == t.def.workflowId) {
+                }
+                tbody {
+                    shown.templates.forEach { t ->
                         tr {
-                            key = "${t.def.workflowId}-new".unsafeCast<Key>()
+                            key = t.def.workflowId.unsafeCast<Key>()
                             td {
-                                asDynamic()["colSpan"] = 4
-                                slotEditor(open.orEmpty(), t.def, null)
+                                +workflowName(t.def)
+                                t.def.comment?.let {
+                                    div {
+                                        className = ClassName("type-hint")
+                                        +it
+                                    }
+                                }
+                            }
+                            td { +workflowEntryText(t.def.entry) }
+                            td { +t.def.tasks.joinToString(", ") { it.label } }
+                            td {
+                                val refusal = t.refusal
+                                if (refusal == null) {
+                                    Button {
+                                        size = "small"
+                                        disabled = open != null
+                                        onClick = { open = openKey(t.def.workflowId, null); note = null }
+                                        +"Use…"
+                                    }
+                                } else {
+                                    span {
+                                        className = ClassName("type-hint")
+                                        +refusal
+                                    }
+                                }
+                            }
+                        }
+                        if (newOf == t.def.workflowId) {
+                            tr {
+                                key = "${t.def.workflowId}-new".unsafeCast<Key>()
+                                td {
+                                    asDynamic()["colSpan"] = 4
+                                    slotEditor(open.orEmpty(), t.def, null)
+                                }
                             }
                         }
                     }
@@ -558,6 +565,10 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     }
 }
+
+/** What the closed templates say of themselves (issue #1891): the section's name and how many there are. */
+fun templatesSummary(count: Int): String =
+    "Make a workflow from a template · " + if (count == 1) "1 template" else "$count templates"
 
 external interface WorkflowSlotEditorProps : Props {
     var clientId: String
@@ -653,36 +664,92 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                         onChange = { e -> draft = draft.withTaskLabel(task.taskId, e.target.value as String) }
                     }
                 }
+                // What the step collects (issue #1891): a row per trait -- its name and description, whether it is
+                // required, its place in the order, and Remove -- then "Add a trait", which offers only the rest. A
+                // multiple choice read as a single one with a trait chosen, and grew unreadable past a few.
                 choiceRow("Collects") {
-                    Select {
-                        mode = "multiple"
-                        value = task.traits.map { it.traitId }.toTypedArray()
-                        options = choiceOptions(traitChoices(props.workflowCatalog, task))
-                        disabled = busy
-                        placeholder = "Add a trait"
-                        style = js("({ minWidth: 320 })")
-                        onChange = { v -> draft = draft.withTaskTraits(task.taskId, (v as Array<*>).mapNotNull { it?.toString() }) }
-                    }
-                }
-                // With one trait chosen the list reads as a single choice, and adding one as replacing it (issue #1891).
-                div {
-                    className = ClassName("type-hint")
-                    +collectsHint(props.workflowCatalog, task)
-                }
-                if (task.traits.isNotEmpty()) {
                     div {
-                        className = ClassName("type-hint")
-                        +"Required to finish the step: "
-                        task.traits.forEach { trait ->
-                            span {
+                        className = ClassName("collects-list")
+                        task.traits.forEachIndexed { i, trait ->
+                            val name = catalogTraitName(props.workflowCatalog, trait.traitId)
+                            div {
                                 key = trait.traitId.unsafeCast<Key>()
-                                Checkbox {
-                                    checked = trait.required
-                                    disabled = busy
-                                    onChange = { e -> draft = draft.withTraitRequired(task.taskId, trait.traitId, e.target.checked == true) }
-                                    +catalogTraitName(props.workflowCatalog, trait.traitId)
+                                className = ClassName("collects-row")
+                                span {
+                                    className = ClassName("collects-trait")
+                                    span {
+                                        className = ClassName("collects-name")
+                                        +name
+                                    }
+                                    catalogTraitDescription(props.workflowCatalog, trait.traitId)?.let {
+                                        span {
+                                            className = ClassName("type-hint")
+                                            +it
+                                        }
+                                    }
+                                }
+                                span {
+                                    className = ClassName("collects-actions")
+                                    Checkbox {
+                                        checked = trait.required
+                                        disabled = busy
+                                        onChange = { e ->
+                                            draft = draft.withTraitRequired(task.taskId, trait.traitId, e.target.checked == true)
+                                        }
+                                        +"Required"
+                                    }
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy || i == 0
+                                        asDynamic()["title"] = "Move up"
+                                        asDynamic()["aria-label"] = "Move $name up"
+                                        onClick = { draft = draft.withTraitMoved(task.taskId, trait.traitId, -1) }
+                                        +"↑"
+                                    }
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy || i == task.traits.lastIndex
+                                        asDynamic()["title"] = "Move down"
+                                        asDynamic()["aria-label"] = "Move $name down"
+                                        onClick = { draft = draft.withTraitMoved(task.taskId, trait.traitId, 1) }
+                                        +"↓"
+                                    }
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy
+                                        asDynamic()["aria-label"] = "Remove $name"
+                                        onClick = {
+                                            draft = draft.withTaskTraits(task.taskId, task.traits.map { it.traitId } - trait.traitId)
+                                        }
+                                        +"Remove"
+                                    }
                                 }
                             }
+                        }
+                        val toAdd = traitsToAdd(props.workflowCatalog, task)
+                        if (toAdd.isNotEmpty()) {
+                            Select {
+                                // Always empty: a trait picked is added to the rows above, and the picker is ready for the next.
+                                value = null
+                                placeholder = "Add a trait…"
+                                options = choiceOptions(toAdd)
+                                disabled = busy
+                                virtual = false
+                                asDynamic()["showSearch"] = js("({ optionFilterProp: 'label' })")
+                                style = js("({ width: '100%', maxWidth: 420 })")
+                                onChange = { v ->
+                                    (v as Any?)?.toString()?.let { id ->
+                                        draft = draft.withTaskTraits(task.taskId, task.traits.map { it.traitId } + id)
+                                    }
+                                }
+                            }
+                        }
+                        div {
+                            className = ClassName("type-hint")
+                            +collectsHint(props.workflowCatalog, task)
                         }
                     }
                 }

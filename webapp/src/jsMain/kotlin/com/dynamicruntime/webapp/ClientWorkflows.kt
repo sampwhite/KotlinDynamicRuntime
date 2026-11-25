@@ -281,6 +281,25 @@ fun WfTemplateSlots.withTaskTraits(taskId: String, traitIds: List<String>) = WfT
     },
 )
 
+/**
+ * These slots with trait [traitId] of task [taskId] moved [by] places -- -1 up, 1 down -- in the order the task collects
+ * its traits (issue #1891), which a form draws them in where its layout names no order. Unchanged past either end.
+ */
+fun WfTemplateSlots.withTraitMoved(taskId: String, traitId: String, by: Int) = WfTemplateSlots(
+    workflowId, templateId, label,
+    tasks.map { t ->
+        val from = t.traits.indexOfFirst { it.traitId == traitId }
+        val to = from + by
+        if (t.taskId != taskId || from < 0 || to !in t.traits.indices) {
+            t
+        } else {
+            val traits = t.traits.toMutableList()
+            traits.add(to, traits.removeAt(from))
+            WfTaskSlot(t.taskId, t.label, traits)
+        }
+    },
+)
+
 /** These slots with trait [traitId] of task [taskId] required, or not. */
 fun WfTemplateSlots.withTraitRequired(taskId: String, traitId: String, required: Boolean) = WfTemplateSlots(
     workflowId, templateId, label,
@@ -309,14 +328,22 @@ fun workflowPreview(base: WfDef, slots: WfTemplateSlots): WfDef? =
  * step may collect several -- or, when [traitChoices] offers nothing the step does not collect already, where another
  * comes from, since a trait is offered only once the client includes it.
  */
-fun collectsHint(catalog: WorkflowCatalogView, task: WfTaskSlot): String {
-    val chosen = task.traits.map { it.traitId }.toSet()
-    return if (traitChoices(catalog, task).any { it.second !in chosen }) {
+fun collectsHint(catalog: WorkflowCatalogView, task: WfTaskSlot): String =
+    if (traitsToAdd(catalog, task).isNotEmpty()) {
         "A step may collect several traits: pick another to add it beside these."
     } else {
         "A step may collect several traits. This client includes no other yet: include one under Traits above to collect it here."
     }
+
+/** What a step's "Add a trait" offers (issue #1891): [traitChoices] but those the step collects already, `label to id`. */
+fun traitsToAdd(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<String, String>> {
+    val chosen = task.traits.map { it.traitId }.toSet()
+    return traitChoices(catalog, task).filter { it.second !in chosen }
 }
+
+/** A trait's description as the workflow editor shows it beside the trait's name: the catalog's, or none. */
+fun catalogTraitDescription(catalog: WorkflowCatalogView, traitId: String): String? =
+    catalog.traits.firstOrNull { it.traitId == traitId }?.description
 
 /** The traits a task's choice offers: those the client's workflows may collect, and any the task collects already. */
 fun traitChoices(catalog: WorkflowCatalogView, task: WfTaskSlot): List<Pair<String, String>> =
