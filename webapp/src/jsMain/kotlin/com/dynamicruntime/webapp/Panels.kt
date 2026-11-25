@@ -328,21 +328,30 @@ val PageSideMenu = FC<PageSideMenuProps> { props ->
         ref = menu
         className = ClassName("page-side-menu")
         asDynamic()["aria-label"] = "Page sections"
-        ul {
-            entries.filter { !it.isSection }.forEach { panelEntry ->
-                li {
-                    key = panelEntry.id.unsafeCast<Key>()
-                    className = ClassName(if (panelEntry.id == activePanel) "side-menu-panel side-menu-in" else "side-menu-panel")
-                    panelLink(panelEntry.id, panelEntry.title, current = panelEntry.id == active)
-                    val subs = entries.filter { it.isSection && it.panelId == panelEntry.id }
-                    if (subs.isNotEmpty()) {
-                        ul {
-                            subs.forEach { sub ->
-                                li {
-                                    key = sub.id.unsafeCast<Key>()
-                                    val here = sub.id == active
-                                    className = ClassName(if (here) "side-menu-section side-menu-in" else "side-menu-section")
-                                    panelLink(sub.id, sub.title, current = here)
+        div {
+            className = ClassName("page-side-menu-box")
+            // Seen, not heard: the nav's own name says it to a screen reader.
+            div {
+                className = ClassName("side-menu-title")
+                asDynamic()["aria-hidden"] = true
+                +"On this page"
+            }
+            ul {
+                entries.filter { !it.isSection }.forEach { panelEntry ->
+                    li {
+                        key = panelEntry.id.unsafeCast<Key>()
+                        className = ClassName(if (panelEntry.id == activePanel) "side-menu-panel side-menu-in" else "side-menu-panel")
+                        panelLink(panelEntry.id, panelEntry.title, current = panelEntry.id == active)
+                        val subs = entries.filter { it.isSection && it.panelId == panelEntry.id }
+                        if (subs.isNotEmpty()) {
+                            ul {
+                                subs.forEach { sub ->
+                                    li {
+                                        key = sub.id.unsafeCast<Key>()
+                                        val here = sub.id == active
+                                        className = ClassName(if (here) "side-menu-section side-menu-in" else "side-menu-section")
+                                        panelLink(sub.id, sub.title, current = here)
+                                    }
                                 }
                             }
                         }
