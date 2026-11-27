@@ -1,0 +1,332 @@
+{
+  "$comment": "grantsPolish's starting configuration (issue #1916): what grantsBasics' explicit variant configured in run 20261125-120809, which met every expectation, in portable form. The client's definition gives only what the bundles need of it.",
+  "clientDefinition": {
+    "userLabels": [
+      "reviewer"
+    ],
+    "userLabelNotes": {
+      "reviewer": "Reviews and approves submitted applications. Also needs the Editor role to see applications that are not their own."
+    }
+  },
+  "bundles": [
+    {
+      "name": "trait_grantRequest",
+      "slots": {
+        "kdr:traitDef": [
+          {
+            "description": "What an applicant asks for and why.",
+            "traitId": "grantRequest",
+            "typeName": "client.@self.GrantRequestEntry",
+            "appliesTo": [
+              "formDoc"
+            ],
+            "dataSchema": {
+              "type": "object",
+              "properties": {
+                "amountRequestedUsd": {
+                  "type": "number"
+                },
+                "projectStartDate": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "category": {
+                  "type": "string",
+                  "g-options": [
+                    {
+                      "value": "arts",
+                      "label": "Arts"
+                    },
+                    {
+                      "value": "environment",
+                      "label": "Environment"
+                    },
+                    {
+                      "value": "education",
+                      "label": "Education"
+                    },
+                    {
+                      "value": "health",
+                      "label": "Health"
+                    }
+                  ]
+                },
+                "projectDescription": {
+                  "type": "string",
+                  "g-longText": true
+                }
+              },
+              "required": [
+                "amountRequestedUsd",
+                "projectStartDate",
+                "category",
+                "projectDescription"
+              ],
+              "g-layout": {
+                "label": "Grant request",
+                "schemaFields": [
+                  {
+                    "field": "amountRequestedUsd",
+                    "label": "Amount requested (USD)"
+                  },
+                  {
+                    "field": "projectStartDate",
+                    "label": "Project start date"
+                  },
+                  {
+                    "field": "category",
+                    "label": "Category"
+                  },
+                  {
+                    "field": "projectDescription",
+                    "label": "Project description"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "workflow_newForm",
+      "slots": {
+        "kdr:workflowDef": [
+          {
+            "workflowId": "newForm",
+            "definition": {
+              "workflowId": "newForm",
+              "fromTemplate": "kdr:createForm",
+              "tasks": [
+                {
+                  "id": "identify",
+                  "traits": [
+                    {
+                      "traitId": "kdr:name"
+                    },
+                    {
+                      "traitId": "grantRequest",
+                      "required": true
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "workflow_formDetails",
+      "slots": {
+        "kdr:workflowDef": [
+          {
+            "workflowId": "formDetails",
+            "definition": {
+              "workflowId": "formDetails",
+              "fromTemplate": "kdr:coreDetails",
+              "tasks": [
+                {
+                  "id": "details",
+                  "traits": [
+                    {
+                      "traitId": "kdr:name"
+                    },
+                    {
+                      "traitId": "grantRequest",
+                      "required": true
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "workflow_review",
+      "slots": {
+        "kdr:workflowDef": [
+          {
+            "workflowId": "review",
+            "definition": {
+              "entry": "normal",
+              "highlightStart": true,
+              "label": "Review",
+              "workflowId": "review",
+              "eligibility": [
+                {
+                  "explanation": "The application's details have to be complete before it is reviewed.",
+                  "id": "coreDetailsDone",
+                  "test": "kdr:coreDetailsComplete"
+                }
+              ],
+              "singletons": [
+                {
+                  "cfact": "kdr:finished",
+                  "when": "applicationApproved"
+                }
+              ],
+              "tasks": [
+                {
+                  "id": "approve",
+                  "label": "Approve the application",
+                  "approval": {
+                    "cfact": "applicationApproved",
+                    "prompt": "Read the applicant's answers, then approve the application.",
+                    "button": "Approve the application",
+                    "approveWhen": "kdr:reviewer,~kdr:isOwner",
+                    "showTraits": [
+                      "kdr:name",
+                      "grantRequest"
+                    ]
+                  },
+                  "functions": [
+                    {
+                      "fn": "userHasLabel",
+                      "label": "reviewer",
+                      "cfact": "kdr:reviewer"
+                    }
+                  ],
+                  "saves": [],
+                  "traits": []
+                }
+              ]
+            }
+          }
+        ],
+        "kdr:cfactDef": [
+          {
+            "name": "applicationApproved",
+            "group": "review",
+            "description": "A reviewer approved the application.",
+            "toFrontend": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "copy",
+      "slots": {
+        "kdr:fragmentDef": [
+          {
+            "fileId": "home",
+            "content": {
+              "home": {
+                "intro": "Apply for a Riverbend Community Grant, and follow your application through review."
+              }
+            }
+          },
+          {
+            "fileId": "mail",
+            "content": {
+              "invitation": {
+                "subject": "You have been invited to Riverbend Community Grants"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "home_cards",
+      "slots": {
+        "kdr:uiBlockDef": [
+          {
+            "blockId": "homeCards",
+            "content": {
+              "cards": [
+                {
+                  "id": "startApplication",
+                  "title": "Start an application",
+                  "text": "Ready to apply for a Riverbend Community Grant? Begin a new application here. Applications you have already started are under [your forms](/wa/forms).",
+                  "action": "newForm",
+                  "actionLabel": "Start an application",
+                  "actionFirst": true,
+                  "jumpLabel": "Start an application",
+                  "cfactExpression": "kdr:loggedIn,kdr:app",
+                  "displayOrder": 50
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "reports",
+      "slots": {
+        "kdr:reportDef": [
+          {
+            "reportId": "forms",
+            "definition": {
+              "description": "Every form, with its name, its owner, its status, and when it was made. Grouped, how many forms have each status.",
+              "label": "Forms",
+              "reportId": "forms",
+              "columns": [
+                {
+                  "columnId": "name",
+                  "label": "Name",
+                  "path": "form.kdr:name.name"
+                },
+                {
+                  "columnId": "owner",
+                  "label": "Owner",
+                  "path": "user.email"
+                },
+                {
+                  "columnId": "status",
+                  "label": "Status",
+                  "path": "meta.formStatus"
+                },
+                {
+                  "columnId": "created",
+                  "label": "Created",
+                  "path": "meta.createdAt"
+                }
+              ],
+              "groupBy": [
+                "status"
+              ]
+            }
+          },
+          {
+            "reportId": "applicationsByCategory",
+            "definition": {
+              "description": "Grant applications grouped by category: how many there are and the total amount requested (USD).",
+              "label": "Applications by category",
+              "reportId": "applicationsByCategory",
+              "chart": {
+                "kind": "bar",
+                "measure": "totalRequestedUsd"
+              },
+              "columns": [
+                {
+                  "columnId": "category",
+                  "label": "Category",
+                  "path": "form.grantRequest.category"
+                },
+                {
+                  "columnId": "applications",
+                  "label": "Applications",
+                  "path": "form.kdr:name.name",
+                  "rollup": "count"
+                },
+                {
+                  "columnId": "totalRequestedUsd",
+                  "label": "Total requested (USD)",
+                  "path": "form.grantRequest.amountRequestedUsd",
+                  "rollup": "sum"
+                }
+              ],
+              "groupBy": [
+                "category"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -7,7 +7,9 @@ import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientCreate
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.report.RDEF
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.workflow.ULH
@@ -25,6 +27,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.util.toOptDoubleOrNull
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -32,7 +35,19 @@ import com.dynamicruntime.common.util.toOptStr
  * its description, lowercased,
  * so a check can ask whether a field is about an amount without knowing what the model called it.
  */
-class FieldView(val traitId: String, val name: String, val schema: Map<String, Any?>, val label: String? = null) {
+class FieldView(
+    val traitId: String,
+    val name: String,
+    val schema: Map<String, Any?>,
+    val label: String? = null,
+    /** Whether its trait's data requires it. */
+    val required: Boolean = false,
+    /**
+     * Its trait's data type, which a workflow's own layout of it is keyed by: `GrantRequestData` for a trait whose entry type
+     * is `GrantRequestEntry`, never the entry type itself.
+     */
+    val typeName: String? = null,
+) {
     /** Its JSON Schema type; an absent type is a string, as the schema dialect reads it. */
     val type: String get() = schema[SCH.type].toOptStr() ?: "string"
     val format: String? get() = schema[SCH.format].toOptStr()
@@ -44,6 +59,11 @@ class FieldView(val traitId: String, val name: String, val schema: Map<String, A
     val longText: Boolean get() = schema[SCH.longText] == true
     val isNumber: Boolean get() = type == "number" || type == "integer"
     val isDate: Boolean get() = format == "date" || format == "date-time"
+    val minimum: Double? get() = schema[SCH.minimum].toOptDoubleOrNull()
+    val maximum: Double? get() = schema[SCH.maximum].toOptDoubleOrNull()
+
+    /** The counter it takes its values from (`g-counter`), if any. */
+    val counter: String? get() = schema[SCH.counter].toOptStr()
 
     val words: String get() =
         listOfNotNull(name, label, schema[SCH.title].toOptStr(), schema[SCH.description].toOptStr()).joinToString(" ").lowercase()
@@ -83,11 +103,46 @@ class ConfigView(val bundles: Map<String, Map<String, Any?>>) {
             val data = trait[CCT.dataSchema].toJsonMapOrEmpty()
             val labels = data[SCH.layout].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
                 .associate { it[SL.field].toOptStr() to it[SL.label].toOptStr() }
+            val required = data[SCH.required].toJsonListOfStrings().toSet()
             data[SCH.properties].toJsonMapOrEmpty().map { (name, schema) ->
-                FieldView(traitId, name, schema.toJsonMapOrEmpty(), labels[name])
+                FieldView(
+                    traitId, name, schema.toJsonMapOrEmpty(), labels[name], name in required,
+                    trait[CCT.typeName].toOptStr()?.let { traitDataTypeName(it) },
+                )
             }
         }
     }
+
+    /** The shared layout of [field]'s trait: its data's own `g-layout`, which every workflow's form starts from. */
+    fun sharedLayout(field: FieldView): Map<String, Any?>? = entries(CCT.traitDef).firstOrNull { it[CCT.traitId] == field.traitId }
+        ?.get(CCT.dataSchema).toJsonMapOrEmpty()[SCH.layout]?.toJsonMapOrEmpty()
+
+    /** [workflow]'s own layout of [field]'s trait: the `g-layout` of its alteration of the trait's type, if it has one. */
+    fun layoutOf(workflow: Map<String, Any?>?, field: FieldView): Map<String, Any?>? =
+        workflow?.get(WFD.types).toJsonMapOrEmpty()[field.typeName]?.toJsonMapOrEmpty()?.get(SCH.layout)?.toJsonMapOrEmpty()
+
+    /** [layout]'s entry for [field], if it has one. */
+    fun entryFor(layout: Map<String, Any?>?, field: FieldView): Map<String, Any?>? =
+        layout?.get(SL.schemaFields).toJsonListOfMaps().firstOrNull { it[SL.field] == field.name }
+
+    /**
+     * [text], with the copy each of its pulls (`%{@t("ns.key")}`) reads after it: from [file], a layout's fragment file,
+     * or from any file of the client's own when the layout names none. A pull of copy the client does not reword is left
+     * as it is.
+     */
+    fun withPulls(text: String, file: String?): String = text + pull.findAll(text).joinToString("") { match ->
+        val (ns, key) = match.groupValues[1].split('.', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+        val files = file?.let { listOfNotNull(copy[it]) } ?: copy.values.toList()
+        files.firstNotNullOfOrNull { it[ns]?.get(key) }?.let { " $it" }.orEmpty()
+    }
+
+    private val pull = Regex("""@t\(\s*"([^"]+)"\s*\)""")
+
+    /** The forms list's columns the client declares (`kdr:usageDef`); none means it shows the deployment's defaults. */
+    val usages: List<Map<String, Any?>> get() = entries(CCT.usageDef)
+
+    /** The client's counters (`kdr:counterDef`). */
+    val counters: List<Map<String, Any?>> get() = entries(CCT.counterDef)
 
     /** Each workflow's definition. */
     val workflows: List<Map<String, Any?>> by lazy { entries(CCT.workflowDef).map { it[CCT.definition].toJsonMapOrEmpty() } }
@@ -250,10 +305,12 @@ object Checks {
      * Whether [condition] shows an item to an applicant: someone signed in to the client, who administers and edits
      * nothing. A condition that does not parse shows it to nobody.
      */
-    fun shownToApplicant(condition: String?): Boolean {
-        val expression = condition ?: return true
+    fun shownToApplicant(condition: String?): Boolean = condition == null || holds(condition, applicantFacts)
+
+    /** Whether [expression] holds when [facts] are true and every other fact it names is false; not, when it does not parse. */
+    fun holds(expression: String, facts: Set<String>): Boolean {
         val names = cfactName.findAll(expression).map { it.value }.toSet()
-        return CFactParser.analyze(expression, names, applicantFacts).value == true
+        return CFactParser.analyze(expression, names, facts).value == true
     }
 
     private val cfactName = Regex("[A-Za-z][A-Za-z0-9_.:]*")
@@ -384,6 +441,60 @@ object Checks {
         }
     }
 
+    /**
+     * A column of the forms list showing a field [wanted] picks (issue #1916): one on the field's trait whose `display`
+     * names the field.
+     */
+    fun formsListShows(r: TrialResult, what: String, wanted: (FieldView) -> Boolean): Outcome {
+        val fields = r.view.fields.filter(wanted)
+        val usages = r.view.usages
+        val column = usages.firstOrNull { usage ->
+            val display = usage[CCT.display].toOptStr().orEmpty()
+            fields.any { usage[CCT.traitId] == it.traitId && Regex("\\b${Regex.escape(it.name)}\\b").containsMatchIn(display) }
+        }
+        return when {
+            column != null -> Outcome.met(usageSummary(column))
+            fields.isEmpty() -> Outcome.notMet("No field is $what. Fields: ${r.view.fieldList()}.")
+            usages.isEmpty() -> Outcome.notMet("The forms list has no columns of the client's own.")
+            else -> Outcome.notMet("Its columns: ${usages.joinToString("; ") { usageSummary(it) }}.")
+        }
+    }
+
+    /**
+     * The forms list still shows each form's name (issue #1916). A client declaring columns of its own loses the
+     * deployment's, the name among them, unless it declares that one too: the forms list's tools do, a patch need not.
+     */
+    fun keepsNameColumn(r: TrialResult): Outcome {
+        val usages = r.view.usages
+        return when {
+            usages.isEmpty() -> Outcome.info("The client declares no columns, so it shows the deployment's, the name among them.")
+            usages.any { it[CCT.traitId] == GT.name } -> Outcome.met(usageSummary(usages.first { it[CCT.traitId] == GT.name }))
+            else -> Outcome.varied("The name column is gone. Its columns: ${usages.joinToString("; ") { usageSummary(it) }}.")
+        }
+    }
+
+    /**
+     * The changes the variant's prompt [index] made were made with [tools], the targeted ones for them, and none with
+     * [ATOOL.patchConfig] writing [slots] (issue #1916). Varied when a patch wrote them, whether or not a targeted tool did
+     * too.
+     */
+    fun madeWith(r: TrialResult, index: Int, tools: Set<String>, slots: Set<String>): Outcome {
+        val changes = r.callsOf(index).filter { it.isChange }
+        val targeted = changes.filter { it.name in tools }.map { it.name }.distinct()
+        val patched = changes.filter { it.name == ATOOL.patchConfig && patchedSlots(it).any { s -> s in slots } }
+        val with = targeted.joinToString()
+        return when {
+            patched.isNotEmpty() -> Outcome.varied(
+                "${ATOOL.patchConfig} wrote ${patched.flatMap { patchedSlots(it) }.distinct().joinToString()}" +
+                    if (targeted.isEmpty()) "." else ", beside $with.",
+            )
+            targeted.isNotEmpty() -> Outcome.met("With $with.")
+            else -> Outcome.notMet(
+                "Prompt ${index + 1} changed ${changes.map { it.name }.distinct().joinToString().ifEmpty { "nothing" }}.",
+            )
+        }
+    }
+
     /** The slots the edits of [call], a [ATOOL.patchConfig] call, name. */
     fun patchedSlots(call: ToolCall): List<String> = call.input[CFEP.configs].toJsonListOfMaps().flatMap { config ->
         config[CFEP.edits].toJsonListOfMaps().mapNotNull { it[CFEP.slot].toOptStr() }
@@ -492,6 +603,9 @@ fun reportSummary(report: Map<String, Any?>): String =
     "'${report[RDEF.label]}': " + report[RDEF.columns].toJsonListOfMaps().joinToString { col ->
         "${col[RDEF.label]} = ${col[RDEF.path]}" + listOfNotNull(col[RDEF.combine], col[RDEF.rollup]).joinToString("") { " ($it)" }
     } + (report[RDEF.groupBy] as? List<*>)?.let { ", grouped by ${it.joinToString()}" }.orEmpty()
+
+/** A forms list column in one line: its heading, its trait, and what it shows. */
+fun usageSummary(usage: Map<String, Any?>): String = "'${usage[CCT.label]}' (${usage[CCT.traitId]}): ${usage[CCT.display]}"
 
 /** A card in one line. */
 fun cardSummary(card: Map<String, Any?>): String = card.toJsonStr(compact = true).take(200)

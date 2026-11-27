@@ -17,7 +17,7 @@ import kotlin.time.Clock
 
 /** Every trial, by name. A new one is added here. */
 object Trials {
-    val all: List<Trial> = listOf(GrantsBasics.trial)
+    val all: List<Trial> = listOf(GrantsBasics.trial, GrantsPolish.trial)
 
     fun named(name: String): Trial = all.firstOrNull { it.name == name }
         ?: throw IllegalArgumentException("No trial '$name'. Trials: ${all.joinToString { it.name }}.")

@@ -19,10 +19,10 @@ object GrantsBasics {
     /** The program's name, which the copy checks look for. */
     private const val program = "Riverbend"
 
-    private val amountTerms = listOf("amount", "budget", "dollar", "request", "fund", "asked")
-    private val dateTerms = listOf("start", "date", "kickoff", "begin")
+    val amountTerms = listOf("amount", "budget", "dollar", "request", "fund", "asked")
+    val dateTerms = listOf("start", "date", "kickoff", "begin")
     // Not "type" or "field": a description's own words use them, and the check would point at it.
-    private val categoryTerms = listOf("category", "area", "focus")
+    val categoryTerms = listOf("category", "area", "focus")
     private val descriptionTerms = listOf("description", "narrative", "summary", "about", "project", "purpose")
 
     /** What `explicit` and `ownWords` name exactly (issue #1914), where `loose` only means it. */
@@ -151,7 +151,7 @@ object GrantsBasics {
             Expectation("A report grouped by category, totaling the amount") { r -> Checks.reportTotals(r, categoryTerms, amountTerms) },
             Expectation("The report is made whole by create_report, not patched afterward") { r -> Checks.reportMadeWhole(r) },
         ),
-        WalkStep.entries,
+        listOf(WalkStep.form, WalkStep.start, WalkStep.review, WalkStep.report, WalkStep.home),
     )
 
 }

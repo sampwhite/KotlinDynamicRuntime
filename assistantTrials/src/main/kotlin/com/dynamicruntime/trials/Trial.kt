@@ -1,5 +1,9 @@
 package com.dynamicruntime.trials
 
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+
 /**
  * One message a trial sends the assistant. A prompt goes on with the conversation before it unless [newConversation]
  * starts one of its own: a conversation is sent whole with every step, so one per area keeps a trial cheaper, and an area
@@ -53,10 +57,28 @@ class Outcome(val kind: OutcomeKind, val detail: String) {
 class Expectation(val name: String, val check: (TrialResult) -> Outcome)
 
 /**
+ * The configuration a trial's client has before its first prompt (issue #1916): settings of the client's [definition],
+ * then whole [bundles], each a `name` and its `slots` in portable form, written into the sandbox in order. A trial of
+ * changes to earlier work starts here rather than asking for that work first, so every run starts from the same place,
+ * and pays for no turns to get there.
+ */
+class TrialStart(val definition: Map<String, Any?>, val bundles: List<Map<String, Any?>>) {
+    companion object {
+        /** The start in the classpath resource [path], a JSON object with `clientDefinition` and `bundles`. */
+        fun fromResource(path: String): TrialStart {
+            val text = TrialStart::class.java.getResource(path)?.readText() ?: error("No trial start at $path.")
+            val start = text.jsonMap().orEmpty()
+            return TrialStart(start["clientDefinition"].toJsonMapOrEmpty(), start["bundles"].toJsonListOfMaps())
+        }
+    }
+}
+
+/**
  * A named, repeatable piece of work for the assistant: a [goal], the [variants] it may be phrased in, and the
- * [expectations] each is held to. A trial's client is created fresh, as a self-serve client called [clientName], and the
- * assistant configures its sandbox. What it configured is then used, in the ways [walk] names (issue #1915), each an
- * expectation too. A new capability extends one trial or starts another, so a trial stays small enough to run on its own.
+ * [expectations] each is held to. A trial's client is created fresh, as a self-serve client named by [clientNameFor], and the
+ * assistant configures its sandbox, from nothing or from a [start]. What it configured is then used, in the ways [walk]
+ * names (issue #1915), each an expectation too. A new capability extends one trial or starts another, so a trial stays
+ * small enough to run on its own.
  */
 class Trial(
     val name: String,
@@ -65,11 +87,19 @@ class Trial(
     val variants: List<TrialVariant>,
     val expectations: List<Expectation>,
     val walk: List<WalkStep> = emptyList(),
+    val start: TrialStart? = null,
 ) {
     init {
         require(variants.isNotEmpty()) { "Trial '$name' has no variants." }
         require(variants.map { it.name }.toSet().size == variants.size) { "Trial '$name' names a variant twice." }
     }
+
+    /**
+     * The name of the client [variant] runs in: [clientName] with the trial and variant after it, as "Riverbend Grants
+     * (grantsPolish, loose)", so the Clients page tells a run's clients apart. Their ids cannot: an id is the name's first
+     * sixteen letters and a random part. A node runs one run, so the run need not be named.
+     */
+    fun clientNameFor(variant: TrialVariant): String = "$clientName ($name, ${variant.name})"
 
     /** The variant called [name], or the first when [name] is null. */
     fun variant(name: String?): TrialVariant = if (name == null) {
