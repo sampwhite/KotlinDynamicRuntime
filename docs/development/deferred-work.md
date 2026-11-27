@@ -500,6 +500,17 @@ text column.
   filter still searches it. Left out because a client shows a column on purpose, and a match in a note is usually
   what the person searching wants.
 
+## When a client wants an explanation behind a "?", or one for each value
+
+A form being read (an approval showing traits, a form's info page, a task with no save) shows a field's layout
+`readDescription` under its value, words for whoever reads the data rather than enters it (issue #1876). Two richer
+displays are left for the rich display work:
+
+- **Behind a "?"** rather than under the value, so a form of many fields stays compact. A presentation choice over the
+  same words: the `readDescription` is what the popover would show.
+- **For each value of a choice**, saying what that answer means to whoever reads it. A layout's `choices` entries already
+  take a `description`, shown where the choice is made; a reading counterpart would sit on the same entry.
+
 ## When someone wants to see a form's whole data in one place
 
 A form's info page is drawn from its client's core details workflow, so it shows only the core details, and a line

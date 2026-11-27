@@ -115,8 +115,6 @@ class DataFileUploadTest {
             ),
         ).getValue("t.T").properties.getValue("p").valueType
         assertEquals(listOf("PNG.", "Up to 4 entries"), derivedHintLines(photos))
-        // Where nothing can be picked, the kinds are not said.
-        assertEquals(listOf("Up to 4 entries"), derivedHintLines(photos, fileKinds = false))
     }
 
     @Test

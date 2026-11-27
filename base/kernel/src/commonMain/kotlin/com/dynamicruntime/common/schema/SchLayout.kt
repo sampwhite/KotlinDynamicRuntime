@@ -178,10 +178,18 @@ class SchLayoutField(
      * list of entries takes it ([entryLabelProblems]).
      */
     val entryLabel: String? = null,
+    /**
+     * The field's description where a form is **read** rather than filled in (issue #1876): an approval showing it, a
+     * form's info page, a task with no save. The [description] tells whoever enters the value what to type; this tells
+     * whoever reads it what it is ("The policyholder's best guess, if they were not sure."). Null leaves a form being
+     * read with no description, unless nobody enters the value (it is computed or counted), whose description already
+     * says what it is.
+     */
+    val readDescription: String? = null,
 ) : JsonMappable {
     /**
-     * The copy this entry gives in [slot], one of its copy keys -- [SL.label], [SL.description], [SL.hint] or
-     * [SL.entryLabel] -- or null when it gives none, or [slot] names no copy. The one place a slot's name is read as a
+     * The copy this entry gives in [slot], one of its copy keys ([SL.fieldCopyKeys]) -- or null when it gives none, or
+     * [slot] names no copy. The one place a slot's name is read as a
      * property, so a copy key added here is read everywhere a slot is (issue #1748).
      */
     fun copyIn(slot: String): String? = when (slot) {
@@ -189,6 +197,7 @@ class SchLayoutField(
         SL.description -> description
         SL.hint -> hint
         SL.entryLabel -> entryLabel
+        SL.readDescription -> readDescription
         else -> null
     }
 
@@ -205,6 +214,7 @@ class SchLayoutField(
         choices?.let { list -> out[SL.choices] = list.map { it.toJsonMap() } }
         lines?.let { out[SL.lines] = it }
         entryLabel?.let { out[SL.entryLabel] = it }
+        readDescription?.let { out[SL.readDescription] = it }
         return out
     }
 }
@@ -266,6 +276,7 @@ class SchLayoutBuilder(
         comment: String? = null,
         lines: Int? = null,
         entryLabel: String? = null,
+        readDescription: String? = null,
         errors: (SchErrors.() -> Unit)? = null,
     ) {
         comment?.let { fieldComments[name] = it }
@@ -274,7 +285,9 @@ class SchLayoutBuilder(
             SchErrors(data).block()
             data.mapValues { it.value.toOptStr().orEmpty() }
         } ?: emptyMap()
-        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices, lines, entryLabel))
+        fields.add(
+            SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices, lines, entryLabel, readDescription),
+        )
     }
 
     /** The finished block, as the JSON `g-layout` value, with each comment beside what it is about. */
@@ -382,6 +395,9 @@ object SL {
     /** On a [schemaFields] entry: what a list field's entries are headed with on this form (issue #1714). */
     const val entryLabel = "entryLabel"
 
+    /** On a [schemaFields] entry: the field's description for whoever reads the form rather than fills it in (issue #1876). */
+    const val readDescription = "readDescription"
+
     /** On a [choices] entry: the schema's value it offers. Its [label] and [description] are the form's copy for it. */
     const val value = "value"
 
@@ -409,7 +425,17 @@ object SL {
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> =
-        setOf(field, label, description, hint, errors, defaultMode, required, choices, lines, entryLabel, SCH.dComment)
+        setOf(
+            field, label, description, hint, errors, defaultMode, required, choices, lines, entryLabel, readDescription,
+            SCH.dComment,
+        )
+
+    /**
+     * The keys of a [schemaFields] entry that hold copy, each read by [SchLayoutField.copyIn]: what a fragment pull may
+     * stand in for, and a template is checked in. One list, so a copy key added to the entry is checked and delivered
+     * everywhere copy is.
+     */
+    val fieldCopyKeys: List<String> = listOf(label, description, readDescription, hint, entryLabel)
 
     /** Every key a [choices] entry may carry. */
     val choiceKeys: Set<String> = setOf(value, label, description)
@@ -456,6 +482,9 @@ object SL {
         entryLabel to "What the form heads each entry of a list with, such as `Co-speaker \${n}`, where `\${n}` " +
             "is the entry's number, counting from 1. Unset, the form says \"Entry 1\", \"Entry 2\", and so on. Only " +
             "on a list of entries, not a list of choices.",
+        readDescription to "The field's description where the form is read rather than filled in, such as an approval " +
+            "showing it: words for whoever reads the value, in place of the `description`, which is for whoever enters " +
+            "it. Unset, a form being read shows a description only for a value nobody enters (a computed or counted one).",
         SCH.dComment to "A note for whoever maintains the layout, never delivered to a page.",
     )
 
@@ -693,7 +722,7 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
         }
         SchLayoutField(
             field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode,
-            required, choices, lines, m[SL.entryLabel].toOptStr(),
+            required, choices, lines, m[SL.entryLabel].toOptStr(), m[SL.readDescription].toOptStr(),
         )
     }
     val strings = readLayoutStrings(where, raw[SL.strings], problems)
@@ -1384,12 +1413,8 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
     }
     for ((i, field) in layout.fields.withIndex()) {
         val prop = type.properties[field.field] ?: continue
-        val copies = listOf(
-            SL.label to field.label, SL.description to field.description, SL.hint to field.hint,
-            SL.entryLabel to field.entryLabel,
-        )
-        for ((kind, text) in copies) {
-            if (text == null) continue
+        for (kind in SL.fieldCopyKeys) {
+            val text = field.copyIn(kind) ?: continue
             val at = "${SL.schemaFields}[$i].$kind"
             val analysis = text.analyzeTemplate()
             for (issue in analysis.issues) {

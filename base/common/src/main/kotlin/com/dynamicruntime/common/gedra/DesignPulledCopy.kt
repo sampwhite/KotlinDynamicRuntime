@@ -22,10 +22,11 @@ import com.dynamicruntime.common.util.analyzeTemplate
  */
 object DesignPulledCopy {
     /**
-     * The copy slots of a layout field entry, in the order the inspector shows them: a list of entries' heading (issue
-     * #1748) after the three every field has.
+     * The copy slots of a layout field entry, in the order the inspector shows them ([SL.fieldCopyKeys]): a list of
+     * entries' heading (issue #1748) after those every field has, the description where the form is read (issue #1876)
+     * among them.
      */
-    val copySlots: List<String> = listOf(SL.label, SL.description, SL.hint, SL.entryLabel)
+    val copySlots: List<String> = SL.fieldCopyKeys
 
     /**
      * `{ typeName -> { field -> { slot -> { mixed, keys: [...] } } } }` for every slot of [typeNames]' layouts, as the

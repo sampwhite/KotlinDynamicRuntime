@@ -210,6 +210,13 @@ A layout entry for a [list](#lists) can say what the form calls each of its entr
 **Co-speaker 1**, **Co-speaker 2**, and so on. Without one, they read **Entry 1**, **Entry 2**. The
 [abstract's co-speakers](abstract.md#the-abstract-trait) have one.
 
+A layout entry can give a field a description for whoever **reads** the form, with a `readDescription`. A form is read
+where nobody can change it, such as an approval showing the traits it asks about. There the form shows no required
+marks and no hints, and in place of the field's `description`, which says how to fill the field in, it shows its
+`readDescription`, which says what the value is. Without one, a field being read has no description, unless nobody
+enters its value (one a counter or the schema computes), since that field's description already says what the value
+is. The claims demo's [incident](../claims-demo/reporting.md#traits) has two.
+
 A layout can also name the trait and introduce it. Its `label` is the trait's name, the heading of its section on a
 form, and its `description` is a line under that heading. A client can give a trait a layout for every form it shows,
 with an entry for the trait's data type in the `kdr:schemaDef` slot of its `base` bundle, even for a trait the platform

@@ -52,8 +52,8 @@ class DesignEntryLabelTest : StringSpec({
     GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 9000L }, config)
     GedraConfigReload.reloadClient(cxt, client)
 
-    "an entry label that pulls a fragment key is named in the pulled copy, with the label, description and hint" {
-        DesignPulledCopy.copySlots shouldContainExactly listOf(SL.label, SL.description, SL.hint, SL.entryLabel)
+    "an entry label that pulls a fragment key is named in the pulled copy, with the label, descriptions, and hint" {
+        DesignPulledCopy.copySlots shouldContainExactly listOf(SL.label, SL.description, SL.readDescription, SL.hint, SL.entryLabel)
         val typeName = "${clientNamespace(client)}.${traitDataTypeName(entryType)}"
         val facts = DesignPulledCopy.facts(cxt.mkSubContext("read", client), setOf(typeName))
         val slots = facts[typeName].toJsonMapOrEmpty()["people"].toJsonMapOrEmpty()

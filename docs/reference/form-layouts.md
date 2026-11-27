@@ -67,6 +67,7 @@ Each entry of `schemaFields` is about one field. The keys besides `field` are ea
 | `choices` | The choices this form offers, restated: which of the schema's choices, in what order, with the form's own copy for each. Each entry is described below. |
 | `lines` | How many lines a long text field's box starts with, from 1 to 40 (3 when unset). Only on a field the schema marks long text (`g-longText`). |
 | `entryLabel` | What the form heads each entry of a list with, such as `Co-speaker ${n}`, where `${n}` is the entry's number, counting from 1. Unset, the form says "Entry 1", "Entry 2", and so on. Only on a list of entries, not a list of choices. |
+| `readDescription` | The field's description where the form is read rather than filled in, such as an approval showing it: words for whoever reads the value, in place of the `description`, which is for whoever enters it. Unset, a form being read shows a description only for a value nobody enters (a computed or counted one). |
 | `$comment` | A note for whoever maintains the layout, never delivered to a page. |
 
 The codes a message under `errors` is keyed by, and the parameters each may use, are in
@@ -128,8 +129,8 @@ A layout's copy may hold two kinds of template, filled in at different times, an
   file. The page receives the finished wording, so a backend file is never sent to it. A pull naming a file or a key
   that does not exist is refused when the layout is loaded; one whose key is computed is checked as the layout is
   delivered, and shown as written if it does not resolve. Fragment files are described in [Copy](copy.md).
-- **`${…}`, on the page, as the form is drawn.** In a `label` or a `description`, it reads the data being
-  entered: `${topic}`. In a `hint`, it reads the field's declared bounds, `${min}` and
+- **`${…}`, on the page, as the form is drawn.** In a `label`, a `description`, or a
+  `readDescription`, it reads the form's data: `${topic}`. In a `hint`, it reads the field's declared bounds, `${min}` and
   `${max}`, as numbers, so a hint may compute with them. In an `entryLabel`, it reads the entry's
   number, `${n}`, counting from 1. In a message under `errors`, it reads the failure's parameters.
   The language is described in [Expressions](expressions.md).
