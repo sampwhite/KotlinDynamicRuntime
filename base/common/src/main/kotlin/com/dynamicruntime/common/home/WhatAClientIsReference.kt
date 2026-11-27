@@ -146,5 +146,7 @@ document as the worked example, and [Copy](copy.md) the Markdown and the files c
 - [The conference demo](../demo-client/README.md): a whole client built from configuration, its JSON explained one
   piece at a time.
 - [The grants demo](../grants-demo/README.md): a client in its own words, its copy reworded theme by theme.
+- [The claims demo](../claims-demo/README.md): a claims process, with numbers given as a form is saved and approval limits
+  by role.
 - [Roles and access](roles-and-access.md): what each role grants, and who may call what.
 """

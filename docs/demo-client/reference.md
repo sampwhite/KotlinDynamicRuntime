@@ -169,8 +169,9 @@ reads one field, such as a site's region, and picks a filter for each value it l
 other value. A filter is a fact test that may name only facts about the person looking, such as the ones a
 `userHasLabel` function asserts, and `kdr:isOwner`. While the task is the workflow's current step, a person has to pass both the task's
 `saveWhen` and its filter to save it, and a reviewer has to pass the filter to approve it. Anyone else sees the filter's
-`label`, such as "Waiting on a Northwest reviewer", where the step's buttons would be. The demo's workflows do not use
-one.
+`label`, such as "Waiting on a Northwest reviewer", where the step's buttons would be. The conference demo's workflows do not use
+one. The claims demo's [settlement](../claims-demo/settlement.md#who-approves-it) does, to send a larger payment to a
+claims manager.
 
 A task can say what kind of step it is with a **search keyword**, `keyword`. There is one so far, `review`, for a
 step that waits on someone to look the form over, and an approval task carries it without saying so. While a task

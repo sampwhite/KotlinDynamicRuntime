@@ -27,6 +27,7 @@ import com.dynamicruntime.common.user.RegistrationClient
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.claimsdemo.ClaimsDemo
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -81,19 +82,20 @@ class RegistrationClientTest : StringSpec({
     }
 
     "the demos a reference deployment provisions at boot are not provisioned" {
-        // What the reference flavor sets, on a test instance: each demo would otherwise write its users, and the grants and
-        // Design View demos (and the conference demo, not declared in code here) their stored configuration.
+        // What the reference flavor sets, on a test instance: each demo would otherwise write its users, and the grants,
+        // claims, and Design View demos (and the conference demo, not declared in code here) their stored configuration.
         val demos = Startup.mkTestBootCxt(
             "regDemos", "registrationClientDemos",
             mapOf(
                 REGC.client to RegistrationClientComponent.clientId,
-                ConfDemo.provisionAtBootKey to true, GrantsDemo.provisionAtBootKey to true, DesignDemo.provisionAtBootKey to true,
+                ConfDemo.provisionAtBootKey to true, GrantsDemo.provisionAtBootKey to true,
+                ClaimsDemo.provisionAtBootKey to true, DesignDemo.provisionAtBootKey to true,
             ),
             additionalComponents = listOf(RegistrationClientComponent()),
         )
         demos.instanceConfig.isTestInstance shouldBe true
         val clients = ClientService.get(demos)
-        listOf(ConfDemo.client, GrantsDemo.client, DesignDemo.client).forEach { clients.known(it).shouldBeNull() }
+        listOf(ConfDemo.client, GrantsDemo.client, ClaimsDemo.client, DesignDemo.client).forEach { clients.known(it).shouldBeNull() }
     }
 
     "a client defined in stored configuration is refused, though it is present" {

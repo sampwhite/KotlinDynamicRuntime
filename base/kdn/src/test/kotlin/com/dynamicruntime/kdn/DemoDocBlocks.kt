@@ -1,12 +1,13 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.schema.SchGKeywords
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import java.io.File
 
 /*
- * The JSON blocks of a demo's documentation, held to the demo's bundles (issues #1137, #1799): what `ConfDemoDocsTest`
- * and `GrantsDemoDocsTest` share. A block is marked on the line before its fence with what it shows:
+ * The JSON blocks of a demo's documentation, held to the demo's bundles (issues #1137, #1799, #1897): what
+ * `ConfDemoDocsTest`, `GrantsDemoDocsTest`, and `ClaimsDemoDocsTest` share. A block is marked on the line before its fence with what it shows:
  * `<!-- kdr-doc: bundle=<name> -->` for a bundle's whole `slots`, `bundle=<name> pointer=<JSON Pointer>` for a part, or
  * `illustration` for a shape that is not the demo's.
  *
@@ -106,3 +107,14 @@ private fun without(value: Any?, keys: Set<String>): Any? = if (keys.isEmpty()) 
 
 /** [json] parsed, so two texts of one value compare equal however they are laid out. */
 private fun normalized(json: String): Any? = "{\"v\": $json}".jsonMap()?.get("v")
+
+/** Each `g-` keyword [pages] name, in backticks, that the schema layer does not know, one line each. */
+internal fun unknownGKeywords(pages: List<File>): List<String> {
+    val known = SchGKeywords.keywords
+    return pages.flatMap { page ->
+        gKeywordRegex.findAll(page.readText()).map { it.groupValues[1] }.filter { it !in known }
+            .map { "${page.name}: `$it` is not a keyword the schema layer knows." }.toList()
+    }
+}
+
+private val gKeywordRegex = Regex("""`(g-[A-Za-z]+)`""")

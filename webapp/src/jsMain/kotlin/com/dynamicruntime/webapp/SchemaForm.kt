@@ -1192,7 +1192,7 @@ private fun ChildrenBuilder.renderField(
     // An object reaching here has no declared fields and is one control: a failure below it -- inside a map's
     // entry -- is shown with the field, where the person editing it is.
     val messages = if (vt.jsonType == SCT.kObject) errors.messagesWithin(path) else errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts, copy, value = value, prefill = prefill) {
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value, prefill = prefill, editable = editable) {
         widget(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
@@ -1237,6 +1237,8 @@ private fun ChildrenBuilder.fieldFrame(
     value: Any? = null,
     // How this field presents a supplied default (issue #710); a `filled` suggestion marks its label.
     prefill: FieldPrefill? = null,
+    // Whether the field can be filled in here; a file's kinds are said only where one can be picked.
+    editable: Boolean = true,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
     div {
@@ -1262,7 +1264,7 @@ private fun ChildrenBuilder.fieldFrame(
     // Stated before the field is filled in, not discovered by being rejected. The outline shows the same
     // thing for an output type; this is the input side, which is the one someone is about to type into. The
     // layout's `hint` (issue #587), already resolved against the field's bounds, shadows the derived range.
-    boundHint(prop.valueType, copy?.hint)
+    boundHint(prop.valueType, copy?.hint, fileKinds = editable)
     // The schema author's message names the field as this form does, when it names it (issue #1918).
     val named = messages.map { it.called(fieldLabel(name, prop, opts, copy)) }
     fieldErrors(path, named) { f -> layoutErrorMessage(copy, prop, name, value, f) }
@@ -1383,7 +1385,7 @@ private fun ChildrenBuilder.renderNestedObject(
     val dataDriven = recursive || !required
     val messages = errors.messagesAt(path)
 
-    fieldFrame(name, prop, required, path, messages, opts, copy, value = value) {
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value, editable = editable) {
         if (dataDriven && editable) {
             // Adding or removing the whole branch invalidates anything reported inside it, which is why the
             // edit is noted against this field rather than against whatever it contained.
@@ -1436,7 +1438,7 @@ private fun ChildrenBuilder.renderObjectList(
 ) {
     val elements = value.toJsonListOrEmpty()
     val messages = errors.messagesAt(path)
-    fieldFrame(name, prop, required, path, messages, opts, copy, value = value)
+    fieldFrame(name, prop, required, path, messages, opts, copy, value = value, editable = editable)
 
     val typeName = elementType.name
     val childSeen = if (typeName != null) seen + typeName else seen

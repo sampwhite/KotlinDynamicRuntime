@@ -57,11 +57,11 @@ alone. The reference intro links it as well.
 
 On a deployment that offers it (`JOIN.offeredKey`, set by the `reference` flavor), a visitor signed in to `public` can
 **join** a demo client -- `acme` or `designdemo` as an administrator, `confdemo` as a speaker, organizer or committee
-member, `grantsdemo` as an applicant or reviewer (never an administrator, so its words stay the demo's, issue #1799) --
-getting a user of their own identity in that **one shared** client. What a client may be joined as is its
-definition's `joinRoles` (kernel `ClientJoinRole`: a persona, a suffix telling two roles' users apart, labels, and
-what the page says of it), held at load by `ClientCheck.joinRoleFaults` (never on `public`, `hub`, a sandbox or a
-production client).
+member, `grantsdemo` as an applicant or reviewer (never an administrator, so its words stay the demo's, issue #1799),
+`claimsdemo` as a policyholder, an adjuster, or a claims manager (issue #1897) -- getting a user of their own identity
+in that **one shared** client. What a client may be joined as is its definition's `joinRoles` (kernel `ClientJoinRole`: a
+persona, a suffix telling two roles' users apart, labels, and what the page says of it), held at load by
+`ClientCheck.joinRoleFaults` (never on `public`, `hub`, a sandbox or a production client).
 
 - **`JoinPage` (`/wa/join/<client>`, `JoinApi.kt`)** lists the client's roles (`GET /user/self/joinable`) under the
   disclosure (`joinDisclosure`): that the space is shared, that an administrator -- another visitor -- sees the users'
@@ -71,7 +71,7 @@ production client).
 - **The "Shared demo" chip** in the bar, while the shell config's `state.sharedDemo` is true, is the standing note on
   every page that what you do there other visitors see; clicked, it says so (`sharedDemoNoteText`).
 - **Where joining is not offered**, or for a caller outside `public`, both endpoints answer 404, and the page shows
-  that refusal. The demo clients `designdemo`, `confdemo`, and `grantsdemo` are provisioned at boot on a reference
+  that refusal. The demo clients `designdemo`, `confdemo`, `grantsdemo`, and `claimsdemo` are provisioned at boot on a reference
   deployment (test instances only), so there is always one to join. The public home page (#1324) is where visitors meet
   it.
 - **A joined user is stamped a visitor's** (issue #1668): `ClientJoin.join` records the role in the user's data

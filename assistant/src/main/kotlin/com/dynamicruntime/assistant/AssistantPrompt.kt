@@ -17,6 +17,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.claimsdemo.ClaimsDemo
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import java.util.concurrent.ConcurrentHashMap
 
@@ -190,6 +191,8 @@ object AssistantPrompt {
             |  which fields, in what order, and their labels, on the approval alone.
             |- read_doc '${ConfDemo.docIdPrefix}committee-review' is a whole review: its eligibility test, a task only the
             |  committee saves, and an approval in two steps.
+            |- Who approves can depend on an amount, or another field: read_doc '${ClaimsDemo.docIdPrefix}settlement' has
+            |  an approval that waits on one person up to a limit, and on another above it.
             |
             |Wording:
             |- People describe words by where they see them ("the line under the title on Home", "the invitation mail").

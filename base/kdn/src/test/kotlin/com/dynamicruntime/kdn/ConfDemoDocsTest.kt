@@ -7,7 +7,6 @@ import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
-import com.dynamicruntime.common.schema.SchGKeywords
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WRES
@@ -94,13 +93,6 @@ class ConfDemoDocsTest : StringSpec({
     }
 
     "every g- keyword named is one the schema layer knows" {
-        val known = SchGKeywords.keywords
-        val problems = pages.flatMap { page ->
-            gKeywordRegex.findAll(page.readText()).map { it.groupValues[1] }.filter { it !in known }
-                .map { "${page.name}: `$it` is not a keyword the schema layer knows." }.toList()
-        }
-        problems.shouldBeEmpty()
+        unknownGKeywords(pages).shouldBeEmpty()
     }
 })
-
-private val gKeywordRegex = Regex("""`(g-[A-Za-z]+)`""")

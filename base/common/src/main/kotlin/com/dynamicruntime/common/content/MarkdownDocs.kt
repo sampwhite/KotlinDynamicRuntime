@@ -64,6 +64,8 @@ object DOCORDER {
     const val confDemo = -70
     /** The grants demo (issue #1799), a client in its own words, after the conference demo it builds on. */
     const val grantsDemo = -65
+    /** The claims demo (issue #1897), after the grants demo. */
+    const val claimsDemo = -62
     /** The index of the references generated from the code. */
     const val reference = -60
     /** The license reads last. */

@@ -72,7 +72,8 @@ id before saving it.
 
 **An id is fixed once it is saved.** It cannot be changed afterward, and no other talk can be given it. A form that is
 opened and never saved leaves its id unused, so the count can skip a number. A counter whose `issue` is `onSave` skips
-fewer, at the cost of the preview.
+fewer, at the cost of the preview. The claims demo numbers its incidents that way, with a prefix that changes each day,
+and [says when to choose which](../claims-demo/numbering.md#when-to-give-the-number).
 
 **The creation workflow collects the trait.** Its task lists `submission` after the title, as
 [Creating a talk](create-talk.md#task) shows, with `required: false`. The form always fills it, so it need not be

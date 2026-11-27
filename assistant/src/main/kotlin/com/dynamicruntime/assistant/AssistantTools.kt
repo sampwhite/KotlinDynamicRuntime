@@ -42,6 +42,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.claimsdemo.ClaimsDemo
 import com.dynamicruntime.kdn.grantsdemo.GrantsDemo
 import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CWF
@@ -237,8 +238,9 @@ object AssistantTools {
     }
 
     /**
-     * A document `read_doc` may read: a reference ([TOOL.docs]), a page of the demo client's, or a page of the grants
-     * demo's (issue #1799), which shows each theme of a client's wording reworded.
+     * A document `read_doc` may read: a reference ([TOOL.docs]), a page of the demo client's, a page of the grants
+     * demo's (issue #1799), which shows each theme of a client's wording reworded, or a page of the claims demo's (issue
+     * #1897), which shows a counter that issues at save and approval limits by role.
      */
     fun readableDoc(cxt: KdrCxt, docId: String): String? {
         if (!isReadableDocId(docId)) return null
@@ -252,7 +254,7 @@ object AssistantTools {
         .map { it.docId }.filter { isReadableDocId(it) }
 
     private fun isReadableDocId(docId: String): Boolean =
-        docId in TOOL.docs || docId.startsWith(ConfDemo.docIdPrefix) || docId.startsWith(GrantsDemo.docIdPrefix)
+        docId in TOOL.docs || listOf(ConfDemo.docIdPrefix, GrantsDemo.docIdPrefix, ClaimsDemo.docIdPrefix).any { docId.startsWith(it) }
 
     @KdrPrivate
     fun build(): List<AssistantTool> = buildList {
@@ -279,8 +281,10 @@ object AssistantTools {
                             "written as copy, such as Home or one of the client's own, is laid out), '${HDOC.rolesAndAccess}' (what each " +
                             "role grants, and who may call what), a page of the demo client's " +
                             "('${ConfDemo.docIdPrefix}README' lists them), which shows a whole client's configuration worked through, " +
-                            "or a page of the grants demo's ('${GrantsDemo.docIdPrefix}README' lists them), which rewords every piece " +
-                            "of copy a client is likely to, theme by theme.",
+                            "a page of the grants demo's ('${GrantsDemo.docIdPrefix}README' lists them), which rewords every piece " +
+                            "of copy a client is likely to, theme by theme, or a page of the claims demo's " +
+                            "('${ClaimsDemo.docIdPrefix}README' lists them), which has a counter that numbers a form as it is " +
+                            "saved and an approval whose approver depends on an amount.",
                     this@AssistantTools.objectSchema(
                         ATOOL.doc to this@AssistantTools.stringSchema("The document's id."),
                         required = listOf(ATOOL.doc)
