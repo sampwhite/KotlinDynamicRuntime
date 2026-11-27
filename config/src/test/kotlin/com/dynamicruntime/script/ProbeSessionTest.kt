@@ -30,7 +30,7 @@ class ProbeSessionTest : StringSpec({
     // and becomeUser exists only for a caller with env auth (issue #1149) -- a unit instance assumes nothing.
     val cxt = Startup.mkTestBootCxt("probe", "probeSessionTest", mapOf(ACFG.assumeEnvAuth to true))
     val server = TestHttpServer(cxt.instanceConfig)
-    val baseUrl = "http://localhost:${server.port}"
+    val baseUrl = server.url("")
 
     afterSpec { server.close() }
 

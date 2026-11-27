@@ -12,7 +12,7 @@ import org.eclipse.jetty.util.Callback
 /**
  * Runs the runtime's HTTP stack on a real socket, for tests that need the wire itself. Serves
  * [instanceConfig]'s endpoints exactly as [HttpServer] does — a core Jetty [Handler] building a Jetty-mode [RequestHandler] — but
- * on an ephemeral [port] and without blocking, so a test can start one, make requests, and stop it.
+ * on an ephemeral [port] of the loopback address and without blocking, so a test can start one, make requests, and stop it.
  *
  * It is the counterpart of [com.dynamicruntime.common.http.request.TestHttpClient], and exists because that
  * one deliberately has no wire: it drives a test-mode `RequestHandler` in-process, which is the right trade for
@@ -41,7 +41,10 @@ class TestHttpServer(val instanceConfig: KdrInstanceConfig) : AutoCloseable {
     val port: Int
 
     init {
-        // Port 0: let the OS pick a free one, so concurrent test specs cannot collide over a fixed port.
+        // Port 0: let the OS pick a free one, so concurrent test specs cannot collide over a fixed port. The loopback address,
+        // not all of them: the OS picks a port free on the address bound, so a port another process holds on loopback alone
+        // (a Gradle daemon does) was free on the wildcard and given out, and a request to it reached that process, not this one.
+        connector.host = loopback
         connector.port = 0
         server.addConnector(connector)
         server.handler = object : Handler.Abstract() {
@@ -54,8 +57,16 @@ class TestHttpServer(val instanceConfig: KdrInstanceConfig) : AutoCloseable {
         port = connector.localPort
     }
 
-    /** The absolute URL of [path] on this server, e.g. `url("/kda/health")`. */
-    fun url(path: String): String = "http://localhost:$port$path"
+    /**
+     * The absolute URL of [path] on this server, e.g. `url("/kda/health")`. It names the loopback address rather than
+     * `localhost`, which may resolve to the IPv6 one first, where this server is not listening.
+     */
+    fun url(path: String): String = "http://$loopback:$port$path"
+
+    @Suppress("ConstPropertyName")
+    private companion object {
+        const val loopback = "127.0.0.1"
+    }
 
     override fun close() {
         runCatching { server.stop() }
