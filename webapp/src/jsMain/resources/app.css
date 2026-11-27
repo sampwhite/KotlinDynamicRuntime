@@ -640,7 +640,10 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
 .data-grid-empty { padding: 8px 12px; }
 .files-uses { margin: 4px 0; padding-left: 20px; }
 /* An image or a video, at most a modest box: a form shows the file, it is not a viewer. */
-.data-file-preview { display: block; max-width: min(480px, 100%); max-height: 360px; border-radius: 4px; background: var(--surface-page); }
+.data-file-preview {
+  display: block; max-width: min(480px, 100%); max-height: 360px; margin: 4px 0; border-radius: 4px;
+  background: var(--surface-page);
+}
 /* A client's file refs (issue #1176), drawn as its web assets are: a row a ref. What is unusual about one -- a
    draft, a missing file, an image the client was shipped with -- is a small mark beside its id. */
 .file-ref-tag {
@@ -1012,6 +1015,7 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .schema-form.read-only .row > .field-label + * { flex: 1 1 auto; min-width: 0; }
 .schema-form.read-only .row:has(> .json-value, > .op-table-scroll, > .data-table-value) { flex-wrap: wrap; }
 .schema-form.read-only .row > .field-label + :is(.json-value, .op-table-scroll, .data-table-value) { flex-basis: 100%; }
+.schema-form.read-only .row + .subtitle { margin-top: 3px; }
 .schema-form.read-only .row + .subtitle:not(:has(+ .nested)) { margin-left: calc(var(--read-label-width) + 12px); }
 @media (max-width: 600px) {
   .schema-form.read-only .row { flex-direction: column; gap: 2px; }
