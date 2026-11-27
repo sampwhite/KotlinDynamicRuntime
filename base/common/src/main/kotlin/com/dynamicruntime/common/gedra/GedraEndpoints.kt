@@ -1751,12 +1751,13 @@ private fun approveRefusal(c: KdrCxt, judge: WorkflowTaskJudge, task: WfTask, ro
 
 /**
  * In Design View, the form types [found]'s page may be drawn for, and the one [asked] for when that is not the form's own
- * (issue #1903): null outside Design View, and for a workflow no task of which collects its form's type's traits. [row] is
- * the form, or null for a new one, which has no type. Refused (400) when the client has no type [asked].
+ * (issue #1903): null outside Design View, on a node that keeps no form types, and for a workflow no task of which collects
+ * its form's type's traits. [row] is the form, or null for a new one, which has no type. Refused (400) when the client has
+ * no type [asked].
  */
 private fun drawnFormTypes(c: KdrCxt, found: WfDeclared, row: GedraDataRow?, asked: String?): DrawnFormTypes? {
     if (!found.def.collectsFormType || !DesignView.isOn(c)) return null
-    val types = FormTypeService.get(c).forClient(c.client)
+    val types = FormTypeService.getOrNull(c)?.forClient(c.client) ?: return null
     val own = formTypeOf(row?.entries.orEmpty())
     if (asked != null && asked != DSV.noFormType && asked !in types) {
         throw KdrException.mkInput("The client '${c.client}' has no form type '$asked'.")

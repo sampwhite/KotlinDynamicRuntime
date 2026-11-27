@@ -52,10 +52,10 @@ class WfDeclared private constructor(val bundle: GedraConfig, val def: WfDef, wr
     internal var keywordsCache: Set<String>? = null
 
     /**
-     * What [forFormType] resolved, by type. By the type's own instance, which a reload of its client replaces along with
-     * this, so it holds no more than the client's types.
+     * What [forFormType] resolved, by the type's id, with the type it was resolved for: one entry per id, replaced when a
+     * reload brings a new definition of the type, so it never holds more than the client's types, however long this lives.
      */
-    private val byFormType = ConcurrentHashMap<FormTypeDef, WfDeclared>()
+    private val byFormType = ConcurrentHashMap<String, Pair<FormTypeDef, WfDeclared>>()
 
     /**
      * This workflow as it is for a form of [type] (issue #1903): the task collecting its form's type's traits collects
@@ -63,7 +63,8 @@ class WfDeclared private constructor(val bundle: GedraConfig, val def: WfDef, wr
      */
     fun forFormType(type: FormTypeDef?): WfDeclared {
         if (type == null || !def.collectsFormType) return this
-        return byFormType.computeIfAbsent(type) { WfDeclared(bundle, def.forFormType(it), this) }
+        byFormType[type.formTypeId]?.let { (resolvedFor, resolved) -> if (resolvedFor === type) return resolved }
+        return WfDeclared(bundle, def.forFormType(type), this).also { byFormType[type.formTypeId] = type to it }
     }
 
     /** This workflow as it is for a form of [client] holding [entries], by the type they say it is of; see [forFormType]. */

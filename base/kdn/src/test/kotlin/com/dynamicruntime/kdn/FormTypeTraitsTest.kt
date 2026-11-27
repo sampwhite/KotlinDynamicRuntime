@@ -233,7 +233,8 @@ class FormTypeTraitsTest : StringSpec({
         // Another type's trait is not this one's to collect, and no type collects none.
         site.user.expectError(EXC.badInput, site.save, createOf(typed("lead"), entry("clip"))).toString() shouldContain
             "does not collect the trait 'clip' for a form of this type"
-        site.user.expectError(EXC.badInput, site.save, createOf(entry("ask"))).toString() shouldContain "does not collect the trait 'ask'"
+        site.user.expectError(EXC.badInput, site.save, createOf(entry("ask"))).toString() shouldContain
+            "does not collect the trait 'ask' for a form with no type"
     }
 
     "an edit goes by the form's type, or by the type it sets" {
