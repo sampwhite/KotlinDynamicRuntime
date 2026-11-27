@@ -10,7 +10,6 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.util.toJsonListOfMaps
-import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
@@ -180,7 +179,7 @@ object GrantsPolish {
     }
 
     /** A task of the review asking for a score, and the fields of the traits it collects. */
-    private class Scoring(val at: Int, val task: Map<String, Any?>, val fields: List<FieldView>) {
+    private class Scoring(val at: Int, val task: Map<String, Any?>, fields: List<FieldView>) {
         val score: FieldView = fields.first { it.mentions(scoreTerms) }
         val note: FieldView? = fields.firstOrNull { it !== score && it.mentions(noteTerms) && it.type == "string" && it.options.isEmpty() }
         val label: String get() = "'${task[WFD.label] ?: task[WFD.id]}'"
@@ -224,7 +223,7 @@ object GrantsPolish {
     /** The review locks the scoring task's trait, writable by that task's savers. */
     private fun scoreLocked(r: TrialResult): Outcome {
         val s = scoring(r.view) ?: return Outcome.notMet("No task asks for a score.")
-        val locks = r.view.review?.get(WFD.locks).toJsonListOfMaps().orEmpty()
+        val locks = r.view.review?.get(WFD.locks).toJsonListOfMaps()
         val on = locks.filter { it[WFD.traitId] == s.score.traitId }
         val lock = on.firstOrNull { it[WFD.writableVia] == s.task[WFD.id] }
         return when {
