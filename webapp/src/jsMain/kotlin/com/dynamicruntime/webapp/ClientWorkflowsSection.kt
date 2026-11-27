@@ -603,8 +603,10 @@ external interface WorkflowSlotEditorProps : Props {
 /**
  * The slots of one workflow made from a template (issue #1120): its name, and per data-entry task its label and the
  * traits it collects -- each required or not. What the template fixes is said beneath, in words, from the workflow the
- * slots make ([workflowPreview], the kernel's). Save waits until the slots are whole ([workflowSlotProblems]); a live
- * change that affects stored forms is refused with the impact report, whose **Save anyway** acknowledges it.
+ * slots make ([workflowPreview], the kernel's). A task of a creation or core details workflow may also collect the traits
+ * of its form's type (issue #1903), with what each type brings listed ([formTypeTraitLines]). Save waits until the slots
+ * are whole ([workflowSlotProblems]); a live change that affects stored forms is refused with the impact report, whose
+ * **Save anyway** acknowledges it.
  *
  * A new workflow is made with **who sees it** (issue #1384), administrators only to start, so nobody meets it before
  * its maker chose; the backend writes that before the workflow exists. Changing it later is the row's **Visibility…**.
@@ -793,6 +795,31 @@ val WorkflowSlotEditor = FC<WorkflowSlotEditorProps> { props ->
                         div {
                             className = ClassName("type-hint")
                             +collectsHint(props.workflowCatalog, task)
+                        }
+                        // The traits of the form's type (issue #1903), and what each type then brings here: the step's
+                        // definition no longer says by itself what it collects, so the page does.
+                        if (formTypeTraitsOffered(props.workflowCatalog, props.template, task)) {
+                            Checkbox {
+                                checked = task.formTypeTraits == true
+                                disabled = busy
+                                onChange = { e -> draft = draft.withFormTypeTraits(task.taskId, e.target.checked == true) }
+                                +"Also collect the traits of the form's type"
+                            }
+                            if (task.formTypeTraits == true) {
+                                div {
+                                    className = ClassName("type-hint")
+                                    +formTypeTraitsHint(props.workflowCatalog)
+                                    ul {
+                                        className = ClassName("collects-by-type")
+                                        formTypeTraitLines(props.workflowCatalog, draft, task).forEachIndexed { i, (type, brought) ->
+                                            li {
+                                                key = i.toString().unsafeCast<Key>()
+                                                +"$type: $brought"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.FormTypeDef
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
@@ -38,21 +39,23 @@ import com.dynamicruntime.common.util.toOptStr
 fun workflowSchemaStore(clientStore: KdrSchemaStore, declared: WfDeclared): KdrSchemaStore {
     val alterations = declared.def.typeAlterations
     if (alterations.isEmpty()) return clientStore
-    declared.storeCache?.let { (over, built) -> if (over === clientStore) return built }
+    // One for every form type (issue #1903): a type changes which traits are drawn, not how any is.
+    val holder = declared.written
+    holder.storeCache?.let { (over, built) -> if (over === clientStore) return built }
     val built = KdrSchemaStore(
         types = clientStore.types,
         endpoints = clientStore.endpoints,
         tables = clientStore.tables,
         defs = overlayDefs(clientStore.defs, alterations),
     )
-    declared.storeCache = clientStore to built
+    holder.storeCache = clientStore to built
     return built
 }
 
 /**
  * What is wrong with [declared]'s type alterations against [store] -- the scope's schema -- as one sentence for the
  * workflow's refusal, or null when nothing is (issue #984). [traits] are the scope's, by which the workflow's pages
- * reach their types.
+ * reach their types, and [formTypes] its form types, any of whose traits a task may collect (issue #1903).
  *
  * - **Only a type the workflow's pages draw** may be altered: one its tasks' traits, or the traits its approvals name,
  *   reach. Altering any other would be an edit nothing shows.
@@ -61,11 +64,16 @@ fun workflowSchemaStore(clientStore: KdrSchemaStore, declared: WfDeclared): KdrS
  * - **The merged layout must pass the layout checks** against the type: every field one the type declares, every
  *   template well-formed -- the checks a client's layout gets.
  */
-fun typeAlterationProblem(declared: WfDeclared, store: KdrSchemaStore, traits: List<GedraTrait>): String? =
+fun typeAlterationProblem(
+    declared: WfDeclared,
+    store: KdrSchemaStore,
+    traits: List<GedraTrait>,
+    formTypes: Collection<FormTypeDef> = emptyList(),
+): String? =
     alterationProblem(
         // Its pages draw its tasks' traits, and the traits its approvals name (issue #1875).
         declared.def.typeAlterations,
-        declared.def.tasks.flatMap { t -> t.traits.map { it.traitId } + t.approval?.showTraits.orEmpty() }, store, traits,
+        declared.def.tasks.flatMap { t -> declared.def.traitIdsOverTypes(t, formTypes) + t.approval?.showTraits.orEmpty() }, store, traits,
         "Type '%s' (workflow '${declared.def.workflowId}')",
     ) { "its pages do not show; a workflow may alter only a type its tasks' traits, or the traits its approvals show, reach" }
 

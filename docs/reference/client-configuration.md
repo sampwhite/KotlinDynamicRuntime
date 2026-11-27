@@ -419,6 +419,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `$comment` | string |  | A note for whoever maintains this definition; it changes nothing about what the definition does. |
 | `label` | string | yes | What the task is called -- a template, evaluated in two passes. |
 | `traits` | array of [WfTraitRef](#wftraitref) | yes | The traits this task collects. |
+| `formTypeTraits` | boolean |  | A creation or core details workflow task's: whether it also collects the traits of its form's type, after those it lists, leaving out any another task of the workflow lists. At most one task of a workflow. |
 | `saves` | array of [WfSave](#wfsave) | yes | The saves this task offers. |
 | `layout` | [WfLayout](#wflayout) |  | How the task is drawn; declaration order and inline editing when absent. |
 | `functions` | array of object |  | Task-scoped function usages (e.g. prefillData); each a { fn, ... } block validated by its own kind. |

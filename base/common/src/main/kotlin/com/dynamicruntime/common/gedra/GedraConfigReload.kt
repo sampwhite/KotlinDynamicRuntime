@@ -192,6 +192,9 @@ object GedraConfigReload {
             cxt, client, previous.flatMap { it.fragments }, taken.flatMap { it.fragments },
         )
         UiBlockService.get(cxt).reloadClient(cxt, client, previous.flatMap { it.uiBlocks }, taken.flatMap { it.uiBlocks })
+        // Its form types (issue #1902), which name the traits its schema was just rebuilt with -- before the workflows, which
+        // collect those traits (issue #1903).
+        FormTypeService.getOrNull(cxt)?.reloadClient(cxt, client)
         WorkflowService.get(cxt).reloadClient(cxt, client)
         // Reports after workflows (issue #980): a report's workflow paths bind to the workflows the reload kept.
         // Its typed endpoints are regenerated with it (issue #1088), and theirs are types too: a redefined report
@@ -203,8 +206,6 @@ object GedraConfigReload {
         FileRefService.getOrNull(cxt)?.reloadClient(cxt, client)
         // And its counters (issue #1849).
         CounterService.getOrNull(cxt)?.reloadClient(cxt, client)
-        // And its form types (issue #1902), which name the traits its schema was just rebuilt with.
-        FormTypeService.getOrNull(cxt)?.reloadClient(cxt, client)
         val evicted = (typeKeys + reportKeys).size
 
         val inherited = taken.count { it.inheritedFrom != null }

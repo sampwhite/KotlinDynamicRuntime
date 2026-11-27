@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignView
 import com.dynamicruntime.common.gedra.FTYPE
+import com.dynamicruntime.common.gedra.FormTypeDef
 import com.dynamicruntime.common.gedra.FormTypeService
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
@@ -49,6 +50,9 @@ import com.dynamicruntime.common.util.toOptStr
  * hundreds of unrelated endpoint types to resolve a few fields, and it is what a workflow that **narrows** a
  * trait's schema will need: the reachable body is then the workflow's own, with nowhere else it could live.
  *
+ * A workflow with a task that collects its form's type's traits (issue #1903) is handed here already resolved for the
+ * form ([WfDeclared.forForm]), so what is drawn, judged, and sent follows the type with nothing here to know it.
+ *
  * [entriesByTask] supplies the entries a running workflow already holds, so a task's completeness is real; a
  * creation workflow has none, so it defaults empty. The resolver stays a pure function of the definition,
  * the client's schema, and its fragments -- no gedra is read here.
@@ -79,6 +83,8 @@ fun resolveWorkflowView(
     reversals: Map<String, Map<String, Any?>> = emptyMap(),
     /** Whether this caller may reverse the form's approvals (issue #1787), by WorkflowApprovals.mayReverse. */
     mayReverse: Boolean = false,
+    /** In Design View, the form types and which of them [declared] is resolved for (issue #1903); null for any other view. */
+    drawnTypes: DrawnFormTypes? = null,
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -327,7 +333,9 @@ fun resolveWorkflowView(
         ?.let { view[WVF.help] = it }
     // Design View (issue #972): where the workflow and each type the page draws were declared. Added beside an
     // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
-    if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store)
+    if (DesignView.isOn(cxt)) {
+        view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store) + drawnTypes?.toBlock().orEmpty()
+    }
     // Every sourced choice list of the traits drawn, as the endpoint catalog resolves them for a form off-workflow (issue
     // #1902). A form's type offers those the caller may set, and the form's own, so the page offers no choice its save
     // would refuse; the catalog, which knows no form, lists them all.
@@ -345,6 +353,19 @@ fun resolveWorkflowView(
         }
     }
     return view
+}
+
+/**
+ * The form types a Design View of a workflow may be drawn for (issue #1903), and which it was: [types], the client's;
+ * [own], the form's type, null for none or a new form; and [asked], when the request asked for another than the form's
+ * own -- a type's id, or [DSV.noFormType].
+ */
+class DrawnFormTypes(val types: Collection<FormTypeDef>, val own: String?, val asked: String?) {
+    fun toBlock(): Map<String, Any?> = buildMap {
+        put(DSV.formTypes, types.map { linkedMapOf(FTYPE.formTypeId to it.formTypeId, FTYPE.label to it.label) })
+        own?.let { put(DSV.ownFormType, it) }
+        asked?.let { put(DSV.drawnFormType, it) }
+    }
 }
 
 /** The "no workflow" answer -- what the view returns when a client has no such (or no creation) workflow. */
@@ -503,7 +524,8 @@ class WorkflowTaskJudge(
 
 /**
  * A form's [entries] split by the task of [declared] that collects each one (issues #700, #857) -- what a task's
- * completeness and facts are judged on. A trait two tasks collect is in both.
+ * completeness and facts are judged on. A trait two tasks collect is in both. [declared] is resolved for the form's type
+ * ([WfDeclared.forForm], issue #1903) where what its tasks collect depends on it.
  */
 fun taskEntriesOf(declared: WfDeclared, entries: List<Map<String, Any?>>): Map<String, List<Map<String, Any?>>> =
     declared.def.tasks.associate { task ->

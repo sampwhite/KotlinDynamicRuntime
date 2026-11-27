@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.traitNameOf
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.FTYPE
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
@@ -117,6 +118,25 @@ fun useDesignViewSwitch(reread: suspend () -> Unit): () -> Unit {
     }
 }
 
+/**
+ * What the "Drawn for" choice offers (issue #1903), `label to value`: the form's own type first, as the empty value, then no
+ * type, then every other type. [isEdit] is whether there is a form, rather than one about to be made.
+ */
+fun drawnFormTypeChoices(design: WfDesign, isEdit: Boolean): List<Pair<String, String>> = buildList {
+    val own = design.ownFormType
+    val ownLabel = design.formTypes.firstOrNull { it.first == own }?.second ?: own ?: "no type"
+    add((if (isEdit) "This form's type ($ownLabel)" else "A new form ($ownLabel)") to "")
+    if (own != null) add("No type" to DSV.noFormType)
+    design.formTypes.filter { it.first != own }.forEach { (id, label) -> add(label to id) }
+}
+
+/** What the page says while it is drawn for a type that is not the form's (issue #1903), or null when it is the form's. */
+fun drawnFormTypeNote(design: WfDesign?): String? {
+    val drawn = design?.drawnFormType ?: return null
+    val label = design.formTypes.firstOrNull { it.first == drawn }?.second
+    return "Drawn " + (label?.let { "as a form of the type $it" } ?: "as a form with no type") + ", so nothing is saved from here."
+}
+
 /** A Design View re-read's view, or null -- the failure said on the console -- when the call got no usable answer. */
 fun <T> ApiResult<T>.designRereadValue(): T? {
     failureOrNull()?.let { console.warn("$errorLogPrefix could not re-read the view for Design View: ${it.message}") }
@@ -170,6 +190,15 @@ class WfDesign(
     val approvals: Map<String, WfDesign> = emptyMap(),
     /** By type name, the fields whose choices are sourced, which no form restates (issue #1902); see `DSV.sourcedFields`. */
     val sourcedFields: Map<String, List<String>> = emptyMap(),
+    /**
+     * The client's form types (issue #1903), `id to label`, where a task collects its form's type's traits and so the page
+     * may be drawn for any of them; empty for any other workflow.
+     */
+    val formTypes: List<Pair<String, String>> = emptyList(),
+    /** Beside [formTypes]: the form's own type, by id; null for none, or a new form. */
+    val ownFormType: String? = null,
+    /** Beside [formTypes]: the type the page is drawn for when that is not the form's own, or `DSV.noFormType`. */
+    val drawnFormType: String? = null,
 ) {
     /** Whether the choices of [field] of [typeName] are sourced, so a form may not restate them. */
     fun isSourced(typeName: String, field: String): Boolean = field in sourcedFields[typeName].orEmpty()
@@ -187,6 +216,7 @@ class WfDesign(
         return WfDesign(
             workflow, types, canEdit, editRefusal, basedOn,
             own?.layoutEdits.orEmpty(), own?.headingEdits.orEmpty(), own?.shownFields.orEmpty(), approvals, sourcedFields,
+            formTypes, ownFormType, drawnFormType,
         )
     }
 }
@@ -240,6 +270,11 @@ fun parseWfDesign(raw: Any?): WfDesign? {
         shownFields = layouts.shownFields,
         approvals = block[DSV.approvals].toJsonMapOrEmpty().mapValues { (_, a) -> parseDesignLayouts(a.toJsonMapOrEmpty()) },
         sourcedFields = block[DSV.sourcedFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
+        formTypes = block[DSV.formTypes].toJsonListOfMaps().mapNotNull { t ->
+            t[FTYPE.formTypeId].toOptStr()?.let { it to (t[FTYPE.label].toOptStr() ?: it) }
+        },
+        ownFormType = block[DSV.ownFormType].toOptStr(),
+        drawnFormType = block[DSV.drawnFormType].toOptStr(),
     )
 }
 

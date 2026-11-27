@@ -98,6 +98,21 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(CWF.description, "What the trait is for.")
     }
 
+    type(CWF.formTypeTypeName) {
+        type = SCT.kObject
+        description = "A client's form type (issue #1903), as a workflow's task that collects its form's type's traits meets it."
+        property(FTYPE.formTypeId, "The type's id.", required = true)
+        property(FTYPE.label, "What the type is called.", required = true)
+        property(
+            FTYPE.traits,
+            "The traits a form of the type collects, each its `${WFD.traitId}` and whether it is `${WFD.required}`.",
+            required = true,
+        ) {
+            type = SCT.array
+            items { type = SCT.kObject }
+        }
+    }
+
     type(CWF.catalogTypeName) {
         type = SCT.kObject
         description = "A client's workflows and the templates a workflow can be made from (issue #1120)."
@@ -113,6 +128,10 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(CWF.traits, "The traits the client's workflows may collect.", required = true) {
             type = SCT.array
             items { ref(CWF.traitTypeName) }
+        }
+        property(CWF.formTypes, "The client's form types (issue #1903), whose traits a task may collect; absent when it has none.") {
+            type = SCT.array
+            items { ref(CWF.formTypeTypeName) }
         }
         property(CWF.timeZone, "The client's time zone, which a workflow's time windows are entered and shown in.")
         property(CWF.userLabels, "The user labels the client suggests, which a workflow's visibility may name.") {
@@ -164,7 +183,8 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
                 CWF.slots,
                 "The workflow's slots: `${WFD.workflowId}` (absent for a new workflow), `${WFD.fromTemplate}` (for a new " +
                     "workflow; a change takes its workflow's own, and refuses another), `${WFD.label}`, and `${WFD.tasks}`, " +
-                    "each with its `${WFD.id}`, `${WFD.label}` and `${WFD.traits}`.",
+                    "each with its `${WFD.id}`, `${WFD.label}` and `${WFD.traits}`, and `${WFD.formTypeTraits}`, whether it also " +
+                    "collects its form's type's traits (absent, as it is now).",
                 required = true,
             ) { type = SCT.kObject }
             field(

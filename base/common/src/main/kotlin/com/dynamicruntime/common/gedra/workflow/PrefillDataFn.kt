@@ -118,8 +118,9 @@ fun runPrefillData(
 
     val present = currentEntries.mapNotNull { it[GE.traitId].toOptStr() }.toSet()
     val prefills = defaultsByTrait
-        // A trait with an entry already is left alone; a prefill only creates one where none exists.
-        .filterKeys { it !in present }
+        // A trait with an entry already is left alone; a prefill only creates one where none exists. Nor one for a trait
+        // this form's type does not bring to the task (issue #1903), which the page does not draw.
+        .filterKeys { it !in present && task.trait(it) != null }
         .map { (traitId, fieldDefaults) ->
             linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to fieldDefaults, GE.source to GSRC.prefill)
         }

@@ -123,6 +123,14 @@ the field on the form (`withLayoutEntry`). The save follows the list: an edit sa
 (`shownPayload`) and the backend merges them over the stored entry, refusing any other, so workflows filling different
 parts of one questionnaire keep each other's answers.
 
+**Drawn for a form type** (issue #1903): a page with a task that collects its form's type's traits draws one type's, or
+none, so under the header a **Drawn for** choice (`drawnFormTypeChoices`, from the block's `DSV.formTypes`) redraws it for
+any type, a new form or an existing one. The view is asked for it (`DSV.drawnFormType` on the request, honored only where
+Design View is) and re-read in place; nothing is stored, and the page offers no save while it is drawn for a type that is
+not the form's (`drawnFormTypeNote`), since the save goes by the form's. Edits made there are the workflow's, whichever
+type is drawn. A trait the page has not drawn before is seeded from the view that brought it, as also after a save that
+changes the form's type.
+
 **An approval's own layout** (issue #1875): a trait an approval shows is that approval's to lay out, in the shape a
 workflow's alteration takes, stored on the approval (`types` and `typeBasis` beside its `showTraits`). The form frames
 such a trait with the approval's task id (`DesignTarget.Trait`/`Field` `approvalTask`, set by `traitSection` and carried

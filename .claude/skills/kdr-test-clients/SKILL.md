@@ -167,6 +167,11 @@ later schema rejects" test.
     to the code by `ConfDemoDocsTest`. (`docs/history/gedra-workflow.md` is a superseded design; do not follow it.) An
     optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
     template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
+  - **A task that collects its form's type's traits** (issue #1903): `formTypeTraits = true` in a creation or core details
+    task's block, beside `trait(…)`; one task of a workflow, and refused on a normal workflow. The client's types are
+    `formType("lead", "Lead") { trait("ask") }` (issue #1902). In code, a definition is resolved for a form before it is
+    judged -- `WfDeclared.forForm(cxt, client, entries)` -- and `def.traitIdsOverTypes(types)` answers what asks without a
+    form; `WfTask.traits` of the definition as written holds only what the task lists. `FormTypeTraitsTest` is the example.
   - **What a task's call to action carries** (issue #1594): `keyword(CTAK.review)` in a task block declares its
     search keyword, and an approval task carries `review` without it. **`review` is the only way a form needs review**
     (issue #1596): while an engaged workflow's CTA carries it, the form has `kdr:needsReview` (the Status column's

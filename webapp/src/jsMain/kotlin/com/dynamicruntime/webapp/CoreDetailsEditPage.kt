@@ -60,6 +60,8 @@ val CoreDetailsEditPage = FC<Props> {
     // The client whose copy of the workflow endpoints the view came from (issue #714), handed to the form so its
     // save posts to the same copy; null when the shared endpoint answered.
     var workflowClient by useState<String?>(null)
+    // The form type Design View draws the page for (issue #1903); empty for the form's own.
+    var drawnFormType by useState("")
     // Whether the form holds edits not yet saved (issue #700), as WorkflowForm reports it.
     var dirty by useState(false)
 
@@ -140,6 +142,7 @@ val CoreDetailsEditPage = FC<Props> {
         noCoreDetails = false
         loadError = null
         workflowClient = null
+        drawnFormType = ""
         loading = true
         val id = gedraId
         val wfId = workflowId
@@ -183,11 +186,11 @@ val CoreDetailsEditPage = FC<Props> {
     // re-read is, not through the loading card -- so unsaved edits survive, and applied only while the page still
     // shows this form.
     // The same in-place read after a Design View edit has saved (issue #984), so the new copy shows.
-    suspend fun reread() {
+    suspend fun reread(type: String = drawnFormType) {
         if (view == null) return
         val form = gedraId
         val wf = workflowId
-        val fresh = apiResult { fetchFormView(form, wf, workflowClient) }.designRereadValue()
+        val fresh = apiResult { fetchFormView(form, wf, workflowClient, type) }.designRereadValue()
         val h = routeParams()
         if (fresh != null && h[HP.page] == pageCoreDetailsEdit && h[HP.gedra] == form && h[HP.workflow] == wf) view = fresh
     }
@@ -252,6 +255,10 @@ val CoreDetailsEditPage = FC<Props> {
                 onDirtyChange = { dirty = it }
                 onDesignEdited = { coreDetailsEditScope.launch { reread() } }
                 onDesignToggle = toggleDesign
+                onDrawnFormType = { type ->
+                    drawnFormType = type
+                    coreDetailsEditScope.launch { reread(type) }
+                }
                 // An approval settled (issue #832): given or reversed (issue #1787), or refused by the endpoint. Either
                 // way the form's state may have moved -- the step now reads approved, someone else approved it first --
                 // so the view is read again, as after an engage, keeping the refusal to show by its step. It stays on
@@ -328,12 +335,13 @@ fun engagedRoute(params: Map<String, String>): List<Pair<String, String>> =
 /**
  * The view the core details page shows (issue #827): normal workflow [workflowId] against form [gedraId] when one is
  * named, else the form's core details workflow, from [client]'s copy of the endpoint. Null when there is no such
- * workflow or core details workflow. The one read behind both the page's load and its re-read after a save, so the two
+ * workflow or core details workflow. [drawnFormType] is the form type Design View asks the core details to be drawn for
+ * (issue #1903). The one read behind both the page's load and its re-read after a save, so the two
  * cannot ask differently.
  */
-suspend fun fetchFormView(gedraId: String, workflowId: String?, client: String?): WorkflowView? =
+suspend fun fetchFormView(gedraId: String, workflowId: String?, client: String?, drawnFormType: String? = null): WorkflowView? =
     if (workflowId != null) {
         WorkflowApi.fetchWorkflowView(workflowId, gedraId, client)
     } else {
-        WorkflowApi.fetchCoreDetailsView(gedraId, client)
+        WorkflowApi.fetchCoreDetailsView(gedraId, client, drawnFormType)
     }
