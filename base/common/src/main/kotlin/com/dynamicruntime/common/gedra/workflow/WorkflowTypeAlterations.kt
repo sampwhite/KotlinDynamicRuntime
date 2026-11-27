@@ -57,6 +57,8 @@ fun workflowSchemaStore(clientStore: KdrSchemaStore, declared: WfDeclared): KdrS
  * workflow's refusal, or null when nothing is (issue #984). [traits] are the scope's, by which the workflow's pages
  * reach their types, and [formTypes] its form types, any of whose traits a task may collect (issue #1903).
  *
+ * - **A type that is there.** A name that matches no type is refused as such, naming the types the pages do show
+ *   (issue #1939), since a short name for a type they show is the usual mistake.
  * - **Only a type the workflow's pages draw** may be altered: one its tasks' traits, or the traits its approvals name,
  *   reach. Altering any other would be an edit nothing shows.
  * - **The merge must apply**: a layout entry the merge refuses (a field the inherited layout does not list, where its
@@ -74,7 +76,7 @@ fun typeAlterationProblem(
         // Its pages draw its tasks' traits, and the traits its approvals name (issue #1875).
         declared.def.typeAlterations,
         declared.def.tasks.flatMap { t -> declared.def.traitIdsOverTypes(t, formTypes) + t.approval?.showTraits.orEmpty() }, store, traits,
-        "Type '%s' (workflow '${declared.def.workflowId}')",
+        "Type '%s' (workflow '${declared.def.workflowId}')", "Its pages show",
     ) { "its pages do not show; a workflow may alter only a type its tasks' traits, or the traits its approvals show, reach" }
 
 /**
@@ -93,7 +95,7 @@ fun approvalAlterationProblem(declared: WfDeclared, store: KdrSchemaStore, trait
             ?: def.approvalShows(task).mapNotNull { def.task(it) }.flatMap { t -> t.traits.map { it.traitId } }
         alterationProblem(
             approval.typeAlterations, shownTraits, workflowStore, traits,
-            "Type '%s' (approval '${task.id}' of workflow '${def.workflowId}')",
+            "Type '%s' (approval '${task.id}' of workflow '${def.workflowId}')", "The approval shows",
         ) { "approval task '${task.id}' does not show; an approval may alter only a type the traits it shows reach" }
             ?.let { return "has an approval task '${task.id}' that $it" }
     }
@@ -101,9 +103,10 @@ fun approvalAlterationProblem(declared: WfDeclared, store: KdrSchemaStore, trait
 }
 
 /**
- * The first problem with [alterations] over [store], or null: each must alter a type the traits [traitIds] reach
- * ([notShown] says why one does not), merge over the type, and leave a layout that passes the layout checks.
- * [where] names the type in a layout problem, with `%s` for its name.
+ * The first problem with [alterations] over [store], or null: each must alter a type that is there, and one the traits
+ * [traitIds] reach ([notShown] says why one does not), merge over the type, and leave a layout that passes the layout
+ * checks. [where] names the type in a layout problem, with `%s` for its name, and [shows] begins the sentence listing
+ * the types the traits reach, said when an alteration names no type at all.
  */
 private fun alterationProblem(
     alterations: Map<String, Map<String, Any?>>,
@@ -111,6 +114,7 @@ private fun alterationProblem(
     store: KdrSchemaStore,
     traits: List<GedraTrait>,
     where: String,
+    shows: String,
     notShown: () -> String,
 ): String? {
     if (alterations.isEmpty()) return null
@@ -118,8 +122,11 @@ private fun alterationProblem(
     val seeds = traitIds.mapNotNull { id -> byId[id]?.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) } }
     val shown = collectDefClosure(seeds, store.defs).keys
     for ((typeName, body) in alterations) {
+        // Whether the type is there is asked first (issue #1939): a name that matches no type, refused as one the pages
+        // do not show, sends the reader after the wrong cause.
+        val base = (store.defs[typeName] as? Map<*, *>)?.toJsonMapOrEmpty()
+            ?: return "alters the type '$typeName', but no type has that name. $shows ${namesInWords(shown)}."
         if (typeName !in shown) return "alters the type '$typeName', which ${notShown()}."
-        val base = (store.defs[typeName] as? Map<*, *>)?.toJsonMapOrEmpty() ?: return "alters the type '$typeName', which is not there."
         val outcome = overlayTypeOutcome(typeName, base, body)
         outcome.problems.firstOrNull()?.let {
             return "alters '$typeName' in a way that cannot apply, at ${it.location?.path ?: typeName}: ${it.message}"
@@ -128,6 +135,17 @@ private fun alterationProblem(
             .firstOrNull()?.let { return "alters the layout of '$typeName': ${it.message}" }
     }
     return null
+}
+
+/** [names] quoted, as a sentence lists them: `'a'`, `'a' and 'b'`, `'a', 'b', and 'c'`, or "no type" when there are none. */
+private fun namesInWords(names: Collection<String>): String {
+    val quoted = names.map { "'$it'" }
+    return when (quoted.size) {
+        0 -> "no type"
+        1 -> quoted.single()
+        2 -> "${quoted[0]} and ${quoted[1]}"
+        else -> "${quoted.dropLast(1).joinToString(", ")}, and ${quoted.last()}"
+    }
 }
 
 /**
