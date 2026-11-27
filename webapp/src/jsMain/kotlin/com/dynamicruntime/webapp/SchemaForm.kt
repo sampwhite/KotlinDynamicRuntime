@@ -8,6 +8,7 @@ import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchLayout
@@ -614,7 +615,14 @@ val SchemaForm = FC<SchemaFormProps> { props ->
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
         // while the wire-documenting catalog keeps its density (issue #694 review); see `.schema-form.friendly`.
-        className = ClassName(if (opts.friendly) "schema-form friendly" else "schema-form")
+        // `read-only` lays a form being read out as a column of labels beside their values (issue #1876).
+        className = ClassName(
+            when {
+                readsOnly(opts, props.editable == true) -> "schema-form friendly read-only"
+                opts.friendly -> "schema-form friendly"
+                else -> "schema-form"
+            },
+        )
         // The root path is empty, which is what the validator starts from too, so `childPath` composes the
         // identical strings on both sides (see SchValidator's note on why these are shared).
         renderObject(props.type, props.values, emptySet(), props.editable, "", errors, props.onChange, opts)
@@ -989,7 +997,7 @@ private fun ChildrenBuilder.renderVariant(
         id = ElementId(fieldRowId(discriminatorPath))
         tabIndex = -1
         className = ClassName(rowClass(messages))
-        labelSpan(if (opts.friendly) humanizeFieldName(name) else name, required = true)
+        labelSpan(if (opts.friendly) humanizeFieldName(name) else name, required = !readsOnly(opts, editable))
         if (editable && openEntry) {
             OpenChoiceField {
                 // Labels are the raw trait ids, not the friendly branch titles the closed Select shows: antd's
@@ -1237,10 +1245,12 @@ private fun ChildrenBuilder.fieldFrame(
     value: Any? = null,
     // How this field presents a supplied default (issue #710); a `filled` suggestion marks its label.
     prefill: FieldPrefill? = null,
-    // Whether the field can be filled in here; a file's kinds are said only where one can be picked.
+    // Whether the field can be filled in here. Where it cannot, a form people read ([readsOnly]) says only what the value
+    // is: no required mark, no hint, and a description only for a value nobody enters (issue #1876).
     editable: Boolean = true,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
+    val reading = readsOnly(opts, editable)
     div {
         id = ElementId(fieldRowId(path))
         // Focusable on purpose but not in the tab order: something jumping here from the failure listing has
@@ -1248,7 +1258,7 @@ private fun ChildrenBuilder.fieldFrame(
         tabIndex = -1
         className = ClassName(rowClass(messages))
         // The layout's `label` (issue #586) shadows the schema title/humanized key; absent, `fieldLabel` decides.
-        labelSpan(fieldLabel(name, prop, opts, copy), required)
+        labelSpan(fieldLabel(name, prop, opts, copy), required && !reading)
         // A `filled` default not yet accepted wears a "Suggested" chip on the container, not inside the control,
         // so the mark reads the same across text / select / checkbox / date (issue #710).
         if (prefill?.mode == SLDM.filled && prefill.suggested) {
@@ -1260,11 +1270,11 @@ private fun ChildrenBuilder.fieldFrame(
         rowContent()
     }
     // Likewise the layout's `description` shadows the schema's; absent, the schema's shows as before.
-    (copy?.description ?: prop.description)?.let { desc(it) }
+    (copy?.description ?: prop.description)?.takeIf { !reading || describesValue(prop.valueType) }?.let { desc(it) }
     // Stated before the field is filled in, not discovered by being rejected. The outline shows the same
     // thing for an output type; this is the input side, which is the one someone is about to type into. The
     // layout's `hint` (issue #587), already resolved against the field's bounds, shadows the derived range.
-    boundHint(prop.valueType, copy?.hint, fileKinds = editable)
+    if (!reading) boundHint(prop.valueType, copy?.hint)
     // The schema author's message names the field as this form does, when it names it (issue #1918).
     val named = messages.map { it.called(fieldLabel(name, prop, opts, copy)) }
     fieldErrors(path, named) { f -> layoutErrorMessage(copy, prop, name, value, f) }
@@ -1292,6 +1302,21 @@ internal fun markInvalid(props: dynamic, describedBy: String?) {
 
 /** The row's class, marked invalid when the field carries a failure, so the label and control can be styled. */
 private fun rowClass(messages: List<SchFailure>): String = if (messages.isEmpty()) "row" else "row field-invalid"
+
+/**
+ * Whether a field is being read rather than filled in (issue #1876): not [editable], on a form people read
+ * ([FormOpts.friendly]). Such a field shows what its value is and nothing about entering one -- no required mark, no
+ * bounds or layout hint, and its description only where [describesValue] says it explains the value. The catalog's
+ * read-only view documents the wire, so it keeps all three. Pure.
+ */
+internal fun readsOnly(opts: FormOpts, editable: Boolean): Boolean = opts.friendly && !editable
+
+/**
+ * Whether a field's description explains its value rather than how to enter it (issue #1876), so that a form being read
+ * keeps it: a value nobody enters -- computed as it is written, or issued by a counter -- has a description saying what
+ * it is, where an entered field's says what to type ("What to call it."). Pure.
+ */
+internal fun describesValue(vt: SchType): Boolean = vt.derived || vt.counter != null
 
 /**
  * The failures for one field, printed beneath it. The path is deliberately *not* repeated here — the message
@@ -1762,7 +1787,7 @@ private fun ChildrenBuilder.renderTable(
     opts: FormOpts,
     copy: LayoutCopy? = null,
 ) {
-    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts, copy, value = value)
+    fieldFrame(name, prop, required, path, errors.messagesAt(path), opts, copy, value = value, editable = false)
     schemaTable(elementType, value.toJsonListOrEmpty(), opts)
 }
 
@@ -1907,12 +1932,14 @@ internal fun typeHint(vt: SchType): String? = when {
 
 /**
  * A value as a form people fill in shows it (issue #1438): a yes/no answer as Yes or No, as a listing's cells and a
- * report's say it, and a choice by its label, each of a list of them too. Anything else, and a choice the schema does
- * not list, reads as [displayValue] has it.
+ * report's say it, and a choice by its label, each of a list of them too; a moment in [zone], labeled with it, as
+ * [formatTimestamp] has it. Anything else, and a choice the schema does not list, reads as [displayValue] has it.
  */
-internal fun friendlyValueText(vt: SchType, value: Any?): String = when (value) {
+internal fun friendlyValueText(vt: SchType, value: Any?, zone: String = DisplayZone.current): String = when (value) {
     is Boolean -> if (value) "Yes" else "No"
-    is List<*> -> value.joinToString(", ") { element -> vt.itemType?.let { friendlyValueText(it, element) } ?: displayValue(element) }
+    is List<*> -> value.joinToString(", ") { element -> vt.itemType?.let { friendlyValueText(it, element, zone) } ?: displayValue(element) }
+    // A moment reads as the editable field shows it, in the client's zone and naming it (issue #1876), not as stored.
+    is String if vt.format == SFMT.dateTime -> formatTimestamp(value, zone)
     else -> vt.options?.firstOrNull { it.value == value?.toString() }?.label ?: displayValue(value)
 }
 

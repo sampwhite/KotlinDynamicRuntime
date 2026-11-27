@@ -70,6 +70,28 @@ class ControlKindTest {
     }
 
     @Test
+    fun aFormBeingReadSaysWhatAValueIsAndNothingAboutEnteringOne() {
+        // Issue #1876: a moment reads in the client's zone, naming it, as the editable field shows it -- not as stored.
+        // A day alone never shifts, so it stays as it is.
+        val moment = fieldType(string(mapOf(SCH.format to SFMT.dateTime)))
+        assertEquals("Nov 20, 2026, 6:30 PM GMT", friendlyValueText(moment, "2026-11-20T18:30:00.000Z", "UTC"))
+        assertEquals("Nov 20, 2026, 10:30 AM GMT-8", friendlyValueText(moment, "2026-11-20T18:30:00.000Z", "Etc/GMT+8"))
+        assertEquals(
+            "Nov 20, 2026, 6:30 PM GMT, Nov 21, 2026, 9:00 AM GMT",
+            friendlyValueText(fieldType(array(string(mapOf(SCH.format to SFMT.dateTime)))), listOf("2026-11-20T18:30:00Z", "2026-11-21T09:00:00Z"), "UTC"),
+        )
+        assertEquals("2027-03-01", friendlyValueText(fieldType(string(mapOf(SCH.format to SFMT.date))), "2027-03-01", "UTC"))
+        // Read, not filled in, only on a form people read: the catalog's read-only view documents the wire, and keeps
+        // its required marks and hints.
+        assertEquals(true, readsOnly(FormOpts(friendly = true), editable = false))
+        assertEquals(false, readsOnly(FormOpts(friendly = true), editable = true))
+        assertEquals(false, readsOnly(FormOpts(friendly = false), editable = false))
+        // A description survives being read only where it says what the value is: one nobody enters.
+        assertEquals(false, describesValue(fieldType(string())))
+        assertEquals(true, describesValue(fieldType(mapOf(SCH.type to SCT.boolean, SCH.derived to true))))
+    }
+
+    @Test
     fun multiSelectFromAnArrayOfChoices() {
         assertEquals(ControlKind.MultiSelect, kindOf(array(string(mapOf(SCH.options to opts)))))
         // An open element type accepts a value not offered -> tags mode.

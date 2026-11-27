@@ -61,12 +61,10 @@ data class FieldBoundWords(val words: Map<FieldBound, String> = emptyMap()) {
  * here, under the field's label and control together, rather than inside the control, where they made it two lines
  * tall and its label was centered between the button and the note. A table field (one with rows) is left out: on a form
  * page it is edited as a grid, which takes no file, and its control says the kinds itself where it is uploaded instead.
- * Without [fileKinds] -- a field that cannot be filled in -- the kinds are left out, since nobody is picking a file.
  * Pure.
  */
-fun derivedHintLines(vt: SchType, words: FieldBoundWords = FieldBoundWords(), fileKinds: Boolean = true): List<String> {
-    val file = (if (vt.jsonType == SCT.array) vt.itemType else vt)
-        ?.takeIf { fileKinds && it.isDataFile() && it.fileRowType == null }
+fun derivedHintLines(vt: SchType, words: FieldBoundWords = FieldBoundWords()): List<String> {
+    val file = (if (vt.jsonType == SCT.array) vt.itemType else vt)?.takeIf { it.isDataFile() && it.fileRowType == null }
     return listOfNotNull(file?.let { dataFileHint(it) }, boundHintText(vt, words))
 }
 
@@ -114,7 +112,6 @@ private fun sideOf(min: Double?, max: Double?, between: FieldBound, atLeast: Fie
 private external interface BoundHintProps : Props {
     var type: SchType
     var override: String?
-    var fileKinds: Boolean
 }
 
 /**
@@ -128,7 +125,7 @@ private val BoundHint = FC<BoundHintProps> { props ->
     // `${'$'}{min}` / `${'$'}{max}`, so it says what the author wanted in its place. A blank override is treated as "no
     // hint", so a layout can suppress the derived ones by setting it empty.
     val lines = props.override?.ifBlank { null }?.let { listOf(it) }
-        ?: if (props.override == null) derivedHintLines(props.type, words, props.fileKinds) else emptyList()
+        ?: if (props.override == null) derivedHintLines(props.type, words) else emptyList()
     for (line in lines) {
         p {
             className = ClassName("type-hint")
@@ -137,11 +134,10 @@ private val BoundHint = FC<BoundHintProps> { props ->
     }
 }
 
-/** Draws [BoundHint] for [vt], a layout's [override] in place of the derived lines, a file's kinds only with [fileKinds]. */
-internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null, fileKinds: Boolean = true) {
+/** Draws [BoundHint] for [vt], a layout's [override] in place of the derived lines. */
+internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null) {
     BoundHint {
         type = vt
         this.override = override
-        this.fileKinds = fileKinds
     }
 }

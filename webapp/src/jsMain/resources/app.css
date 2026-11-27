@@ -998,6 +998,23 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .field-value { color: var(--text); }
 /* Long text read back (issue #1550): its lines as written, wrapped to the column. */
 .field-value.long-text { white-space: pre-wrap; }
+/* A form being read, not filled in (issue #1876): its labels in one column and its values in the next, each value
+   starting level with its label's first line, however many lines either takes. A label is given the column's width
+   rather than its own, so values line up whatever a label says, and a longer one wraps within it. An object's fields
+   are indented under it, so their values line up with each other. A description kept under a value (one nobody
+   enters) starts in the values' column. With no entry hints between them, rows are spaced a little apart. On a phone
+   a label sits over its value instead. */
+.schema-form.read-only { --read-label-width: 220px; }
+.schema-form.read-only .row { flex-wrap: nowrap; align-items: flex-start; }
+.schema-form.read-only .row + .row { margin-top: 6px; }
+.schema-form.read-only .row > .field-label { flex: 0 0 var(--read-label-width); min-width: 0; overflow-wrap: break-word; }
+.schema-form.read-only .row > .field-label + * { flex: 1 1 auto; min-width: 0; }
+.schema-form.read-only .row + .subtitle { margin-left: calc(var(--read-label-width) + 12px); }
+@media (max-width: 600px) {
+  .schema-form.read-only .row { flex-direction: column; gap: 2px; }
+  .schema-form.read-only .row > .field-label { flex-basis: auto; }
+  .schema-form.read-only .row + .subtitle { margin-left: 0; }
+}
 .field-type { color: var(--text-faint); font-style: italic; font-size: .85rem; }
 /* A supplied default not yet accepted (issue #710): a quiet chip on the field container marking that the value
    came from the caller's account, not from them. Muted rather than shouting -- it is a nudge to confirm, not an
@@ -1056,6 +1073,12 @@ input:where(:not([type=checkbox]):not([type=radio])) {
 .wf-layout { display: flex; gap: 28px; align-items: flex-start; }
 .wf-rail { flex: 0 0 220px; display: flex; flex-direction: column; gap: 4px; }
 .wf-panel { flex: 1 1 auto; min-width: 0; }
+/* On a phone the rail sits above the task rather than beside it (issue #1876): beside it, its 220 pixels left the
+   task a column too narrow to read. */
+@media (max-width: 640px) {
+  .wf-layout { flex-direction: column; align-items: stretch; gap: 12px; }
+  .wf-rail { flex-basis: auto; }
+}
 .wf-rail-item {
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 8px 10px; border-radius: 8px; text-align: left; font: inherit;
