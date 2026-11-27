@@ -96,6 +96,30 @@ class DataFileUploadTest {
     }
 
     @Test
+    fun theKindsAreSaidUnderTheWholeFieldAndOnceForAList() {
+        // Under the label and the control together, as any field's hints are -- not inside the control, which made the
+        // row two lines tall and centered its label between the button and the note.
+        assertEquals(listOf("PDF."), derivedHintLines(fileField(FKIND.pdf)))
+        // A list of files says its kinds once, then its bounds.
+        val photos = parseSchemaTypes(
+            mapOf(
+                "t.T" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "p" to mapOf(
+                            SCH.type to SCT.array, SCH.maxItems to 4,
+                            SCH.items to mapOf(SCH.type to SCT.string, SCH.format to SFMT.dataFile, SCH.fileKinds to listOf(FKIND.png)),
+                        ),
+                    ),
+                ),
+            ),
+        ).getValue("t.T").properties.getValue("p").valueType
+        assertEquals(listOf("PNG.", "Up to 4 entries"), derivedHintLines(photos))
+        // Where nothing can be picked, the kinds are not said.
+        assertEquals(listOf("Up to 4 entries"), derivedHintLines(photos, fileKinds = false))
+    }
+
+    @Test
     fun aSmallFileGoesInOneRequestAndALargeOneInChunksThatResume() {
         val chunk = DFILE.chunkBytes.toLong()
         assertTrue(sentWhole(chunk))

@@ -402,6 +402,11 @@ the raw editor, the workflow pages, the create pages -- since `controlKind` pick
 (`ControlKind.DataFile`). Read-only, the same field draws `DataFileValue`: the file's name as a link to its content,
 its kind and size, and an image or a `<video preload="metadata">` in place (`.data-file-preview`, at most 480 by 360).
 
+- **The kinds a field takes are said under the whole field**, with its other hints (`derivedHintLines` in
+  `FieldBounds.kt`), not inside the control: there they made the control two lines tall, and the row's centering put
+  the label between **Upload…** and the note. A list of files says them once, above its bounds; a layout `hint` replaces
+  them; a field that cannot be filled in leaves them out. Only a table field uploaded as a file, outside a form page,
+  says them in its control.
 - **A pick is judged by its first bytes before anything is sent** (`judgePick`, the kernel's `FileKindSniff` over the
   field's kinds), so a JPEG named `.png`, a PDF picked for a photo, or a file past the field's size is refused in the
   browser with what it is. The kind found, not the browser's guess at a type, is what the upload is sent as.

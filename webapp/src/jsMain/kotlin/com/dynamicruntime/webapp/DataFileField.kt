@@ -520,6 +520,8 @@ val DataFileField = FC<DataFileFieldProps> { props ->
             }
         }
         problem?.let { errorText(it) }
-        span { className = ClassName("type-hint"); +dataFileHint(vt) }
+        // A form draws the kinds a field takes under its label and this control together ([derivedHintLines]). Only a
+        // table field uploaded as a file -- outside a form page, where the form shows no line for it -- says them here.
+        if (vt.fileRowType != null) span { className = ClassName("type-hint"); +dataFileHint(vt) }
     }
 }

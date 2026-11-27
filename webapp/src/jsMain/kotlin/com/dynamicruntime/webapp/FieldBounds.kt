@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.isDataFile
 import com.dynamicruntime.common.util.evalTemplate
 import react.ChildrenBuilder
 import react.FC
@@ -55,6 +56,21 @@ data class FieldBoundWords(val words: Map<FieldBound, String> = emptyMap()) {
 }
 
 /**
+ * The lines a form shows beneath a field when no layout `hint` replaces them: for a file field, or a list of them, the
+ * kinds of file it takes ([dataFileHint]), then the line its bounds give ([boundHintText]). A file's kinds are drawn
+ * here, under the field's label and control together, rather than inside the control, where they made it two lines
+ * tall and its label was centered between the button and the note. A table field (one with rows) is left out: on a form
+ * page it is edited as a grid, which takes no file, and its control says the kinds itself where it is uploaded instead.
+ * Without [fileKinds] -- a field that cannot be filled in -- the kinds are left out, since nobody is picking a file.
+ * Pure.
+ */
+fun derivedHintLines(vt: SchType, words: FieldBoundWords = FieldBoundWords(), fileKinds: Boolean = true): List<String> {
+    val file = (if (vt.jsonType == SCT.array) vt.itemType else vt)
+        ?.takeIf { fileKinds && it.isDataFile() && it.fileRowType == null }
+    return listOfNotNull(file?.let { dataFileHint(it) }, boundHintText(vt, words))
+}
+
+/**
  * The line a field's declared bounds give it -- "Up to 128 characters", "From 20 to 90", "Choose up to 3" -- or null
  * when it declares neither end (issue #203, in words since #1693). What a form shows beneath the field when no layout
  * `hint` replaces it. A client's line that does not evaluate falls back to the shipped one, so a wording mistake costs
@@ -98,31 +114,34 @@ private fun sideOf(min: Double?, max: Double?, between: FieldBound, atLeast: Fie
 private external interface BoundHintProps : Props {
     var type: SchType
     var override: String?
+    var fileKinds: Boolean
 }
 
 /**
  * A field's declared bounds, stated the way the outline already states a choice field's options -- the range is part
  * of what the shape *is*, and reading it here beats discovering it by being rejected (issue #203). In the words of the
- * shell's copy (issue #1693). Silent when the field declares neither end.
+ * shell's copy (issue #1693). A file field's kinds come first ([derivedHintLines]). Silent when there is nothing to say.
  */
 private val BoundHint = FC<BoundHintProps> { props ->
     val words = useShellFacts().fieldBoundWords
-    // A layout `hint` (issue #587) replaces the derived line wholesale -- it was resolved against this field's
+    // A layout `hint` (issue #587) replaces the derived lines wholesale -- it was resolved against this field's
     // `${'$'}{min}` / `${'$'}{max}`, so it says what the author wanted in its place. A blank override is treated as "no
-    // hint", so a layout can suppress the derived one by setting it empty.
-    val text = props.override?.ifBlank { null } ?: if (props.override == null) boundHintText(props.type, words) else null
-    if (text != null) {
+    // hint", so a layout can suppress the derived ones by setting it empty.
+    val lines = props.override?.ifBlank { null }?.let { listOf(it) }
+        ?: if (props.override == null) derivedHintLines(props.type, words, props.fileKinds) else emptyList()
+    for (line in lines) {
         p {
             className = ClassName("type-hint")
-            +text
+            +line
         }
     }
 }
 
-/** Draws [BoundHint] for [vt], a layout's [override] in place of the derived line. */
-internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null) {
+/** Draws [BoundHint] for [vt], a layout's [override] in place of the derived lines, a file's kinds only with [fileKinds]. */
+internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null, fileKinds: Boolean = true) {
     BoundHint {
         type = vt
         this.override = override
+        this.fileKinds = fileKinds
     }
 }
