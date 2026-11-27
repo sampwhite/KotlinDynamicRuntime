@@ -90,8 +90,9 @@ One more entry, in the `kdr:listingDef` slot, has the list show each claim's wor
 
 ## Menu and home page
 
-The shipped menu leaves the Workflows page off. This entry of the `kdr:uiBlockDef` slot turns it on, for anyone signed
-in:
+The demo's people know a form as a **claim**, so the demo calls it one wherever its words can be changed. The menu is
+the first place. The `kdr:uiBlockDef` slot's entry turns on the Workflows page, which the shipped menu leaves off, and
+gives four of the menu's items new labels:
 
 <!-- kdr-doc: bundle=base pointer=/kdr:uiBlockDef -->
 ```json
@@ -99,15 +100,34 @@ in:
   {
     "blockId": "homeMenu",
     "content": {
-      "menu": [{ "id": "workflows", "cfactExpression": "kdr:loggedIn,kdr:app" }]
+      "menu": [
+        { "id": "workflows", "cfactExpression": "kdr:loggedIn,kdr:app" },
+        { "id": "forms", "label": "My claims" },
+        { "id": "clientForms", "label": "Claims" },
+        { "id": "files", "label": "My evidence" },
+        { "id": "clientFiles", "label": "Evidence" }
+      ]
     }
   }
 ]
 ```
 
-The demo's home page says what the demo is and where each role starts. Its words are in the `kdr:fragmentDef` slot,
-which changes the platform's words one key at a time, as the conference demo's [home
-page](../demo-client/client.md#home-page) explains:
+An entry with only an `id` and a `label` changes the words and nothing else, so who is offered each item, and where it
+goes, stay as the platform ships them:
+
+| Item | Shipped label | Who is offered it |
+| --- | --- | --- |
+| `forms` | My forms | A policyholder, who lists only their own claims |
+| `clientForms` | Forms | An adjuster or a claims manager, who lists every claim |
+| `files` | My files | A policyholder |
+| `clientFiles` | Files | An adjuster or a claims manager |
+
+The forms list is headed by the label of the item that opens it, so a policyholder's is headed **My claims**. The
+files page is not: it is still headed **My files** or **Files**. Every file in the demo is evidence for a claim, which
+is why its items say so.
+
+The rest of the demo's words are in the `kdr:fragmentDef` slot, which changes the platform's words one key at a time,
+as the conference demo's [home page](../demo-client/client.md#home-page) explains:
 
 <!-- kdr-doc: bundle=base pointer=/kdr:fragmentDef -->
 ```json
@@ -117,12 +137,29 @@ page](../demo-client/client.md#home-page) explains:
     "content": {
       "home": {
         "title": "Claims demo",
-        "intro": "The **Claims demo** is a small insurer's claims. A policyholder reports an incident, which is given a number as the report is filed, and adds photographs and a document as evidence. An adjuster assesses the claim and approves a payment of up to $5,000, while a larger one waits for a claims manager. The demo is shared with everyone who joins it: as an adjuster or a claims manager, you see the claims every visitor makes, and they see yours.\n\nAs a policyholder, open **My forms** from the menu, and choose **Create a form** to report an incident. As an adjuster, this page lists the claims you can assess under **Waiting on you**, and as a claims manager, so does each payment over $5,000, for you to approve. [The demo's pages](/docs/claims-demo/README.md) show the configuration behind each step."
+        "intro": "The **Claims demo** is a small insurer's claims. A policyholder reports an incident, which is given a number as the report is filed, and adds photographs and a document as evidence. An adjuster assesses the claim and approves a payment of up to $5,000, while a larger one waits for a claims manager. The demo is shared with everyone who joins it: as an adjuster or a claims manager, you see the claims every visitor makes, and they see yours.\n\nAs a policyholder, open **My claims** from the menu, and choose **Create a form** to report an incident. As an adjuster, this page lists the claims you can assess under **Waiting on you**, and as a claims manager, so does each payment over $5,000, for you to approve. [The demo's pages](/docs/claims-demo/README.md) show the configuration behind each step."
+      },
+      "forms": {
+        "whatIsThis": "Each row is one **claim**: an incident a policyholder reported, and everything added to it since. Its number, its kind, and where it happened lead the row, and **Contains** lists its parts.\n\nA claim goes through **steps**, such as its evidence and its settlement. Each is something somebody does, and the **Workflows** column shows where the claim stands in each."
+      },
+      "workflowCell": {
+        "waitingOnOwner": "With the policyholder",
+        "notStarted": "This claim has not started this step. Start it to work on it."
       }
     }
   }
 ]
 ```
+
+| Key | Where it is shown |
+| --- | --- |
+| `home.title`, `home.intro` | The home page: what the demo is, and where each role starts. |
+| `forms.whatIsThis` | The forms list, when **What is this?** beside its heading is opened. |
+| `workflowCell.waitingOnOwner` | The forms list, for a step waiting on the policyholder, seen by somebody else. |
+| `workflowCell.notStarted` | A step's page, under its title, before the claim has started it. |
+
+A few of the forms list's words are the app's own, with no key to change them: its **New form** and **Create a form**
+buttons, and its count of forms. So a policyholder still reads "form" there.
 
 ## What the rest of the bundle holds
 

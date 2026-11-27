@@ -278,7 +278,7 @@ evidence can still be changed, so that a policyholder can send a late document, 
 
 ## What the adjuster sees
 
-An adjuster's forms list is **Forms**, with every claim. A claim nobody has assessed shows **Start Settlement**
+An adjuster's forms list is **Claims**, with every claim. A claim nobody has assessed shows **Start Settlement**
 highlighted, and is under **Waiting on you**, in the list and on the home page. One click starts it and opens **Assess
 the claim**: **Outcome**, **Reasons**, and, once the outcome is **Pay the claim**, **Amount to pay (dollars)**. The
 claim's status is **Needs Review**. The incident itself is on the claim's own page, which **View Info** in the forms

@@ -41,7 +41,7 @@ anyone can sign in to and look around. The demo is already there, ready to join.
    **Log in** instead.)
 2. On the home page, under **Try a demo**, choose **Join…** on the **Claims demo** card.
 3. Read **Before you join**, check the box that says you understand, and choose **Join as Policyholder**.
-4. Open **My forms** from the menu, and choose **Create a form**.
+4. Open **My claims** from the menu, and choose **Create a form**.
 5. Fill in the report, and choose **File the report**.
 
 The claim appears in your forms list, under its incident's number. The demo is shared with everyone else who joins it,

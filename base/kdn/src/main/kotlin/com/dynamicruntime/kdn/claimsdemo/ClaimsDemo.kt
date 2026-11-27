@@ -235,10 +235,16 @@ fun claimsDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ClaimsDemo.clie
         )
         cfact(ClaimsDemo.settled, ClaimsDemo.cfactGroup, "True once the claim's outcome is approved.")
 
-        // The workflow pages are off in the shipped menu; a client with normal workflows turns them on (issue #792).
+        // The workflow pages are off in the shipped menu; a client with normal workflows turns them on (issue #792). A form
+        // is a claim to the demo's people, and every file is evidence, so the forms and files items say so: the forms list
+        // is headed by its item's label.
         uiBlockOverlay(HMENU.block) {
             items(HFLD.menu) {
                 menuItem(HMENU.workflows, cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}")
+                menuItem(HMENU.forms, label = "My claims")
+                menuItem(HMENU.clientForms, label = "Claims")
+                menuItem(HMENU.files, label = "My evidence")
+                menuItem(HMENU.clientFiles, label = "Evidence")
             }
         }
 
@@ -351,7 +357,8 @@ fun claimsDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ClaimsDemo.clie
         traitUsage(ClaimsDemo.incident, "Where", $$"${place}", substring = true, columnId = ClaimsDemo.place)
         listing(ListingDef(workflowLayout = WorkflowLayout.combined))
 
-        // Its home page's own words (issue #1692): what the demo is, and where each role starts.
+        // Its home page's own words (issue #1692): what the demo is, and where each role starts. Then the forms list's
+        // words that name a form, as a claim.
         fragmentOverlay(HFRAG.home) {
             namespace(HFRAG.homeNs) {
                 key(HFRAG.title, "Claims demo")
@@ -362,11 +369,24 @@ fun claimsDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ClaimsDemo.clie
                         "assesses the claim and approves a payment of up to $5,000, while a larger one waits for a claims " +
                         "manager. The demo is shared with everyone who joins it: as an adjuster or a claims " +
                         "manager, you see the claims every visitor makes, and they see yours.\n\n" +
-                        "As a policyholder, open **My forms** from the menu, and choose **Create a form** to report an " +
+                        "As a policyholder, open **My claims** from the menu, and choose **Create a form** to report an " +
                         "incident. As an adjuster, this page lists the claims you can assess under **Waiting on you**, and " +
                         "as a claims manager, so does each payment over $5,000, for you to approve. " +
                         "[The demo's pages](/docs/claims-demo/README.md) show the configuration behind each step.",
                 )
+            }
+            namespace(HFRAG.formsNs) {
+                key(
+                    HFRAG.explanation,
+                    "Each row is one **claim**: an incident a policyholder reported, and everything added to it since. Its " +
+                        "number, its kind, and where it happened lead the row, and **Contains** lists its parts.\n\n" +
+                        "A claim goes through **steps**, such as its evidence and its settlement. Each is something somebody " +
+                        "does, and the **Workflows** column shows where the claim stands in each.",
+                )
+            }
+            namespace(HFRAG.workflowCellNs) {
+                key(HFRAG.wcWaitingOnOwner, "With the policyholder")
+                key(HFRAG.wcNotStarted, "This claim has not started this step. Start it to work on it.")
             }
         }
     }
