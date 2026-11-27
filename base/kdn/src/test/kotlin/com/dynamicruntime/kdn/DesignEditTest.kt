@@ -333,6 +333,30 @@ class DesignEditTest : StringSpec({
             "which its pages do not show"
     }
 
+    "a workflow altering a type that is not there is told so, with the types its pages show (#1939)" {
+        val other = "alterMissing1939"
+        val config = gedraConfig(cxt, "${other}cfg", clientNamespace(other), other) {
+            defineClient(
+                ClientDef(
+                    clientId = other, name = other, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "A note.") { property("text", "The text.") }
+            workflow("make", WfEntry.creation) {
+                task("ask", "Ask") {
+                    trait("note")
+                    save("create", "Create")
+                }
+                // The short name of the type its page shows, as the assistant once wrote it.
+                alterType("NoteData", mapOf(SCH.layout to mapOf(SL.label to "Your note")))
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", other), config)
+        shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, other) }.fullMessage() shouldContain
+            "alters the type 'NoteData', but no type has that name. Its pages show 'client.$other.NoteData'."
+    }
+
     "a workflow alteration of anything but a layout is refused at the write" {
         val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
         shouldThrow<KdrException> {
