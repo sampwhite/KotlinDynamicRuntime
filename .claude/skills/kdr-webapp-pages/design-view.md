@@ -16,7 +16,8 @@ as hatched ghosts saying why. The inspector's left edge drags it wider (issue #1
 grip sets `--dv-panel-width` on the page root, which the room the page makes reads too, held by `inspectorWidthFor` to
 leave the form 480px; the arrow keys move it while focused, a double-click restores the default, and the width is
 remembered per browser. Its JSON blocks are read-only text areas, starting at their lines up to sixteen
-(`jsonBlockRowsFor`), that drag taller. A field's copy -- label, description, hint, and on a list of entries its
+(`jsonBlockRowsFor`), that drag taller. A field's copy -- label, description, **Read description** (issue #1876, the
+layout's `readDescription`, shown where the form is read rather than filled in), hint, and on a list of entries its
 **Entry label** (issue #1748: the layout's `entryLabel`, what a form heads each entry with, offered only on a list of
 objects neither keyed nor a union, where a form heads entries by it, as **Choices on this form** is only for a closed
 list; `entryLabelHeadsEntries`, `editableCopyKeys(prop)`) -- can be

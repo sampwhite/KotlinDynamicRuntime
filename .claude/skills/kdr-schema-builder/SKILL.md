@@ -614,6 +614,11 @@ is equivalent):
   path (`elementRowHeader`, `entryHeading` in the webapp). It is the
   layout's, not the schema's, because what an entry is called varies by form. It is checked at load to say only
   `${n}`, and to be on a list of entries (`entryLabelProblems`), not a list of choices, which a form draws as one control.
+- **A description for reading** (`readDescription`, issue #1876): `field(name, readDescription = "Their best guess.")`.
+  Where a form is read rather than filled in (an approval's traits, a form's info page), the webapp shows it in place of
+  the `description`, which is entry help; unset, a field being read shows no description unless nobody enters it
+  (`describesValue`: `g-derived` or `g-counter`). Copy like the rest (`SL.fieldCopyKeys`): a template checked at load,
+  and a `%{@t(...)}` pull resolved at delivery.
 - **Form requirements** (`required`, `choices`, issue #1022): what *this form* asks for beyond the schema --
   `field(name, required = true)`, and `field(name, choices = listOf(SchLayoutChoice("park", "Outdoors"), …))`, a
   **restated** list of the schema's choices (which, in what order, with the form's labels). They never change what

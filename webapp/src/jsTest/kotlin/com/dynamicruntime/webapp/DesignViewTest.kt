@@ -414,15 +414,24 @@ class DesignViewTest {
     @Test
     fun onlyAListOfEntriesIsOfferedAnEntryLabel() {
         val props = listTypes.properties
-        assertEquals(listOf(SL.label, SL.description, SL.hint, SL.entryLabel), editableCopyKeys(props.getValue("speakers")))
+        assertEquals(listOf(SL.label, SL.description, SL.readDescription, SL.hint, SL.entryLabel), editableCopyKeys(props.getValue("speakers")))
         // A list of choices is one control; a plain field has no entries.
-        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("topics")))
-        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("title")))
+        assertEquals(listOf(SL.label, SL.description, SL.readDescription, SL.hint), editableCopyKeys(props.getValue("topics")))
+        assertEquals(listOf(SL.label, SL.description, SL.readDescription, SL.hint), editableCopyKeys(props.getValue("title")))
         // Where a form heads the entries otherwise, the row would change nothing: a keyed entry reads as its key, and a
         // list of single values draws no heading.
-        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("visits")))
-        assertEquals(listOf(SL.label, SL.description, SL.hint), editableCopyKeys(props.getValue("tags")))
+        assertEquals(listOf(SL.label, SL.description, SL.readDescription, SL.hint), editableCopyKeys(props.getValue("visits")))
+        assertEquals(listOf(SL.label, SL.description, SL.readDescription, SL.hint), editableCopyKeys(props.getValue("tags")))
         assertEquals("Entry label", humanizeFieldName(SL.entryLabel))
+    }
+
+    @Test
+    fun aBlankReadDescriptionIsWhatAFormBeingReadShows() {
+        // Issue #1876: an entered field shows no description where it is read; a field nobody enters keeps its own.
+        val title = listTypes.properties.getValue("title")
+        assertEquals(null, copyFallback(SL.readDescription, "title", title).text)
+        assertEquals("Blank: a form being read shows no description.", copyFallback(SL.readDescription, "title", title).note)
+        assertEquals("Read description", humanizeFieldName(SL.readDescription))
     }
 
     @Test

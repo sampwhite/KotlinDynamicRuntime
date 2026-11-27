@@ -80,6 +80,27 @@ class SchLayoutReportTest {
     }
 
     @Test
+    fun aReadDescriptionIsCopyForWhoeverReadsTheField() {
+        // Issue #1876: a description for a form being read, beside the one for entering the value; copy like the rest.
+        val type = objType("occurredAt" to mapOf(SCH.type to SCT.string))
+        val good = layoutOf(
+            mapOf(SL.field to "occurredAt", SL.description to "Your best guess.", SL.readDescription to "Their best guess."),
+        )
+        val field = good.fields.single()
+        assertEquals("Their best guess.", field.readDescription)
+        assertEquals("Their best guess.", field.toJsonMap()[SL.readDescription])
+        assertEquals("Their best guess.", field.copyIn(SL.readDescription))
+        assertEquals("Your best guess.", field.copyIn(SL.description))
+        assertEquals(emptyList(), layoutFieldProblems(where, good, type) + layoutTemplateProblems(where, good, type))
+        // A malformed template is caught in it as in any copy.
+        val bad = layoutOf(mapOf(SL.field to "occurredAt", SL.readDescription to $$"Given ${"))
+        assertEquals(
+            listOf("schemaFields[0].readDescription"),
+            layoutTemplateProblems(where, bad, type).map { it.location?.path },
+        )
+    }
+
+    @Test
     fun anEntryLabelHeadsAListOfEntriesAndIsGivenOnlyItsNumber() {
         // Issue #1714: what a form heads each entry of a list with, a template over the entry's number.
         val type = objType(

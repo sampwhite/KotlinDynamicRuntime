@@ -66,7 +66,14 @@ The `incident` trait holds what happened:
         }
       }
     },
-    "required": ["kind", "occurredAt", "place", "whatHappened"]
+    "required": ["kind", "occurredAt", "place", "whatHappened"],
+    "g-layout": {
+      "$comment": "Descriptions for the adjuster and the claims manager, who read what the policyholder filled in.",
+      "schemaFields": [
+        { "field": "occurredAt", "readDescription": "The policyholder's best guess, if they were not sure." },
+        { "field": "whatHappened", "readDescription": "In the policyholder's own words." }
+      ]
+    }
   }
 }
 ```
@@ -83,6 +90,12 @@ itself.
 
 **A message of its own.** The `whatHappened` field takes at least 20 characters, and its `g-errors` says why to a
 reporter who types fewer. See [Bounds and their messages](../demo-client/reference.md#bounds-and-their-messages).
+
+**Other words for whoever reads it.** The descriptions help the policyholder fill the report in, but an adjuster
+reading it later needs to know something else: that a time may be a guess, and that the account is the policyholder's
+own. The trait's `g-layout` gives those two fields a `readDescription`, which a form shows in place of the description
+wherever the report is read rather than filled in, such as the approval in [Settlement](settlement.md). See [Field
+layouts](../demo-client/reference.md#field-layouts).
 
 The `reporter` trait holds who is reporting it:
 

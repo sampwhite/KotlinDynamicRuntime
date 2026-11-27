@@ -500,15 +500,16 @@ text column.
   filter still searches it. Left out because a client shows a column on purpose, and a match in a note is usually
   what the person searching wants.
 
-## When a client wants a field explained where it is read
+## When a client wants an explanation behind a "?", or one for each value
 
-A form being read (an approval showing traits, a form's info page, a task with no save) drops each field's description,
-since an entered field's description says how to fill it in ("What to call it."), and keeps it only for a value nobody
-enters: a computed field (`g-derived`) or a counted one (`g-counter`), whose description says what the value is
-(`describesValue`, issue #1876). When a client wants an entered field explained to whoever reads it -- "Of the damage,
-or of the place." under a list of photographs -- add a field layout key for it: either a flag keeping the description
-where the field is read, or a description of its own for reading. A text of its own is the more useful, since the words
-that help someone fill a field in seldom suit someone reading it.
+A form being read (an approval showing traits, a form's info page, a task with no save) shows a field's layout
+`readDescription` under its value, words for whoever reads the data rather than enters it (issue #1876). Two richer
+displays are left for the rich display work:
+
+- **Behind a "?"** rather than under the value, so a form of many fields stays compact. A presentation choice over the
+  same words: the `readDescription` is what the popover would show.
+- **For each value of a choice**, saying what that answer means to whoever reads it. A layout's `choices` entries already
+  take a `description`, shown where the choice is made; a reading counterpart would sit on the same entry.
 
 ## When someone wants to see a form's whole data in one place
 

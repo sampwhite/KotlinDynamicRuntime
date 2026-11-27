@@ -48,6 +48,14 @@ Two pieces of configuration go into it:
         "description": "For whoever assesses the claim.",
         "g-longText": true
       }
+    },
+    "g-layout": {
+      "$comment": "Descriptions for the adjuster and the claims manager, who read what the policyholder sent.",
+      "schemaFields": [
+        { "field": "photos", "readDescription": "Of the damage, or of the place, as the policyholder took them." },
+        { "field": "document", "readDescription": "A police report, an estimate, or a receipt." },
+        { "field": "notes", "readDescription": "The policyholder's note on what the files show." }
+      ]
     }
   }
 }
@@ -55,6 +63,9 @@ Two pieces of configuration go into it:
 
 Two of its fields hold files, and a file field is a string with the format `gedra-file`. What is stored in the field is
 the id of the file, which the app keeps for the client.
+
+Its `g-layout` gives each field a description for whoever reads the evidence, as the [incident's](reporting.md#traits)
+does: the descriptions above are for the policyholder sending it.
 
 | Key | What it means |
 | --- | --- |

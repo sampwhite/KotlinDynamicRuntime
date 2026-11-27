@@ -215,6 +215,8 @@ class LayoutCopy(
     val errors: Map<String, String> = emptyMap(),
     /** The layout's entry for the field itself, for what it says beyond copy: its form requirements (issue #1022). */
     val entry: SchLayoutField? = null,
+    /** The field's description for whoever reads the form rather than fills it in (issue #1876), resolved as [description] is. */
+    val readDescription: String? = null,
 )
 
 /**
@@ -255,6 +257,7 @@ internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, 
         // Kept unresolved -- resolved per failure by layoutErrorMessage, against that failure's params.
         errors = field.errors,
         entry = field,
+        readDescription = field.readDescription?.let { resolveLayoutTemplate(it, values) },
     )
 }
 
@@ -1246,7 +1249,8 @@ private fun ChildrenBuilder.fieldFrame(
     // How this field presents a supplied default (issue #710); a `filled` suggestion marks its label.
     prefill: FieldPrefill? = null,
     // Whether the field can be filled in here. Where it cannot, a form people read ([readsOnly]) says only what the value
-    // is: no required mark, no hint, and a description only for a value nobody enters (issue #1876).
+    // is: no required mark, no hint, and its layout's `readDescription`, else a description only for a value nobody
+    // enters (issue #1876).
     editable: Boolean = true,
     rowContent: ChildrenBuilder.() -> Unit = {},
 ) {
@@ -1269,8 +1273,14 @@ private fun ChildrenBuilder.fieldFrame(
         }
         rowContent()
     }
-    // Likewise the layout's `description` shadows the schema's; absent, the schema's shows as before.
-    (copy?.description ?: prop.description)?.takeIf { !reading || describesValue(prop.valueType) }?.let { desc(it) }
+    // Likewise the layout's `description` shadows the schema's; absent, the schema's shows as before. Being read, the
+    // field shows its layout's description for reading, else its own only where it says what the value is (issue #1876).
+    val description = if (reading) {
+        copy?.readDescription ?: (copy?.description ?: prop.description)?.takeIf { describesValue(prop.valueType) }
+    } else {
+        copy?.description ?: prop.description
+    }
+    description?.let { desc(it) }
     // Stated before the field is filled in, not discovered by being rejected. The outline shows the same
     // thing for an output type; this is the input side, which is the one someone is about to type into. The
     // layout's `hint` (issue #587), already resolved against the field's bounds, shadows the derived range.
@@ -1306,8 +1316,9 @@ private fun rowClass(messages: List<SchFailure>): String = if (messages.isEmpty(
 /**
  * Whether a field is being read rather than filled in (issue #1876): not [editable], on a form people read
  * ([FormOpts.friendly]). Such a field shows what its value is and nothing about entering one -- no required mark, no
- * bounds or layout hint, and its description only where [describesValue] says it explains the value. The catalog's
- * read-only view documents the wire, so it keeps all three. Pure.
+ * bounds or layout hint, and its layout's description for reading (`readDescription`), else its description only where
+ * [describesValue] says it explains the value. The catalog's read-only view documents the wire, so it keeps all three.
+ * Pure.
  */
 internal fun readsOnly(opts: FormOpts, editable: Boolean): Boolean = opts.friendly && !editable
 

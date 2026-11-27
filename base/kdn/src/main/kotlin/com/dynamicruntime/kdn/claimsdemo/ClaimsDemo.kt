@@ -45,6 +45,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.computeValue
+import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.simulation.SimulationReport
 import com.dynamicruntime.common.simulation.Simulations
 import com.dynamicruntime.common.simulation.simulationEndpoint
@@ -273,6 +274,12 @@ fun claimsDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ClaimsDemo.clie
                 trimmed()
                 errors { belowMinimum($$"Say a little more: an adjuster needs at least ${min} characters to go on.") }
             }
+            // The descriptions above help the policyholder fill the report in; these tell whoever reads it what it holds
+            // (issue #1876).
+            layout(comment = "Descriptions for the adjuster and the claims manager, who read what the policyholder filled in.") {
+                field(ClaimsDemo.occurredAt, readDescription = "The policyholder's best guess, if they were not sure.")
+                field(ClaimsDemo.whatHappened, readDescription = "In the policyholder's own words.")
+            }
         }
         trait(ClaimsDemo.reporterEntry, ClaimsDemo.reporter, setOf(GedraDataType.formDoc), "Who reports the incident.") {
             title = "Reported by"
@@ -313,6 +320,11 @@ fun claimsDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ClaimsDemo.clie
             property(ClaimsDemo.evidenceNotes, "For whoever assesses the claim.") {
                 title = "What do these show?"
                 longText = true
+            }
+            layout(comment = "Descriptions for the adjuster and the claims manager, who read what the policyholder sent.") {
+                field(ClaimsDemo.photos, readDescription = "Of the damage, or of the place, as the policyholder took them.")
+                field(ClaimsDemo.document, readDescription = "A police report, an estimate, or a receipt.")
+                field(ClaimsDemo.evidenceNotes, readDescription = "The policyholder's note on what the files show.")
             }
         }
         trait(ClaimsDemo.assessmentEntry, ClaimsDemo.assessment, setOf(GedraDataType.formDoc), "What the adjuster concludes.") {

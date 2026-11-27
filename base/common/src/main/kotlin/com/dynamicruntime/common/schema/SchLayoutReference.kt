@@ -94,8 +94,8 @@ A layout's copy may hold two kinds of template, filled in at different times, an
   file. The page receives the finished wording, so a backend file is never sent to it. A pull naming a file or a key
   that does not exist is refused when the layout is loaded; one whose key is computed is checked as the layout is
   delivered, and shown as written if it does not resolve. Fragment files are described in [Copy](copy.md).
-- **`${…}`, on the page, as the form is drawn.** In a `$${SL.label}` or a `$${SL.description}`, it reads the data being
-  entered: `${topic}`. In a `$${SL.hint}`, it reads the field's declared bounds, `${$${LayoutCtx.min}}` and
+- **`${…}`, on the page, as the form is drawn.** In a `$${SL.label}`, a `$${SL.description}`, or a
+  `$${SL.readDescription}`, it reads the form's data: `${topic}`. In a `$${SL.hint}`, it reads the field's declared bounds, `${$${LayoutCtx.min}}` and
   `${$${LayoutCtx.max}}`, as numbers, so a hint may compute with them. In an `$${SL.entryLabel}`, it reads the entry's
   number, `${$${LayoutCtx.n}}`, counting from 1. In a message under `$${SL.errors}`, it reads the failure's parameters.
   The language is described in [Expressions](expressions.md).

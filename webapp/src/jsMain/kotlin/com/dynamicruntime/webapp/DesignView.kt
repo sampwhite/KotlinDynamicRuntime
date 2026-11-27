@@ -558,15 +558,15 @@ class OverrideWords(val owner: String, val over: String, val others: String, val
 // --- editing a field's copy for this workflow (issue #984) ------------------------------------------------------
 
 /**
- * The copy attributes the edit forms offer for [prop], in the order they show them: every field's label, description and
- * hint, and the heading each entry has where a form heads entries by it ([entryLabelHeadsEntries], issue #1748, the
+ * The copy attributes the edit forms offer for [prop], in the order they show them: every field's label, description,
+ * description where it is read (issue #1876), and hint, and the heading each entry has where a form heads entries by it ([entryLabelHeadsEntries], issue #1748, the
  * layout's `entryLabel`), as **Choices on this form** is offered only for a field with a closed list. Pure.
  */
 fun editableCopyKeys(prop: SchProperty): List<String> =
     if (entryLabelHeadsEntries(prop.valueType)) fieldCopyKeys + SL.entryLabel else fieldCopyKeys
 
 /** The copy attributes every field's edit forms offer. */
-private val fieldCopyKeys: List<String> = listOf(SL.label, SL.description, SL.hint)
+private val fieldCopyKeys: List<String> = listOf(SL.label, SL.description, SL.readDescription, SL.hint)
 
 /** Every copy attribute an edit form may offer: what [copyEntryFrom] and [copyChanged] act on, and nothing else. */
 private val allCopyKeys: Set<String> = (fieldCopyKeys + SL.entryLabel).toSet()
@@ -626,6 +626,10 @@ fun copyFallback(
         ?: CopyFallback(humanizeFieldName(name), "Blank: forms show a label made from the field's name.")
     SL.description -> prop.description?.let { CopyFallback(it, "Blank: forms show the field's own description.") }
         ?: CopyFallback(null, "Blank: forms show no description.")
+    // Where it is read, a field nobody enters keeps its own description, and any other shows none (issue #1876).
+    SL.readDescription -> prop.description?.takeIf { describesValue(prop.valueType) }
+        ?.let { CopyFallback(it, "Blank: a form being read shows the field's own description.") }
+        ?: CopyFallback(null, "Blank: a form being read shows no description.")
     SL.hint -> boundHintText(prop.valueType, boundWords)?.let { CopyFallback(it, "Blank: forms show the field's range.") }
         ?: CopyFallback(null, "Blank: forms show no hint.")
     // The template is the placeholder, since it is what is typed; the note says what it reads as.
