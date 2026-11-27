@@ -3,7 +3,7 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.declaredFormTypes
+import com.dynamicruntime.common.gedra.declaredFtypes
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GCEL
@@ -56,8 +56,8 @@ fun resolveWorkflowFunctions(
         val suggestedLabels = clientDefOf(client)?.userLabels?.toSet()
         // The traits the client can see -- its own and the global ones -- for a function reading anywhere in the form.
         val visibleTraits = configs.traitsFor(client).map { it.traitId }.toSet()
-        // The client's form types (issue #1903): a task may collect any of their traits, so a function may name one.
-        val formTypes = declaredFormTypes(configs, client)
+        // The client's ftypes (issue #1903): a task may collect any of their traits, so a function may name one.
+        val ftypes = declaredFtypes(configs, client)
         val bundleScope = ResolutionScope(cxt, bundle, byFn, declaredCfacts, suggestedLabels, visibleTraits, issues)
         for (def in bundle.workflows.values) {
             val defFunctions = bundleScope.resolveList(
@@ -69,7 +69,7 @@ fun resolveWorkflowFunctions(
                     def, task,
                     bundleScope.resolveList(
                         def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
-                        collectedTraits = def.traitIdsOverTypes(task, formTypes).toSet(),
+                        collectedTraits = def.traitIdsOverFtypes(task, ftypes).toSet(),
                     ),
                 )
                 if (assign) task.resolvedFunctions = taskFunctions

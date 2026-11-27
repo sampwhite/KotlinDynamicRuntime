@@ -33,16 +33,16 @@ object GT {
     const val nameMaxLength = 128
 
     /**
-     * The `formType` trait's id (issue #1902): which of its client's form types a form is, its one field [formTypeField]
-     * holding the type's id. A client supports it by defining form types, never through a group (`GedraTrait.joinsGroups`).
+     * The `ftype` trait's id (issue #1902): which of its client's ftypes a form is, its one field [ftypeField]
+     * holding the type's id. A client supports it by defining ftypes, never through a group (`GedraTrait.joinsGroups`).
      */
-    const val formType = "kdr:formType"
+    const val ftype = "kdr:ftype"
 
-    /** The [formType] trait's one field, the type's id. */
-    const val formTypeField = "formType"
+    /** The [ftype] trait's one field, the type's id. */
+    const val ftypeField = "ftype"
 
-    /** The entry type the [formType] trait generates: `kdr.core.FormTypeEntry`. */
-    const val formTypeEntry = "FormTypeEntry"
+    /** The entry type the [ftype] trait generates: `kdr.core.FTypeEntry`. */
+    const val ftypeEntry = "FTypeEntry"
 
     /**
      * The `cfacts` **state** trait (issue #599): the state→cfact bridge's convention. A gedra's stored state may assert

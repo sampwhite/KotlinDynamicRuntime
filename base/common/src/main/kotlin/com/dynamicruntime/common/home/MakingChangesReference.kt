@@ -91,9 +91,9 @@ val changeGroups: List<ChangeGroup> = listOf(
                 "A field that takes its ids from a counter (`g-counter` in its trait's `dataSchema`), or a trait holding one",
                 bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
             ),
-            // No editor offers form types yet (issue #1902).
+            // No editor offers ftypes yet (issue #1902).
             ChangeWay(
-                "A form type, made or changed: a kind of form, the traits it collects, and who may set it (`${CCT.formTypeDef}`)",
+                "A form type, made or changed: a kind of form, the traits it collects, and who may set it (`${CCT.ftypeDef}`)",
                 bundleEditor, CFEP.bundlePatch, ATOOL.patchConfig, dryRun = true,
             ),
         ),

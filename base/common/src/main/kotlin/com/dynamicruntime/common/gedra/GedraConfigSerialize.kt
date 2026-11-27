@@ -109,8 +109,8 @@ fun gedraConfigToEntries(config: GedraConfig, shownAsRun: Boolean = false): Map<
     out[CCT.fileRefDef] = config.fileRefs.distinctBy { it.refId }.map { it.toEntry() }
     // One entry an id, for the reason a file ref's is (issue #1849).
     out[CCT.counterDef] = config.counters.distinctBy { it.counterId }.map { it.toEntry() }
-    // And a form type's (issue #1902).
-    out[CCT.formTypeDef] = config.formTypes.distinctBy { it.formTypeId }.map { it.toEntry() }
+    // And an ftype's (issue #1902).
+    out[CCT.ftypeDef] = config.ftypes.distinctBy { it.ftypeId }.map { it.toEntry() }
     config.listing?.let { out[CCT.listingDef] = listOf(it.toEntry()) }
     // Each entry the config marks to stand over code (issue #1634) carries the mark, as the stored entry says it.
     if (!config.overridesCode.isEmpty) markOverCode(out, config.overridesCode)
@@ -132,7 +132,7 @@ private fun markOverCode(out: MutableMap<String, List<Map<String, Any?>>>, keys:
     marked(CCT.reportDef) { it[CCT.reportId] in keys.reports }
     marked(CCT.fileRefDef) { it[CCT.refId] in keys.fileRefs }
     marked(CCT.counterDef) { it[CTR.counterId] in keys.counters }
-    marked(CCT.formTypeDef) { it[FTYPE.formTypeId] in keys.formTypes }
+    marked(CCT.ftypeDef) { it[FTYPE.ftypeId] in keys.ftypes }
     if (keys.usages) marked(CCT.usageDef) { true }
 }
 
@@ -290,8 +290,8 @@ fun reassembleGedraConfig(
     entriesBySlot[CCT.fileRefDef]?.forEach { fileRefFromMap(it) }
     // Forgiving too (issue #1849): a counter with a bad field costs only itself, and the load says so.
     entriesBySlot[CCT.counterDef]?.forEach { counterFromMap(it) }
-    // And so is a form type (issue #1902).
-    entriesBySlot[CCT.formTypeDef]?.forEach { formTypeFromMap(it) }
+    // And so is an ftype (issue #1902).
+    entriesBySlot[CCT.ftypeDef]?.forEach { ftypeFromMap(it) }
     // One entry (issue #1599), read leniently: a value this release does not know is the default.
     entriesBySlot[CCT.listingDef]?.firstOrNull()?.let { listing(ListingDef.fromEntry(it)) }
 }.let { config ->

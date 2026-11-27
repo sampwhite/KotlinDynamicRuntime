@@ -854,29 +854,29 @@ class DesignViewTest {
     }
 
     @Test
-    fun thePageIsDrawnForAFormType() {
+    fun thePageIsDrawnForAFtype() {
         // Issue #1903: the form's own type first, as no choice, then none, then the others.
-        val types = listOf("lead" to "Lead", "video" to "Video").map { (id, label) -> mapOf(FTYPE.formTypeId to id, FTYPE.label to label) }
-        val design = parseWfDesign(mapOf(DSV.formTypes to types, DSV.ownFormType to "lead"))!!
+        val types = listOf("lead" to "Lead", "video" to "Video").map { (id, label) -> mapOf(FTYPE.ftypeId to id, FTYPE.label to label) }
+        val design = parseWfDesign(mapOf(DSV.ftypes to types, DSV.ownFtype to "lead"))!!
         assertEquals(
-            listOf("This form's type (Lead)" to "", "No type" to DSV.noFormType, "Video" to "video"),
-            drawnFormTypeChoices(design, isEdit = true),
+            listOf("This form's type (Lead)" to "", "No type" to DSV.noFtype, "Video" to "video"),
+            drawnFtypeChoices(design, isEdit = true),
         )
-        assertNull(drawnFormTypeNote(design))
-        val fresh = parseWfDesign(mapOf(DSV.formTypes to types, DSV.drawnFormType to "video"))!!
+        assertNull(drawnFtypeNote(design))
+        val fresh = parseWfDesign(mapOf(DSV.ftypes to types, DSV.drawnFtype to "video"))!!
         assertEquals(
-            listOf("A new form (no type)" to "", "Lead" to "lead", "Video" to "video"), drawnFormTypeChoices(fresh, isEdit = false),
+            listOf("A new form (no type)" to "", "Lead" to "lead", "Video" to "video"), drawnFtypeChoices(fresh, isEdit = false),
         )
-        assertEquals("Drawn as a form of the type Video, so nothing is saved from here.", drawnFormTypeNote(fresh))
+        assertEquals("Drawn as a form of the type Video, so nothing is saved from here.", drawnFtypeNote(fresh))
         assertEquals(
             "Drawn as a form with no type, so nothing is saved from here.",
-            drawnFormTypeNote(parseWfDesign(mapOf(DSV.formTypes to types, DSV.drawnFormType to DSV.noFormType))),
+            drawnFtypeNote(parseWfDesign(mapOf(DSV.ftypes to types, DSV.drawnFtype to DSV.noFtype))),
         )
         // A form of a type no longer defined is called by its id.
-        val gone = parseWfDesign(mapOf(DSV.formTypes to types, DSV.ownFormType to "old"))!!
-        assertEquals("This form's type (old)" to "", drawnFormTypeChoices(gone, isEdit = true).first())
+        val gone = parseWfDesign(mapOf(DSV.ftypes to types, DSV.ownFtype to "old"))!!
+        assertEquals("This form's type (old)" to "", drawnFtypeChoices(gone, isEdit = true).first())
         // Any other workflow has none to choose, and an approval's block keeps them.
-        assertEquals(emptyList(), parseWfDesign(emptyMap<String, Any?>())!!.formTypes)
-        assertEquals("video", fresh.forApproval("review").drawnFormType)
+        assertEquals(emptyList(), parseWfDesign(emptyMap<String, Any?>())!!.ftypes)
+        assertEquals("video", fresh.forApproval("review").drawnFtype)
     }
 }

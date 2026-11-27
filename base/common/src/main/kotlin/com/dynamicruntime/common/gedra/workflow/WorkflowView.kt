@@ -10,11 +10,11 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignView
 import com.dynamicruntime.common.gedra.FTYPE
-import com.dynamicruntime.common.gedra.FormTypeDef
-import com.dynamicruntime.common.gedra.FormTypeService
+import com.dynamicruntime.common.gedra.FTypeDef
+import com.dynamicruntime.common.gedra.FTypeService
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
-import com.dynamicruntime.common.gedra.formTypeOf
+import com.dynamicruntime.common.gedra.ftypeOf
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
@@ -83,8 +83,8 @@ fun resolveWorkflowView(
     reversals: Map<String, Map<String, Any?>> = emptyMap(),
     /** Whether this caller may reverse the form's approvals (issue #1787), by WorkflowApprovals.mayReverse. */
     mayReverse: Boolean = false,
-    /** In Design View, the form types and which of them [declared] is resolved for (issue #1903); null for any other view. */
-    drawnTypes: DrawnFormTypes? = null,
+    /** In Design View, the ftypes and which of them [declared] is resolved for (issue #1903); null for any other view. */
+    drawnTypes: DrawnFTypes? = null,
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -340,7 +340,7 @@ fun resolveWorkflowView(
     // #1902). A form's type offers those the caller may set, and the form's own, so the page offers no choice its save
     // would refuse; the catalog, which knows no form, lists them all.
     val sources = SchemaService.get(cxt).optionsProviders +
-        (FTYPE.optionsSource to { c: KdrCxt, _: String -> FormTypeService.get(c).choicesFor(c, client, formTypeOf(formEntries)) })
+        (FTYPE.optionsSource to { c: KdrCxt, _: String -> FTypeService.get(c).choicesFor(c, client, ftypeOf(formEntries)) })
     view[SCH.dDefs] = resolveOptionsSources(cxt, defs, sources)
     if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
     if (keptToOwner) view[WVF.keptToOwner] = true
@@ -356,15 +356,15 @@ fun resolveWorkflowView(
 }
 
 /**
- * The form types a Design View of a workflow may be drawn for (issue #1903), and which it was: [types], the client's;
+ * The ftypes a Design View of a workflow may be drawn for (issue #1903), and which it was: [types], the client's;
  * [own], the form's type, null for none or a new form; and [asked], when the request asked for another than the form's
- * own -- a type's id, or [DSV.noFormType].
+ * own -- a type's id, or [DSV.noFtype].
  */
-class DrawnFormTypes(val types: Collection<FormTypeDef>, val own: String?, val asked: String?) {
+class DrawnFTypes(val types: Collection<FTypeDef>, val own: String?, val asked: String?) {
     fun toBlock(): Map<String, Any?> = buildMap {
-        put(DSV.formTypes, types.map { linkedMapOf(FTYPE.formTypeId to it.formTypeId, FTYPE.label to it.label) })
-        own?.let { put(DSV.ownFormType, it) }
-        asked?.let { put(DSV.drawnFormType, it) }
+        put(DSV.ftypes, types.map { linkedMapOf(FTYPE.ftypeId to it.ftypeId, FTYPE.label to it.label) })
+        own?.let { put(DSV.ownFtype, it) }
+        asked?.let { put(DSV.drawnFtype, it) }
     }
 }
 

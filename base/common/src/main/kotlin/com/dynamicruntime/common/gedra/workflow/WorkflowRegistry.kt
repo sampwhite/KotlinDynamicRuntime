@@ -4,10 +4,10 @@ import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.declaredFormTypes
+import com.dynamicruntime.common.gedra.declaredFtypes
 import com.dynamicruntime.common.gedra.ClientDef
-import com.dynamicruntime.common.gedra.FormTypeDef
-import com.dynamicruntime.common.gedra.FormTypeService
+import com.dynamicruntime.common.gedra.FTypeDef
+import com.dynamicruntime.common.gedra.FTypeService
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.context.KdrSchemaStore
@@ -15,7 +15,7 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.checkMode
-import com.dynamicruntime.common.gedra.formTypeOf
+import com.dynamicruntime.common.gedra.ftypeOf
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
@@ -32,7 +32,7 @@ class WfDeclared private constructor(val bundle: GedraConfig, val def: WfDef, wr
     constructor(bundle: GedraConfig, def: WfDef) : this(bundle, def, null)
 
     /**
-     * This workflow as declared: itself, or, for one resolved for a form's type ([forFormType]), the one it was resolved
+     * This workflow as declared: itself, or, for one resolved for a form's type ([forFtype]), the one it was resolved
      * from -- whose definition is what an editor changes.
      */
     val written: WfDeclared = written ?: this
@@ -52,24 +52,24 @@ class WfDeclared private constructor(val bundle: GedraConfig, val def: WfDef, wr
     internal var keywordsCache: Set<String>? = null
 
     /**
-     * What [forFormType] resolved, by the type's id, with the type it was resolved for: one entry per id, replaced when a
+     * What [forFtype] resolved, by the type's id, with the type it was resolved for: one entry per id, replaced when a
      * reload brings a new definition of the type, so it never holds more than the client's types, however long this lives.
      */
-    private val byFormType = ConcurrentHashMap<String, Pair<FormTypeDef, WfDeclared>>()
+    private val byFtype = ConcurrentHashMap<String, Pair<FTypeDef, WfDeclared>>()
 
     /**
      * This workflow as it is for a form of [type] (issue #1903): the task collecting its form's type's traits collects
      * them. Itself when nothing changes -- no task does, or the form is of no type.
      */
-    fun forFormType(type: FormTypeDef?): WfDeclared {
-        if (type == null || !def.collectsFormType) return this
-        byFormType[type.formTypeId]?.let { (resolvedFor, resolved) -> if (resolvedFor === type) return resolved }
-        return WfDeclared(bundle, def.forFormType(type), this).also { byFormType[type.formTypeId] = type to it }
+    fun forFtype(type: FTypeDef?): WfDeclared {
+        if (type == null || !def.collectsFtype) return this
+        byFtype[type.ftypeId]?.let { (resolvedFor, resolved) -> if (resolvedFor === type) return resolved }
+        return WfDeclared(bundle, def.forFtype(type), this).also { byFtype[type.ftypeId] = type to it }
     }
 
-    /** This workflow as it is for a form of [client] holding [entries], by the type they say it is of; see [forFormType]. */
+    /** This workflow as it is for a form of [client] holding [entries], by the type they say it is of; see [forFtype]. */
     fun forForm(cxt: KdrCxt, client: String, entries: List<Map<String, Any?>>): WfDeclared =
-        if (def.collectsFormType) forFormType(FormTypeService.getOrNull(cxt)?.forClient(client)?.get(formTypeOf(entries))) else this
+        if (def.collectsFtype) forFtype(FTypeService.getOrNull(cxt)?.forClient(client)?.get(ftypeOf(entries))) else this
 
     override fun toString(): String = ref.text
 }
@@ -255,8 +255,8 @@ fun buildWorkflowRegistries(
         return out
     }
 
-    // The form types a scope's workflows may collect the traits of (issue #1903): a client's own, and the templates' none.
-    fun formTypesOf(scope: String?): List<FormTypeDef> = scope?.let { declaredFormTypes(configs, it) }.orEmpty()
+    // The ftypes a scope's workflows may collect the traits of (issue #1903): a client's own, and the templates' none.
+    fun ftypesOf(scope: String?): List<FTypeDef> = scope?.let { declaredFtypes(configs, it) }.orEmpty()
 
     // The checks that depend on nothing but the definition and the scope's own vocabulary. `off` admits
     // everything as declared -- the reading `GedraConfigCollector` gives the mode -- rather than checking and
@@ -346,7 +346,7 @@ fun buildWorkflowRegistries(
         // scope's view of it -- the checks a client's layout alteration gets, one scope down.
         schemaStore?.let { storeOf ->
             val traits = configs.traitsFor(scope ?: GID.globalClient)
-            typeAlterationProblem(w, storeOf(scope), traits, formTypesOf(scope))?.let {
+            typeAlterationProblem(w, storeOf(scope), traits, ftypesOf(scope))?.let {
                 reportConfigProblem(cxt, problem(scope, w, it), issues)
                 return false
             }

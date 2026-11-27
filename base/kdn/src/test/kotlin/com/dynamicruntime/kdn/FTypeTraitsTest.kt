@@ -64,23 +64,23 @@ import io.kotest.matchers.string.shouldContain
  * A creation or core details task that collects the traits of its form's type (issue #1903): what is drawn, saved, and
  * required for each type, and what asks without a form. Over the shared instance, a client per scenario.
  */
-class FormTypeTraitsTest : StringSpec({
-    val cxt = TestInstances.default("formTypeTraits1903")
-    fun asClient(client: String): KdrCxt = cxt.mkSubContext("formTypeTraits", client).also { it.userId = 19030L }
+class FTypeTraitsTest : StringSpec({
+    val cxt = TestInstances.default("ftypeTraits1903")
+    fun asClient(client: String): KdrCxt = cxt.mkSubContext("ftypeTraits", client).also { it.userId = 19030L }
 
     /** Leads and videos, which share a trait; memos, which collect nothing; and notes, whose type lists what another task does. */
     val siteTypes: GedraConfigBuilder.() -> Unit = {
-        formType("lead", "Lead", mayLeave = true) { trait("ask"); trait("contact") }
-        formType("video", "Video", mayLeave = true) { trait("contact", required = false); trait("clip") }
-        formType("memo", "Memo", mayLeave = true)
-        formType("note", "Note", mayLeave = true) { trait("remarks") }
+        ftype("lead", "Lead", mayLeave = true) { trait("ask"); trait("contact") }
+        ftype("video", "Video", mayLeave = true) { trait("contact", required = false); trait("clip") }
+        ftype("memo", "Memo", mayLeave = true)
+        ftype("note", "Note", mayLeave = true) { trait("remarks") }
     }
 
     /** A core details workflow: a task collecting the form's type's traits, and one that lists a trait of its own. */
     val siteDetails: WfDefBuilder.() -> Unit = {
         task("basics", "Basics") {
-            trait(GT.formType, required = false)
-            formTypeTraits = true
+            trait(GT.ftype, required = false)
+            ftypeTraits = true
             save("save", "Save", WfSaveKind.edit)
         }
         task("more", "More") {
@@ -110,8 +110,8 @@ class FormTypeTraitsTest : StringSpec({
             }
             workflow("make", WfEntry.creation) {
                 task("start", "Start") {
-                    trait(GT.formType, required = false)
-                    formTypeTraits = true
+                    trait(GT.ftype, required = false)
+                    ftypeTraits = true
                     save("create", "Create", WfSaveKind.create)
                 }
             }
@@ -138,7 +138,7 @@ class FormTypeTraitsTest : StringSpec({
         )
     }
 
-    fun typed(type: String) = mapOf(GE.traitId to GT.formType, GE.data to mapOf(GT.formTypeField to type))
+    fun typed(type: String) = mapOf(GE.traitId to GT.ftype, GE.data to mapOf(GT.ftypeField to type))
     fun entry(traitId: String, text: String = "x") = mapOf(GE.traitId to traitId, GE.data to mapOf("text" to text))
 
     /** A form made around the workflows, holding [entries]. */
@@ -163,8 +163,8 @@ class FormTypeTraitsTest : StringSpec({
                     GDF.gedraId to gedraId,
                     GPF.edits to listOf(
                         mapOf(
-                            GED.action to GedraEditAction.addOrReplace.name, GE.traitId to GT.formType,
-                            GE.data to mapOf(GT.formTypeField to type),
+                            GED.action to GedraEditAction.addOrReplace.name, GE.traitId to GT.ftype,
+                            GE.data to mapOf(GT.ftypeField to type),
                         ),
                     ),
                 ),
@@ -189,31 +189,31 @@ class FormTypeTraitsTest : StringSpec({
     fun Site.refusedBasics(gedraId: String, entry: Map<String, Any?>): String =
         user.expectError(EXC.badInput, save, basicsOf(gedraId, entry)).toString()
 
-    val formType = GT.formType to false
+    val ftype = GT.ftype to false
     val remarks = listOf("remarks" to false)
 
     "a form's page draws its type's traits, and its data for them" {
         val site = createSite("types1903a")
         val lead = site.user.make(typed("lead"), entry("ask", "A demo?"), entry("clip", "Left over."))
         val view = site.viewOf(lead)
-        view.drawn() shouldContainExactly listOf(listOf(formType, "ask" to true, "contact" to true), remarks)
+        view.drawn() shouldContainExactly listOf(listOf(ftype, "ask" to true, "contact" to true), remarks)
         // What the type does not bring is not drawn, though the form holds it.
-        view.task("basics")[WVF.entries].toJsonListOfMaps().map { it[GE.traitId] } shouldContainExactly listOf(GT.formType, "ask")
+        view.task("basics")[WVF.entries].toJsonListOfMaps().map { it[GE.traitId] } shouldContainExactly listOf(GT.ftype, "ask")
         fun hasClipType(view: Map<String, Any?>) = view[SCH.dDefs].toJsonMapOrEmpty().keys.any { it.endsWith(".ClipData") }
         hasClipType(view) shouldBe false
         // Two types share a trait, required by one of them.
         val video = site.user.make(typed("video"))
-        site.viewOf(video).drawn() shouldContainExactly listOf(listOf(formType, "contact" to false, "clip" to true), remarks)
+        site.viewOf(video).drawn() shouldContainExactly listOf(listOf(ftype, "contact" to false, "clip" to true), remarks)
         hasClipType(site.viewOf(video)) shouldBe true
         // A type with no traits, no type, and one whose trait another task lists add nothing.
-        val plain = listOf(listOf(formType), remarks)
+        val plain = listOf(listOf(ftype), remarks)
         site.viewOf(site.user.make(typed("memo"))).drawn() shouldContainExactly plain
         site.viewOf(site.user.make(entry("ask"))).drawn() shouldContainExactly plain
         site.viewOf(site.user.make(typed("note"))).drawn() shouldContainExactly plain
         // A new form has no type yet.
-        site.user.getData(site.view).drawn() shouldContainExactly listOf(listOf(formType))
+        site.user.getData(site.view).drawn() shouldContainExactly listOf(listOf(ftype))
         // Nor does a form of a type no longer defined bring anything.
-        write(siteConfig(site.client, types = { formType("memo", "Memo", mayLeave = true) }), site.client)
+        write(siteConfig(site.client, types = { ftype("memo", "Memo", mayLeave = true) }), site.client)
         site.viewOf(lead).drawn() shouldContainExactly plain
     }
 
@@ -248,7 +248,7 @@ class FormTypeTraitsTest : StringSpec({
         site.refusedBasics(form, entry("ask")) shouldContain "does not collect the trait 'ask'"
         // What the type it was left holds.
         val held = site.user.getItem(GEP.formDoc, mapOf(GDF.gedraId to form))[GDF.entries].toJsonListOfMaps()
-        held.map { it[GE.traitId] }.toSet() shouldBe setOf(GT.formType, "ask", "clip")
+        held.map { it[GE.traitId] }.toSet() shouldBe setOf(GT.ftype, "ask", "clip")
         // A trait another task lists is that task's, whatever the type lists.
         val note = site.user.make(typed("note"))
         site.refusedBasics(note, entry("remarks")) shouldContain "does not collect the trait 'remarks'"
@@ -271,7 +271,7 @@ class FormTypeTraitsTest : StringSpec({
         site.user.postItems(GEP.patch, setType(form, "video"))
         site.user.completion(form)[CDF.missingTraits] shouldBe listOf("clip")
         // The type now lists another: what is stored is as it was until the form's state is next worked out.
-        write(siteConfig(site.client, types = { formType("video", "Video", mayLeave = true) { trait("ask") } }), site.client)
+        write(siteConfig(site.client, types = { ftype("video", "Video", mayLeave = true) { trait("ask") } }), site.client)
         site.viewOf(form).task("basics")[WVF.status].toJsonMapOrEmpty()[CDF.missingTraits] shouldBe listOf("ask")
         site.user.completion(form)[CDF.missingTraits] shouldBe listOf("clip")
         site.user.postData(GEP.formDocRecomputeState, mapOf(GDF.gedraId to form))
@@ -283,18 +283,18 @@ class FormTypeTraitsTest : StringSpec({
             workflow("review", WfEntry.normal) { task("look", "Look") { trait("ask"); save("s", "Save", WfSaveKind.edit) } }
         }
         fun dataType(trait: String) = "${clientNamespace(site.client)}.${trait.replaceFirstChar { it.uppercase() }}Data"
-        // Where a type is used: in each workflow that draws it for some form type.
+        // Where a type is used: in each workflow that draws it for some ftype.
         fun usedBy(trait: String) = DesignSharedEdit.whereUsed(asClient(site.client), setOf(dataType(trait))).map { it[DSV.workflowId] }
         usedBy("clip") shouldContainExactly listOf("make", "details")
         usedBy("ask") shouldContainExactly listOf("make", "details", "review")
 
-        // A workflow's own layout of a trait only a form type brings, and a prefill of it.
+        // A workflow's own layout of a trait only an ftype brings, and a prefill of it.
         fun withClip(collects: Boolean, layout: Boolean, prefill: Boolean) = siteConfig(site.client, details = {
             val clipText = mapOf(SL.field to "text", SL.label to "Clip text")
             if (layout) alterType(dataType("clip"), mapOf(SCH.layout to mapOf(SL.schemaFields to listOf(clipText))))
             task("basics", "Basics") {
-                trait(GT.formType, required = false)
-                formTypeTraits = collects
+                trait(GT.ftype, required = false)
+                ftypeTraits = collects
                 if (prefill) {
                     function(prefillFromOwner { userAttribute = PFO.publicName; targetTrait = "clip"; targetValuePath = "text" })
                 }
@@ -314,21 +314,21 @@ class FormTypeTraitsTest : StringSpec({
 
     "a type naming a trait the client lacks is refused as a write, so no page draws it" {
         val site = createSite("types1903f")
-        val stale = siteConfig(site.client, types = { formType("lead", "Lead") { trait("ask"); trait("nosuch") } })
+        val stale = siteConfig(site.client, types = { ftype("lead", "Lead") { trait("ask"); trait("nosuch") } })
         shouldThrow<KdrException> { write(stale, site.client, trial = true) }.message.orEmpty() shouldContain
             "which the client's forms cannot hold"
-        site.viewOf(site.user.make(typed("lead"))).drawn().first() shouldContainExactly listOf(formType, "ask" to true, "contact" to true)
+        site.viewOf(site.user.make(typed("lead"))).drawn().first() shouldContainExactly listOf(ftype, "ask" to true, "contact" to true)
     }
 
     "a normal workflow lists its traits" {
         shouldThrow<KdrException> {
             siteConfig("types1903g") {
-                workflow("review", WfEntry.normal) { task("look", "Look") { formTypeTraits = true; save("s", "Save", WfSaveKind.edit) } }
+                workflow("review", WfEntry.normal) { task("look", "Look") { ftypeTraits = true; save("s", "Save", WfSaveKind.edit) } }
             }
         }.message.orEmpty() shouldContain "A normal workflow lists its traits"
     }
 
-    "Design View draws the form type asked for, and an edit made there is the workflow's" {
+    "Design View draws the ftype asked for, and an edit made there is the workflow's" {
         val site = createSite("types1903h")
         GedraConfigService.get(cxt).publish(asClient(site.client), listOf(GedraId.of(GedraConfigType.configDoc, site.client, "main")))
         GedraConfigReload.reloadClient(cxt, site.client)
@@ -336,27 +336,27 @@ class FormTypeTraitsTest : StringSpec({
         val form = site.user.make(typed("lead"))
         fun block(view: Map<String, Any?>) = view[DSV.designBlock].toJsonMapOrEmpty()
         val own = site.viewOf(form, site.admin, design)
-        own.drawn().first() shouldContainExactly listOf(formType, "ask" to true, "contact" to true)
-        block(own)[DSV.formTypes].toJsonListOfMaps().map { it[FTYPE.formTypeId] } shouldContainExactly
+        own.drawn().first() shouldContainExactly listOf(ftype, "ask" to true, "contact" to true)
+        block(own)[DSV.ftypes].toJsonListOfMaps().map { it[FTYPE.ftypeId] } shouldContainExactly
             listOf("lead", "video", "memo", "note")
-        block(own)[DSV.ownFormType] shouldBe "lead"
-        block(own)[DSV.drawnFormType] shouldBe null
-        val asVideo = site.viewOf(form, site.admin, design, DSV.drawnFormType to "video")
-        asVideo.drawn().first() shouldContainExactly listOf(formType, "contact" to false, "clip" to true)
-        block(asVideo)[DSV.drawnFormType] shouldBe "video"
-        site.viewOf(form, site.admin, design, DSV.drawnFormType to DSV.noFormType).drawn().first() shouldContainExactly listOf(formType)
+        block(own)[DSV.ownFtype] shouldBe "lead"
+        block(own)[DSV.drawnFtype] shouldBe null
+        val asVideo = site.viewOf(form, site.admin, design, DSV.drawnFtype to "video")
+        asVideo.drawn().first() shouldContainExactly listOf(ftype, "contact" to false, "clip" to true)
+        block(asVideo)[DSV.drawnFtype] shouldBe "video"
+        site.viewOf(form, site.admin, design, DSV.drawnFtype to DSV.noFtype).drawn().first() shouldContainExactly listOf(ftype)
         // The form's own, asked for by name, is the form's own.
-        block(site.viewOf(form, site.admin, design, DSV.drawnFormType to "lead"))[DSV.drawnFormType] shouldBe null
+        block(site.viewOf(form, site.admin, design, DSV.drawnFtype to "lead"))[DSV.drawnFtype] shouldBe null
         // A new form, drawn for a type.
-        site.admin.getData(site.view, mapOf(design, DSV.drawnFormType to "video")).drawn().first() shouldContainExactly
-            listOf(formType, "contact" to false, "clip" to true)
-        site.admin.expectError(EXC.badInput, site.view, args = mapOf(design, DSV.drawnFormType to "nosuch"))
+        site.admin.getData(site.view, mapOf(design, DSV.drawnFtype to "video")).drawn().first() shouldContainExactly
+            listOf(ftype, "contact" to false, "clip" to true)
+        site.admin.expectError(EXC.badInput, site.view, args = mapOf(design, DSV.drawnFtype to "nosuch"))
             .toString() shouldContain "has no form type 'nosuch'"
         // Nobody else is answered so, and it stores nothing.
-        site.viewOf(form, site.user, design, DSV.drawnFormType to "video").drawn().first() shouldContainExactly
-            listOf(formType, "ask" to true, "contact" to true)
-        site.viewOf(form, site.admin, DSV.drawnFormType to "video").drawn().first() shouldContainExactly
-            listOf(formType, "ask" to true, "contact" to true)
+        site.viewOf(form, site.user, design, DSV.drawnFtype to "video").drawn().first() shouldContainExactly
+            listOf(ftype, "ask" to true, "contact" to true)
+        site.viewOf(form, site.admin, DSV.drawnFtype to "video").drawn().first() shouldContainExactly
+            listOf(ftype, "ask" to true, "contact" to true)
         // An edit made while drawing a type is stamped, and kept, as the workflow as written.
         val clipType = block(asVideo)[DSV.types].toJsonMapOrEmpty().keys.single { it.endsWith(".ClipData") }
         site.admin.postData(
@@ -368,11 +368,11 @@ class FormTypeTraitsTest : StringSpec({
         )
         val stored = WorkflowService.get(cxt).forClient(site.client).workflow("details").shouldNotBeNull().def
         stored.typeAlterations.keys shouldContainExactly setOf(clipType)
-        stored.task("basics").shouldNotBeNull().traits.map { it.traitId } shouldContainExactly listOf(GT.formType)
-        site.viewOf(form, site.admin, design, DSV.drawnFormType to "video")[WVF.fieldLayouts].toString() shouldContain "Clip text"
+        stored.task("basics").shouldNotBeNull().traits.map { it.traitId } shouldContainExactly listOf(GT.ftype)
+        site.viewOf(form, site.admin, design, DSV.drawnFtype to "video")[WVF.fieldLayouts].toString() shouldContain "Clip text"
     }
 
-    "the workflow editor is told the form types, sets the key, and leaves it as it is when not said" {
+    "the workflow editor is told the ftypes, sets the key, and leaves it as it is when not said" {
         val client = "types1903i"
         val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
             defineClient(
@@ -382,44 +382,44 @@ class FormTypeTraitsTest : StringSpec({
                 ),
             )
             trait("AskEntry", "ask", setOf(GedraDataType.formDoc), "What they ask.") { property("text", "The ask.") }
-            formType("lead", "Lead") { trait("ask"); trait(GT.name, required = false) }
+            ftype("lead", "Lead") { trait("ask"); trait(GT.name, required = false) }
         }
         GedraConfigService.get(cxt).writeConfig(asClient(client), config)
         GedraConfigService.get(cxt).publish(asClient(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         val admin = TestUser.create(cxt, "admin@$client.test", level = ROLE.admin, userClient = client)
-        admin.getItem(UADEP.clientWorkflows)[CWF.formTypes] shouldBe listOf(
+        admin.getItem(UADEP.clientWorkflows)[CWF.ftypes] shouldBe listOf(
             mapOf(
-                FTYPE.formTypeId to "lead", FTYPE.label to "Lead",
+                FTYPE.ftypeId to "lead", FTYPE.label to "Lead",
                 FTYPE.traits to listOf(
                     mapOf(WFD.traitId to "ask", WFD.required to true), mapOf(WFD.traitId to GT.name, WFD.required to false),
                 ),
             ),
         )
         fun save(
-            traits: List<WfTraitRef>, formTypeTraits: Boolean?, label: String, id: String? = "formDetails",
+            traits: List<WfTraitRef>, ftypeTraits: Boolean?, label: String, id: String? = "formDetails",
             template: String = WFT.coreDetails,
         ) =
             mapOf(
                 CWF.slots to WfTemplateSlots(
                     id, template, label,
-                    listOf(WfTaskSlot(if (template == WFT.collect) "collect" else "details", "Step", traits, formTypeTraits)),
+                    listOf(WfTaskSlot(if (template == WFT.collect) "collect" else "details", "Step", traits, ftypeTraits)),
                 ).toInfo(),
             )
         fun task() = WorkflowService.get(cxt).forClient(client).workflow("formDetails").shouldNotBeNull().def.tasks.single()
-        val formTypeOnly = listOf(WfTraitRef(GT.formType))
-        admin.postData(UADEP.clientWorkflowSave, save(formTypeOnly, true, "Form details", id = null))
-        task().formTypeTraits shouldBe true
+        val ftypeOnly = listOf(WfTraitRef(GT.ftype))
+        admin.postData(UADEP.clientWorkflowSave, save(ftypeOnly, true, "Form details", id = null))
+        task().ftypeTraits shouldBe true
         // A caller who does not say keeps it, whose task may then list no traits of its own.
-        admin.postData(UADEP.clientWorkflowSave, save(formTypeOnly, null, "Form details again"))
-        task().formTypeTraits shouldBe true
+        admin.postData(UADEP.clientWorkflowSave, save(ftypeOnly, null, "Form details again"))
+        task().ftypeTraits shouldBe true
         admin.postData(UADEP.clientWorkflowSave, save(emptyList(), null, "Form details again"))
-        task().let { it.formTypeTraits to it.traits.size } shouldBe (true to 0)
+        task().let { it.ftypeTraits to it.traits.size } shouldBe (true to 0)
         admin.expectError(EXC.badInput, UADEP.clientWorkflowSave, save(emptyList(), false, "Form details")).toString() shouldContain
             "collects at least one trait"
-        admin.postData(UADEP.clientWorkflowSave, save(formTypeOnly, false, "Form details"))
-        task().formTypeTraits shouldBe false
-        admin.expectError(EXC.badInput, UADEP.clientWorkflowSave, save(formTypeOnly, true, "Collect", id = null, template = WFT.collect))
+        admin.postData(UADEP.clientWorkflowSave, save(ftypeOnly, false, "Form details"))
+        task().ftypeTraits shouldBe false
+        admin.expectError(EXC.badInput, UADEP.clientWorkflowSave, save(ftypeOnly, true, "Collect", id = null, template = WFT.collect))
             .toString() shouldContain "of a normal workflow lists its traits"
     }
 })

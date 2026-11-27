@@ -192,9 +192,9 @@ object GedraConfigReload {
             cxt, client, previous.flatMap { it.fragments }, taken.flatMap { it.fragments },
         )
         UiBlockService.get(cxt).reloadClient(cxt, client, previous.flatMap { it.uiBlocks }, taken.flatMap { it.uiBlocks })
-        // Its form types (issue #1902), which name the traits its schema was just rebuilt with -- before the workflows, which
+        // Its ftypes (issue #1902), which name the traits its schema was just rebuilt with -- before the workflows, which
         // collect those traits (issue #1903).
-        FormTypeService.getOrNull(cxt)?.reloadClient(cxt, client)
+        FTypeService.getOrNull(cxt)?.reloadClient(cxt, client)
         WorkflowService.get(cxt).reloadClient(cxt, client)
         // Reports after workflows (issue #980): a report's workflow paths bind to the workflows the reload kept.
         // Its typed endpoints are regenerated with it (issue #1088), and theirs are types too: a redefined report

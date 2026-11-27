@@ -353,7 +353,7 @@ fun editorBundlesInOrder(configs: List<EditorBundle>): List<EditorBundle> =
  */
 val editorSlotOrder: List<String> = listOf(
     CCT.clientDef, CCT.customerDef, CCT.traitDef, CCT.schemaDef, CCT.usageDef, CCT.listingDef, CCT.workflowDef,
-    CCT.reportDef, CCT.cfactDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.fileRefDef, CCT.counterDef, CCT.formTypeDef,
+    CCT.reportDef, CCT.cfactDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.fileRefDef, CCT.counterDef, CCT.ftypeDef,
 )
 
 /** What a person calls [slot]; a slot this page does not know is called by its id. */
@@ -371,7 +371,7 @@ fun editorSlotLabel(slot: String): String = when (slot) {
     CCT.uiBlockDef -> "Interface"
     CCT.fileRefDef -> "Files"
     CCT.counterDef -> "Counters"
-    CCT.formTypeDef -> "Form types"
+    CCT.ftypeDef -> "Form types"
     else -> slot
 }
 

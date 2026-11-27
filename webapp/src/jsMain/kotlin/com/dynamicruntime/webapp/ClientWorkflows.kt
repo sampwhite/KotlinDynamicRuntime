@@ -6,7 +6,7 @@ import com.dynamicruntime.common.gedra.CIT
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CWF
-import com.dynamicruntime.common.gedra.FormTypeDef
+import com.dynamicruntime.common.gedra.FTypeDef
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -16,7 +16,7 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import com.dynamicruntime.common.gedra.workflow.WfTraitRef
-import com.dynamicruntime.common.gedra.workflow.formTypeBrings
+import com.dynamicruntime.common.gedra.workflow.ftypeBrings
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.gedra.workflow.templateSlotProblems
 import com.dynamicruntime.common.gedra.workflow.templateSlotsFromInfo
@@ -169,7 +169,7 @@ fun workflowTaskSummary(workflow: ClientWorkflowView, traitNames: Map<String, St
     val labels = workflow.def.tasks.zip(workflow.taskLabels).associate { (t, label) -> t.id to label }
     return workflow.def.tasks.map { task ->
         val label = labels[task.id] ?: task.label
-        val approval = task.approval ?: return@map if (task.formTypeTraits) "$label (with its form type's traits)" else label
+        val approval = task.approval ?: return@map if (task.ftypeTraits) "$label (with its form type's traits)" else label
         val shown = approval.showTraits?.map { traitNames[it] ?: it } ?: approval.showTasks?.map { labels[it] ?: it }
         when {
             shown == null -> label
@@ -182,7 +182,7 @@ fun workflowTaskSummary(workflow: ClientWorkflowView, traitNames: Map<String, St
 /** A trait a workflow may collect: its id, its [name] as a form names it (issue #1438), and its description. */
 class WorkflowTraitView(val traitId: String, val name: String, val description: String?)
 
-/** The workflows catalog: the templates, the client's workflows, the traits they may collect, and the client's form types. */
+/** The workflows catalog: the templates, the client's workflows, the traits they may collect, and the client's ftypes. */
 class WorkflowCatalogView(
     val clientId: String,
     val templates: List<WorkflowTemplateView>,
@@ -192,8 +192,8 @@ class WorkflowCatalogView(
     val timeZone: String? = null,
     /** The user labels the client suggests, which a workflow's visibility may name (issue #1384). */
     val userLabels: List<String> = emptyList(),
-    /** The client's form types (issue #1903), whose traits a task may collect. */
-    val formTypes: List<FormTypeDef> = emptyList(),
+    /** The client's ftypes (issue #1903), whose traits a task may collect. */
+    val ftypes: List<FTypeDef> = emptyList(),
 ) {
     fun template(templateId: String): WorkflowTemplateView? = templates.firstOrNull { it.def.workflowId == templateId }
 }
@@ -218,7 +218,7 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
     },
     timeZone = raw[CWF.timeZone].toOptStr(),
     userLabels = raw[CWF.userLabels].toJsonListOfStrings(),
-    formTypes = raw[CWF.formTypes].toJsonListOfMaps().map { FormTypeDef.fromEntry(it, configName = null, stored = true) },
+    ftypes = raw[CWF.ftypes].toJsonListOfMaps().map { FTypeDef.fromEntry(it, configName = null, stored = true) },
 )
 
 /** What a kind of workflow is, in a word: its [WfEntry.words], as a label (issue #1571), so a kind has one name. */
@@ -274,14 +274,14 @@ fun WfTemplateSlots.withLabel(label: String) = WfTemplateSlots(workflowId, templ
 
 /** These slots with task [taskId] relabeled [label]. */
 fun WfTemplateSlots.withTaskLabel(taskId: String, label: String) =
-    withTask(taskId) { WfTaskSlot(it.taskId, label, it.traits, it.formTypeTraits) }
+    withTask(taskId) { WfTaskSlot(it.taskId, label, it.traits, it.ftypeTraits) }
 
 /** These slots with task [taskId] as [edit] makes it. */
 private fun WfTemplateSlots.withTask(taskId: String, edit: (WfTaskSlot) -> WfTaskSlot) =
     WfTemplateSlots(workflowId, templateId, label, tasks.map { if (it.taskId == taskId) edit(it) else it })
 
 /** These slots with task [taskId] also collecting the traits of its form's type (issue #1903), or not. */
-fun WfTemplateSlots.withFormTypeTraits(taskId: String, on: Boolean) =
+fun WfTemplateSlots.withFtypeTraits(taskId: String, on: Boolean) =
     withTask(taskId) { WfTaskSlot(it.taskId, it.label, it.traits, on) }
 
 /**
@@ -290,7 +290,7 @@ fun WfTemplateSlots.withFormTypeTraits(taskId: String, on: Boolean) =
  */
 fun WfTemplateSlots.withTaskTraits(taskId: String, traitIds: List<String>) = withTask(taskId) { t ->
     val traits = traitIds.distinct().map { id -> t.traits.firstOrNull { it.traitId == id } ?: WfTraitRef(id) }
-    WfTaskSlot(t.taskId, t.label, traits, t.formTypeTraits)
+    WfTaskSlot(t.taskId, t.label, traits, t.ftypeTraits)
 }
 
 /**
@@ -305,37 +305,37 @@ fun WfTemplateSlots.withTraitMoved(taskId: String, traitId: String, by: Int) = w
     } else {
         val traits = t.traits.toMutableList()
         traits.add(to, traits.removeAt(from))
-        WfTaskSlot(t.taskId, t.label, traits, t.formTypeTraits)
+        WfTaskSlot(t.taskId, t.label, traits, t.ftypeTraits)
     }
 }
 
 /** These slots with trait [traitId] of task [taskId] required, or not. */
 fun WfTemplateSlots.withTraitRequired(taskId: String, traitId: String, required: Boolean) = withTask(taskId) { t ->
-    WfTaskSlot(t.taskId, t.label, t.traits.map { if (it.traitId == traitId) WfTraitRef(traitId, required) else it }, t.formTypeTraits)
+    WfTaskSlot(t.taskId, t.label, t.traits.map { if (it.traitId == traitId) WfTraitRef(traitId, required) else it }, t.ftypeTraits)
 }
 
-/** Whether the editor offers a step the traits of its form's type (issue #1903): [formTypeTraitsHint] says what it then does. */
-fun formTypeTraitsOffered(catalog: WorkflowCatalogView, template: WfDef, task: WfTaskSlot): Boolean =
-    template.entry != WfEntry.normal && (catalog.formTypes.isNotEmpty() || task.formTypeTraits == true)
+/** Whether the editor offers a step the traits of its form's type (issue #1903): [ftypeTraitsHint] says what it then does. */
+fun ftypeTraitsOffered(catalog: WorkflowCatalogView, template: WfDef, task: WfTaskSlot): Boolean =
+    template.entry != WfEntry.normal && (catalog.ftypes.isNotEmpty() || task.ftypeTraits == true)
 
 /** What the choice means, under it (issue #1903). */
-fun formTypeTraitsHint(catalog: WorkflowCatalogView): String =
-    if (catalog.formTypes.isEmpty()) {
+fun ftypeTraitsHint(catalog: WorkflowCatalogView): String =
+    if (catalog.ftypes.isEmpty()) {
         "This client has no form types now, so this adds nothing."
     } else {
         "After the traits above, the step collects those of its form's type, except any another step lists:"
     }
 
 /**
- * Each form type's name with the traits it brings to [task] of [slots] (issue #1903), named as the catalog names them and
- * marked when required: the kernel's rule ([formTypeBrings]), so it is what a form of the type shows there.
+ * Each ftype's name with the traits it brings to [task] of [slots] (issue #1903), named as the catalog names them and
+ * marked when required: the kernel's rule ([ftypeBrings]), so it is what a form of the type shows there.
  */
-fun formTypeTraitLines(catalog: WorkflowCatalogView, slots: WfTemplateSlots, task: WfTaskSlot): List<Pair<String, String>> {
+fun ftypeTraitLines(catalog: WorkflowCatalogView, slots: WfTemplateSlots, task: WfTaskSlot): List<Pair<String, String>> {
     val elsewhere = slots.tasks.filter { it.taskId != task.taskId }.flatMap { t -> t.traits.map { it.traitId } }.toSet()
-    return catalog.formTypes.map { type ->
-        val brought = formTypeBrings(task.traits, elsewhere, type)
+    return catalog.ftypes.map { type ->
+        val brought = ftypeBrings(task.traits, elsewhere, type)
             .map { catalogTraitName(catalog, it.traitId) + if (it.required) " (required)" else "" }
-        type.label.ifBlank { type.formTypeId } to brought.joinToString(", ").ifEmpty { "nothing more" }
+        type.label.ifBlank { type.ftypeId } to brought.joinToString(", ").ifEmpty { "nothing more" }
     }
 }
 

@@ -18,8 +18,8 @@ import com.dynamicruntime.common.endpoint.defaultListLimit
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.workflow.collectsFormType
-import com.dynamicruntime.common.gedra.workflow.DrawnFormTypes
+import com.dynamicruntime.common.gedra.workflow.collectsFtype
+import com.dynamicruntime.common.gedra.workflow.DrawnFTypes
 import com.dynamicruntime.common.gedra.workflow.FSV
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -897,9 +897,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             field(GDF.gedraId, "An existing form to resolve against, seeding each field with its data; with no workflowId this " +
                 "resolves the client's core details workflow.")
             field(
-                DSV.drawnFormType,
+                DSV.drawnFtype,
                 "For an administrator in Design View, where a task collects its form's type's traits: the form type to draw " +
-                    "the page for, by id, or '${DSV.noFormType}'; the form's own when absent. It stores nothing.",
+                    "the page for, by id, or '${DSV.noFtype}'; the form's own when absent. It stores nothing.",
             )
         },
         publicApi = true,
@@ -932,10 +932,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // A named form seeds each task from its current entries -- which also makes completeness real.
             val row = if (gedraId == null) null else coreDetailsFormRow(c, gedraId)
             // As it is for a form of this one's type (issue #1903), or the type a Design View asks to be drawn for.
-            val drawn = drawnFormTypes(c, found, row, request[DSV.drawnFormType].toOptStr())
+            val drawn = drawnFtypes(c, found, row, request[DSV.drawnFtype].toOptStr())
             val declared = when (drawn?.asked) {
                 null -> found.forForm(c, c.client, row?.entries.orEmpty())
-                else -> found.forFormType(drawn.types.firstOrNull { it.formTypeId == drawn.asked })
+                else -> found.forFtype(drawn.types.firstOrNull { it.ftypeId == drawn.asked })
             }
             // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
             // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
@@ -1750,19 +1750,19 @@ private fun approveRefusal(c: KdrCxt, judge: WorkflowTaskJudge, task: WfTask, ro
 }
 
 /**
- * In Design View, the form types [found]'s page may be drawn for, and the one [asked] for when that is not the form's own
- * (issue #1903): null outside Design View, on a node that keeps no form types, and for a workflow no task of which collects
+ * In Design View, the ftypes [found]'s page may be drawn for, and the one [asked] for when that is not the form's own
+ * (issue #1903): null outside Design View, on a node that keeps no ftypes, and for a workflow no task of which collects
  * its form's type's traits. [row] is the form, or null for a new one, which has no type. Refused (400) when the client has
  * no type [asked].
  */
-private fun drawnFormTypes(c: KdrCxt, found: WfDeclared, row: GedraDataRow?, asked: String?): DrawnFormTypes? {
-    if (!found.def.collectsFormType || !DesignView.isOn(c)) return null
-    val types = FormTypeService.getOrNull(c)?.forClient(c.client) ?: return null
-    val own = formTypeOf(row?.entries.orEmpty())
-    if (asked != null && asked != DSV.noFormType && asked !in types) {
+private fun drawnFtypes(c: KdrCxt, found: WfDeclared, row: GedraDataRow?, asked: String?): DrawnFTypes? {
+    if (!found.def.collectsFtype || !DesignView.isOn(c)) return null
+    val types = FTypeService.getOrNull(c)?.forClient(c.client) ?: return null
+    val own = ftypeOf(row?.entries.orEmpty())
+    if (asked != null && asked != DSV.noFtype && asked !in types) {
         throw KdrException.mkInput("The client '${c.client}' has no form type '$asked'.")
     }
-    return DrawnFormTypes(types.values, own, asked?.takeIf { it != (own ?: DSV.noFormType) })
+    return DrawnFTypes(types.values, own, asked?.takeIf { it != (own ?: DSV.noFtype) })
 }
 
 /** The same split over entries already in hand as wire maps -- a save's returned item (issue #700). */

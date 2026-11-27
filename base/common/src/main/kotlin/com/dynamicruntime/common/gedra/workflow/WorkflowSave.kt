@@ -98,8 +98,8 @@ private fun saveTaskOf(
 ): Pair<WfTask, String> {
     val task = declared.def.task(taskId)
         ?: throw KdrException.mkInput("Workflow '${declared.ref}' has no task '$taskId'.")
-    if (!task.formTypeTraits) return task to ""
-    val saysType = entries.any { it[GE.traitId].toOptStr() == GT.formType }
+    if (!task.ftypeTraits) return task to ""
+    val saysType = entries.any { it[GE.traitId].toOptStr() == GT.ftype }
     // Out of the caller's reach is the write's to refuse, so a form not found here is one of no type.
     val judged = if (saysType || gedraId == null) {
         entries

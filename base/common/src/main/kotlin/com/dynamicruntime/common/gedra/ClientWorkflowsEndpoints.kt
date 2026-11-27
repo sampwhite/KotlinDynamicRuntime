@@ -98,10 +98,10 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         property(CWF.description, "What the trait is for.")
     }
 
-    type(CWF.formTypeTypeName) {
+    type(CWF.ftypeTypeName) {
         type = SCT.kObject
         description = "A client's form type (issue #1903), as a workflow's task that collects its form's type's traits meets it."
-        property(FTYPE.formTypeId, "The type's id.", required = true)
+        property(FTYPE.ftypeId, "The type's id.", required = true)
         property(FTYPE.label, "What the type is called.", required = true)
         property(
             FTYPE.traits,
@@ -129,9 +129,9 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             type = SCT.array
             items { ref(CWF.traitTypeName) }
         }
-        property(CWF.formTypes, "The client's form types (issue #1903), whose traits a task may collect; absent when it has none.") {
+        property(CWF.ftypes, "The client's form types (issue #1903), whose traits a task may collect; absent when it has none.") {
             type = SCT.array
-            items { ref(CWF.formTypeTypeName) }
+            items { ref(CWF.ftypeTypeName) }
         }
         property(CWF.timeZone, "The client's time zone, which a workflow's time windows are entered and shown in.")
         property(CWF.userLabels, "The user labels the client suggests, which a workflow's visibility may name.") {
@@ -183,7 +183,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
                 CWF.slots,
                 "The workflow's slots: `${WFD.workflowId}` (absent for a new workflow), `${WFD.fromTemplate}` (for a new " +
                     "workflow; a change takes its workflow's own, and refuses another), `${WFD.label}`, and `${WFD.tasks}`, " +
-                    "each with its `${WFD.id}`, `${WFD.label}` and `${WFD.traits}`, and `${WFD.formTypeTraits}`, whether it also " +
+                    "each with its `${WFD.id}`, `${WFD.label}` and `${WFD.traits}`, and `${WFD.ftypeTraits}`, whether it also " +
                     "collects its form's type's traits (absent, as it is now).",
                 required = true,
             ) { type = SCT.kObject }

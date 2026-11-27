@@ -81,7 +81,7 @@ class GedraTrait(
     /**
      * Whether a client takes the trait, if it is global, by including a group ([CLD.allGlobal]), and so whether it is in
      * the global unions, which are what such a client runs. False for a trait that means something only to a client that
-     * asks for it: [GT.formType] (issue #1902), which a client supports by defining form types.
+     * asks for it: [GT.ftype] (issue #1902), which a client supports by defining ftypes.
      */
     val joinsGroups: Boolean = true,
 ) {
@@ -342,10 +342,10 @@ class GedraConfig(
      */
     val counters: List<CounterDef> = emptyList(),
     /**
-     * The form types this config declares (issue #1902): the kinds of form its client has. A list rather than a map by
+     * The ftypes this config declares (issue #1902): the kinds of form its client has. A list rather than a map by
      * id, as [counters] is.
      */
-    val formTypes: List<FormTypeDef> = emptyList(),
+    val ftypes: List<FTypeDef> = emptyList(),
     /**
      * The listing-wide settings this config declares for its client (issue #1599), when it declares them: how its
      * forms listing draws each row's workflows, for now. At most one, as [client] is. What the client runs with is
@@ -434,7 +434,7 @@ class GedraConfig(
         workflowParams: Map<String, WfParams> = this.workflowParams,
         fileRefs: List<FileRefDef> = this.fileRefs,
         counters: List<CounterDef> = this.counters,
-        formTypes: List<FormTypeDef> = this.formTypes,
+        ftypes: List<FTypeDef> = this.ftypes,
         listing: ListingDef? = this.listing,
         origin: GedraConfigOrigin = this.origin,
         inheritedFrom: String? = this.inheritedFrom,
@@ -444,7 +444,7 @@ class GedraConfig(
         defs = defs, client = client, customers = customers, cfacts = cfacts, fragments = fragments, uiBlocks = uiBlocks,
         workflows = workflows, usages = usages, reports = reports, unreadReports = unreadReports,
         unreadWorkflows = unreadWorkflows, shadowedTypes = shadowedTypes, workflowParams = workflowParams,
-        fileRefs = fileRefs, counters = counters, formTypes = formTypes, listing = listing, origin = origin,
+        fileRefs = fileRefs, counters = counters, ftypes = ftypes, listing = listing, origin = origin,
         inheritedFrom = inheritedFrom, contributesTo = contributesTo, overridesCode = overridesCode, codeOverlays = codeOverlays,
     )
 
@@ -636,32 +636,32 @@ class GedraConfigBuilder(
         counters.add(CounterDef.fromEntry(entry, configName = stampName, stored = isStored))
     }
 
-    /** The form types declared in this block (issue #1902); see [formType]. */
+    /** The ftypes declared in this block (issue #1902); see [ftype]. */
     @Suppress("MemberVisibilityCanBePrivate")
-    val formTypes: MutableList<FormTypeDef> = mutableListOf()
+    val ftypes: MutableList<FTypeDef> = mutableListOf()
 
     /**
-     * Declares a form type (issue #1902) -- see [GedraConfig.formTypes]: a kind of form called [label], the traits it
+     * Declares an ftype (issue #1902) -- see [GedraConfig.ftypes]: a kind of form called [label], the traits it
      * collects named in [build], who may set a form to it ([setWhen], a cfact expression over the writer's facts; anyone
      * who may write the form when null), and whether a form may leave it ([mayLeave]).
      */
-    fun formType(
-        formTypeId: String,
+    fun ftype(
+        ftypeId: String,
         label: String,
         description: String? = null,
         setWhen: String? = null,
         mayLeave: Boolean = false,
-        build: FormTypeBuilder.() -> Unit = {},
+        build: FTypeBuilder.() -> Unit = {},
     ) {
-        val traits = FormTypeBuilder().apply(build).traits.toList()
-        formTypes.add(
-            FormTypeDef(formTypeId, label, description, traits, setWhen, mayLeave, configName = stampName, stored = isStored),
+        val traits = FTypeBuilder().apply(build).traits.toList()
+        ftypes.add(
+            FTypeDef(ftypeId, label, description, traits, setWhen, mayLeave, configName = stampName, stored = isStored),
         )
     }
 
-    /** A form type from its stored entry, stamped with this config's name and origin; see [FormTypeDef.fromEntry]. */
-    fun formTypeFromMap(entry: Map<String, Any?>) {
-        formTypes.add(FormTypeDef.fromEntry(entry, configName = stampName, stored = isStored))
+    /** An ftype from its stored entry, stamped with this config's name and origin; see [FTypeDef.fromEntry]. */
+    fun ftypeFromMap(entry: Map<String, Any?>) {
+        ftypes.add(FTypeDef.fromEntry(entry, configName = stampName, stored = isStored))
     }
 
     /** The client this config defines, if it declared one; see [defineClient]. */
@@ -810,7 +810,7 @@ class GedraConfigBuilder(
             reports = built.reports.keys.filter { it in overCodeNames }.toSet(),
             fileRefs = built.fileRefs.map { it.refId }.filter { it in overCodeNames }.toSet(),
             counters = built.counters.map { it.counterId }.filter { it in overCodeNames }.toSet(),
-            formTypes = built.formTypes.map { it.formTypeId }.filter { it in overCodeNames }.toSet(),
+            ftypes = built.ftypes.map { it.ftypeId }.filter { it in overCodeNames }.toSet(),
         )
     }
 
@@ -1246,7 +1246,7 @@ fun gedraConfig(
         workflowParams = builder.workflowParams.toMap(),
         fileRefs = builder.fileRefs.toList(),
         counters = builder.counters.toList(),
-        formTypes = builder.formTypes.toList(),
+        ftypes = builder.ftypes.toList(),
         listing = builder.listingDef,
         origin = origin,
         contributesTo = contributesTo,

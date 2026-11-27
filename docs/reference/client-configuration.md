@@ -131,7 +131,7 @@ The merge says what its caller read, so it is refused if `accepted` changed afte
 | [`kdr:fileRefDef`](#kdrfilerefdef) | `refId` | One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file store's are named by their `hash`; a local file's by a `root` and a `path` under it, and by no hash. |
 | [`kdr:listingDef`](#kdrlistingdef) | one entry | The client's listing-wide settings: how its forms listing is drawn as a whole. A stored entry stands over the one its code or template declares. |
 | [`kdr:counterDef`](#kdrcounterdef) | `counterId` | One counter of this client -- what numbers a field's ids, a prefix and then a zero-padded count -- keyed by its counter id. A field names it with `g-counter`. |
-| [`kdr:formTypeDef`](#kdrformtypedef) | `formTypeId` | One form type of this client -- a kind of form, and the traits it collects -- keyed by its id. A form says which type it is in its `kdr:formType` entry, a trait the client has once it defines a form type. |
+| [`kdr:ftypeDef`](#kdrftypedef) | `ftypeId` | One form type of this client (an "ftype", in stored keys and code) -- a kind of form, and the traits it collects -- keyed by its id. A form says which type it is in its `kdr:ftype` entry, a trait the client has once it defines a form type. |
 
 ### kdr:clientDef
 
@@ -337,15 +337,15 @@ Keyed by `counterId`.
 | `description` | string |  | What the counter numbers, in the administrator's words. |
 | `overrides` | one of `code` |  | Set to `code` when this entry stands over the client's code's entry of the same key -- its template's, or its own code's -- which it replaces whole. Without it, an entry matching a code entry is refused. |
 
-### kdr:formTypeDef
+### kdr:ftypeDef
 
-One form type of this client -- a kind of form, and the traits it collects -- keyed by its id. A form says which type it is in its `kdr:formType` entry, a trait the client has once it defines a form type.
+One form type of this client (an "ftype", in stored keys and code) -- a kind of form, and the traits it collects -- keyed by its id. A form says which type it is in its `kdr:ftype` entry, a trait the client has once it defines a form type.
 
-Keyed by `formTypeId`.
+Keyed by `ftypeId`.
 
 | Field | Type | Required | What it is |
 |---|---|---|---|
-| `formTypeId` | string | yes | The type's id within its client: letters, digits, and underscores, starting with a letter, at most 64 characters. |
+| `ftypeId` | string | yes | The type's id within its client: letters, digits, and underscores, starting with a letter, at most 64 characters. |
 | `label` | string | yes | What the type is called, in the choices of a form's type. |
 | `description` | string |  | What a form of the type is, in the administrator's words. |
 | `traits` | array of [WfTraitRef](#wftraitref) |  | The traits a form of the type collects, in order. None for a type that only classifies. A form may hold a trait its type does not list: a type says what is asked for, and refuses nothing. |
@@ -419,7 +419,7 @@ Each is a type the server declares, named as the endpoint catalog names it. A fi
 | `$comment` | string |  | A note for whoever maintains this definition; it changes nothing about what the definition does. |
 | `label` | string | yes | What the task is called -- a template, evaluated in two passes. |
 | `traits` | array of [WfTraitRef](#wftraitref) | yes | The traits this task collects. |
-| `formTypeTraits` | boolean |  | A creation or core details workflow task's: whether it also collects the traits of its form's type, after those it lists, leaving out any another task of the workflow lists. At most one task of a workflow. |
+| `ftypeTraits` | boolean |  | A creation or core details workflow task's: whether it also collects the traits of its form's type, after those it lists, leaving out any another task of the workflow lists. At most one task of a workflow. |
 | `saves` | array of [WfSave](#wfsave) | yes | The saves this task offers. |
 | `layout` | [WfLayout](#wflayout) |  | How the task is drawn; declaration order and inline editing when absent. |
 | `functions` | array of object |  | Task-scoped function usages (e.g. prefillData); each a { fn, ... } block validated by its own kind. |

@@ -41,18 +41,18 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
         property(GT.nameField, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
     }
 
-    // Which of its client's form types a form is (issue #1902). In no group: to a client that defines no form types it
+    // Which of its client's ftypes a form is (issue #1902). In no group: to a client that defines no ftypes it
     // would be a choice with nothing to choose. The choices are the client's types, sourced for each caller; which a form
-    // may be set to is held on every write by `FormTypeHook`, since a sourced list takes no part in validation.
+    // may be set to is held on every write by `FTypeHook`, since a sourced list takes no part in validation.
     trait(
-        GT.formTypeEntry,
-        GT.formType,
+        GT.ftypeEntry,
+        GT.ftype,
         setOf(GedraDataType.formDoc),
         "Which kind of form this is, of the form types its client defines.",
         joinsGroups = false,
     ) {
         title = "Form type"
-        property(GT.formTypeField, "The form's type.", required = true) {
+        property(GT.ftypeField, "The form's type.", required = true) {
             title = "Type"
             optionsSource(FTYPE.optionsSource)
         }
