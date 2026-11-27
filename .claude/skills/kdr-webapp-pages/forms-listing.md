@@ -58,12 +58,16 @@ form gets the class `read-only`, and:
 
 - **Labels in one column, values in the next** (`.schema-form.read-only` in `app.css`): a label takes the column's
   width, 220 pixels, and wraps within it, so values line up whatever the labels say; each value starts level with its
-  label's first line, so long text no longer starts above its label. Below 600 pixels a label sits over its value. The
+  label's first line, so long text no longer starts above its label. A wide value (pretty JSON, a table) still takes the
+  row's whole width, under its label. Below 600 pixels a label sits over its value. The
   workflow page's step rail goes above the task below 640 pixels, since beside it the task had no room.
 - **Nothing about entering a value** (`fieldFrame`): no required mark, no bounds or layout hint, and a description only
   where `describesValue` says it explains the value -- a field nobody enters, computed (`g-derived`) or counted
   (`g-counter`). An entered field's description says what to type, so it goes. A layout key to keep one is in
-  `deferred-work.md`, under a client wanting a field explained where it is read.
+  `deferred-work.md`, under a client wanting a field explained where it is read. **This is decided field by field**, from
+  the field's own `editable`, not the form's: a field that cannot be filled in on an editable page -- a locked trait, a
+  form kept to its owner, a computed field -- also shows no required mark, hint, or entered-field description, while the
+  page's other fields keep theirs. Only the column layout belongs to the whole form (its `read-only` class).
 - **A moment in the client's zone** (`friendlyValueText`): a `date-time` reads as `formatTimestamp` has it ("Nov 20,
   2026, 10:30 AM GMT-8"), as the editable field shows it, not as stored. A day alone stays as it is.
 

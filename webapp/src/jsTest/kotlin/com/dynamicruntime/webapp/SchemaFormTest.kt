@@ -78,7 +78,9 @@ class ControlKindTest {
         assertEquals("Nov 20, 2026, 10:30 AM GMT-8", friendlyValueText(moment, "2026-11-20T18:30:00.000Z", "Etc/GMT+8"))
         assertEquals(
             "Nov 20, 2026, 6:30 PM GMT, Nov 21, 2026, 9:00 AM GMT",
-            friendlyValueText(fieldType(array(string(mapOf(SCH.format to SFMT.dateTime)))), listOf("2026-11-20T18:30:00Z", "2026-11-21T09:00:00Z"), "UTC"),
+            friendlyValueText(
+                fieldType(array(string(mapOf(SCH.format to SFMT.dateTime)))), listOf("2026-11-20T18:30:00Z", "2026-11-21T09:00:00Z"), "UTC",
+            ),
         )
         assertEquals("2027-03-01", friendlyValueText(fieldType(string(mapOf(SCH.format to SFMT.date))), "2027-03-01", "UTC"))
         // Read, not filled in, only on a form people read: the catalog's read-only view documents the wire, and keeps
