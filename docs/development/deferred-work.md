@@ -1350,6 +1350,20 @@ clears all its data monthly, so this waits for a deployment that keeps its data.
   reports read (13 months, as first proposed). Worth it once a deployment keeps its data for good, or its privacy
   policy names a period.
 
+## When several administrators change a client's configuration independently
+
+A client's configuration is mostly changed by one administrator at a time, so two of them working at once is not guarded
+against beyond what each write already checks: a write based on an older version of a bundle is refused (`basedOn`,
+`expectUpdatedAt`), not laid over the newer one. Two configuration assistant turns may run in one client at once, each
+working from what it read a few steps before. Other administrators can read a client's conversations once #1941 is done.
+The trigger is a client whose administrators change its configuration separately and are surprised by each other's work.
+
+- **Say what changed recently.** Show each administrator the configuration changed since they last looked, by whom, and
+  with which conversation where the assistant made it (the Clients page, and the assistant's Drafts panel), so work
+  just done by someone else is seen before it is built on.
+- **One assistant turn at a time per client.** Refuse to start a turn while another is running in the client, saying
+  whose it is, so no turn works from configuration another is changing under it.
+
 ## When a client wants to change its home cards without writing configuration
 
 Home's cards are a registered UiBlock (`homeCardsBlock`, issue #1636), so a client hides or rewords one with an overlay

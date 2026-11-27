@@ -81,7 +81,9 @@ the models' 128,000.
 
 **Tuning against the real model** is what the assistant trials are for (issue #1859): named, repeatable runs, outside
 the gate, that start a node with the assistant on, configure a fresh client through prompts alone, and report what the
-assistant did, where it varied from what was expected, and the client's whole configuration. What it configured is then
+assistant did, where it varied from what was expected, and the client's whole configuration. A trial of changes to
+earlier work starts its client from a saved configuration instead, written before the first prompt (issue #1916), so
+every run starts from the same place. What it configured is then
 used, as an applicant, a reviewer, and an administrator would (issue #1915), since a configuration may be all that was
 asked for and still not work: the trials' two worst faults met every check and showed only in use. A change to the
 prompt, a tool, or a guide it reads is measured by running the same trial before and after. The `kdr-testing` skill says

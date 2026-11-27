@@ -55,6 +55,12 @@ enum class WalkStep(val title: String) {
 
     /** Home, as the applicant is served it, opens the New form. */
     home("Walked: an applicant's Home opens the New form"),
+
+    /**
+     * A step of the review that only others may save refuses the applicant, and once saved, the applicant reads what it
+     * saved (issue #1916).
+     */
+    restricted("Walked: the applicant may not save a reviewer's step, and reads what it saved"),
     ;
 
     val expectation: Expectation get() = Expectation(title) { r -> r.walk?.outcomes?.get(this) ?: Outcome.info("Not walked.") }
@@ -150,6 +156,7 @@ class TrialWalk(
                 }
                 if (WalkStep.report in steps) outcomes[WalkStep.report] = judged { judgeReports(form, before.getOrThrow()) }
             }
+            if (WalkStep.restricted in steps) outcomes[WalkStep.restricted] = restrictedOutcome()
             if (WalkStep.home in steps) outcomes[WalkStep.home] = judged { judgeHome(applicant.caller) }
         } catch (e: Exception) {
             for (step in steps) outcomes.getOrPut(step) { Outcome.notMet("The walk stopped: ${e.message ?: e::class.simpleName}") }
@@ -278,34 +285,111 @@ class TrialWalk(
             val actor = waiting.firstOrNull() ?: return Outcome.notMet("'$taskId' waits on none of those walked as. ${soFar()}")
             val shown = viewOf(actor, form, workflowId)
             val task = shown[WFD.tasks].toJsonListOfMaps().first { it[WFD.id] == taskId }
+            val applicant = actors.last()
+            val restricted = WalkStep.restricted in steps && actor != applicant && isRestricted(taskId)
+            val tried = if (restricted) trySaveAs(applicant, form, workflowId, shown, task) else null
             val said = try {
                 takeStep(actor, form, workflowId, shown, task)
             } catch (e: TrialCallRefused) {
                 return Outcome.notMet("'$taskId' was refused to ${actor.called}: ${e.message}. ${soFar()}")
             }
-            if (task[WVF.approval] != null && waiting.any { it.role == applicantRole }) ownApprovals.add("'$said'")
-            taken.add("'$said' by ${actor.called}")
+            if (restricted) restrictedFound.add(judgeRestricted(said, tried, applicant, form))
+            if (task[WVF.approval] != null && waiting.any { it.role == applicantRole }) ownApprovals.add("'${said.label}'")
+            taken.add("'${said.label}' by ${actor.called}")
         }
         return Outcome.notMet("It did not end in $maxReviewSteps steps. ${soFar()}")
     }
 
-    /** Gives [task]'s approval step, or saves it filled in, as [actor]; answers what it is called. */
-    private fun takeStep(
-        actor: Actor, form: MadeForm, workflowId: String, shown: Map<String, Any?>, task: Map<String, Any?>,
-    ): String {
-        val ids = mapOf(GDF.gedraId to form.gedraId, GDF.workflowId to workflowId, GDF.taskId to task[WFD.id])
+    /** A step taken: what it is called, and the entries it saved, none for an approval. */
+    private class Taken(val label: String, val entries: List<Map<String, Any?>> = emptyList())
+
+    /** Gives [task]'s approval step, or saves it filled in, as [actor]. */
+    private fun takeStep(actor: Actor, form: MadeForm, workflowId: String, shown: Map<String, Any?>, task: Map<String, Any?>): Taken {
         val label = task[WFD.label].toOptStr() ?: task[WFD.id].toOptStr().orEmpty()
         val approval = task[WVF.approval]?.toJsonMapOrEmpty()
         if (approval != null) {
             val stepId = approval[WVF.currentStep].toOptStr()
-            actor.caller.postData(clientPath(GEP.workflowApprove, sandbox), ids + listOfNotNull(stepId?.let { GDF.stepId to it }))
+            actor.caller.postData(
+                clientPath(GEP.workflowApprove, sandbox),
+                stepIds(form, workflowId, task) + listOfNotNull(stepId?.let { GDF.stepId to it }),
+            )
             val step = approval[WVF.steps].toJsonListOfMaps().takeIf { it.size > 1 }?.firstOrNull { it[WFD.id] == stepId }
-            return step?.let { "$label: ${it[WFD.label] ?: stepId}" } ?: label
+            return Taken(step?.let { "$label: ${it[WFD.label] ?: stepId}" } ?: label)
         }
-        val save = task[WFD.saves].toJsonListOfMaps().firstOrNull() ?: error("Task '$label' offers neither an approval nor a save")
         val entries = TrialForm(shown, tag).entries(task)
-        actor.caller.postData(clientPath(GEP.workflowSave, sandbox), ids + mapOf(GDF.saveId to save[WFD.id], GDF.entries to entries))
-        return label
+        actor.caller.postData(clientPath(GEP.workflowSave, sandbox), saveOf(form, workflowId, task, entries))
+        return Taken(label, entries)
+    }
+
+    private fun stepIds(form: MadeForm, workflowId: String, task: Map<String, Any?>): Map<String, Any?> =
+        mapOf(GDF.gedraId to form.gedraId, GDF.workflowId to workflowId, GDF.taskId to task[WFD.id])
+
+    /** What saving [task], filled in with [entries], sends. */
+    private fun saveOf(form: MadeForm, workflowId: String, task: Map<String, Any?>, entries: List<Map<String, Any?>>): Map<String, Any?> {
+        val save = task[WFD.saves].toJsonListOfMaps().firstOrNull()
+            ?: error("Task '${task[WFD.label] ?: task[WFD.id]}' offers neither an approval nor a save")
+        return stepIds(form, workflowId, task) + mapOf(GDF.saveId to save[WFD.id], GDF.entries to entries)
+    }
+
+    // --- a step only others may save (issue #1916) ---
+
+    /** What the applicant could do at each step of the review that only others may save, as the walk reached it. */
+    private val restrictedFound = mutableListOf<Outcome>()
+
+    /** Whether the review's task [taskId] is saved, not approved, and says who may save it. */
+    private fun isRestricted(taskId: String): Boolean = view.review?.get(WFD.tasks).toJsonListOfMaps()
+        .any { it[WFD.id] == taskId && it[WFD.approval] == null && it[WFD.saveWhen] != null }
+
+    /**
+     * Tries to save [task] as [applicant], with what its saver would send, as a person writing the call by hand would:
+     * the page may not offer the applicant the save at all. Answers null when it was refused, else what it answered.
+     */
+    private fun trySaveAs(
+        applicant: Actor, form: MadeForm, workflowId: String, shown: Map<String, Any?>, task: Map<String, Any?>,
+    ): Map<String, Any?>? = try {
+        val entries = TrialForm(shown, tag).entries(task)
+        applicant.caller.postData(clientPath(GEP.workflowSave, sandbox), saveOf(form, workflowId, task, entries))
+            .takeIf { it[WSF.saved] == true }
+    } catch (_: TrialCallRefused) {
+        null
+    }
+
+    /** The applicant was refused [taken] ([accepted] null), and reads, on their form, each value it saved. */
+    private fun judgeRestricted(taken: Taken, accepted: Map<String, Any?>?, applicant: Actor, form: MadeForm): Outcome {
+        val step = "'${taken.label}'"
+        if (accepted != null) return Outcome.notMet("The applicant saved $step, which only others may save.")
+        val read = applicant.caller.getItem(clientPath(GEP.formDoc, sandbox), mapOf(GDF.gedraId to form.gedraId))[GDF.entries]
+            .toJsonListOfMaps().associate { it[GE.traitId].toOptStr() to it[GE.data].toJsonMapOrEmpty() }
+        val saved = taken.entries.flatMap { entry ->
+            val traitId = entry[GE.traitId].toOptStr()
+            entry[GE.data].toJsonMapOrEmpty().map { (field, value) -> Triple(traitId, field, value) }
+        }
+        val unread = saved.filter { (traitId, field, value) -> !sameValue(read[traitId]?.get(field), value) }
+            .map { (traitId, field, _) -> "$traitId.$field" }
+        val fields = saved.joinToString { (traitId, field, _) -> "$traitId.$field" }
+        return when {
+            saved.isEmpty() -> Outcome.varied("The applicant was refused $step, which saved nothing to read.")
+            unread.isEmpty() -> Outcome.met("The applicant was refused $step, and reads what it saved: $fields.")
+            else -> Outcome.notMet("The applicant was refused $step, but does not read ${unread.joinToString()} of what it saved.")
+        }
+    }
+
+    /** Whether [read] is [given], a number read back either way. */
+    private fun sameValue(read: Any?, given: Any?): Boolean =
+        read == given || (given is Number && read.toOptDoubleOrNull() == given.toDouble())
+
+    /** The restricted step's outcome: the worst of the steps reached, or why none was. */
+    private fun restrictedOutcome(): Outcome {
+        if (restrictedFound.isEmpty()) {
+            return if (view.review?.get(WFD.tasks).toJsonListOfMaps().any { it[WFD.approval] == null && it[WFD.saveWhen] != null }) {
+                Outcome.notMet("The review did not reach its step that only others may save.")
+            } else {
+                Outcome.notMet("No step of the review says who may save it.")
+            }
+        }
+        // The kinds run from met to not met, so the worst is the last.
+        val worst = restrictedFound.maxBy { it.kind.ordinal }
+        return Outcome(worst.kind, restrictedFound.filter { it.kind == worst.kind }.joinToString(" ") { it.detail })
     }
 
     // --- the report ---

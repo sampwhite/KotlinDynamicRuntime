@@ -10,14 +10,17 @@ import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.counter.CTR
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.workflow.RCF
 import com.dynamicruntime.common.gedra.workflow.ULH
 import com.dynamicruntime.common.gedra.workflow.WFC
@@ -39,6 +42,7 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -402,24 +406,24 @@ class TrialHarnessTest : StringSpec({
         return TrialResult(smoke, variant, "c", null, conversations, mapOf("b" to mapOf(CFEP.slots to slots)), emptyList(), now, now)
     }
 
-    /** A conversation of the calls given, each a tool, its input, and whether it was refused. */
-    fun conversationOf(vararg calls: Triple<String, Map<String, Any?>, Boolean>): TrialConversation = TrialConversation(
-        "c", emptyList(),
-        calls.flatMapIndexed { i, (name, input, refused) ->
+    /** A conversation of the calls given, each a tool, its input, and whether it was refused, all in the turn [turnId]. */
+    fun conversationOf(vararg calls: Triple<String, Map<String, Any?>, Boolean>, turnId: String = "t"): TrialConversation {
+        val messages = calls.flatMapIndexed { i, (name, input, refused) ->
             listOf(
                 mapOf(
-                    ACNV.role to ABLK.assistant, ACNV.turnId to "t",
+                    ACNV.role to ABLK.assistant, ACNV.turnId to turnId,
                     ACNV.content to listOf(mapOf(ABLK.type to ABLK.toolUse, ABLK.id to "x$i", ABLK.name to name, ABLK.input to input)),
                 ),
                 mapOf(
-                    ACNV.role to ABLK.user, ACNV.turnId to "t",
+                    ACNV.role to ABLK.user, ACNV.turnId to turnId,
                     ACNV.content to listOf(
                         mapOf(ABLK.type to ABLK.toolResult, ABLK.toolUseId to "x$i", ABLK.content to "ok", ABLK.isError to refused),
                     ),
                 ),
             )
-        },
-    )
+        }
+        return TrialConversation("c", emptyList(), messages)
+    }
 
     "reading making-changes is told of each conversation that changes something, and judged of none" {
         val read = Triple(ATOOL.readDoc, mapOf<String, Any?>(ATOOL.doc to HDOC.makingChanges), false)
@@ -600,6 +604,10 @@ class TrialHarnessTest : StringSpec({
         val firstTask: Map<String, Any?>? = null,
         val totaled: Boolean = true,
         val card: Map<String, Any?> = mapOf(UIB.action to HMENU.pageNewForm, HCARD.actionLabel to "Apply"),
+        /** The properties of a trait called `verdict`, which only a task of the review collects; none when null. */
+        val verdict: Map<String, Any?>? = null,
+        val locks: List<Map<String, Any?>> = emptyList(),
+        val steps: List<WalkStep> = WalkStep.entries - WalkStep.restricted,
     )
 
     @Suppress("CanBeVal") var walks = 0
@@ -635,6 +643,13 @@ class TrialHarnessTest : StringSpec({
             ),
         )
         write("trait_ask", mapOf(CCT.traitDef to listOf(ask)))
+        w.verdict?.let { properties ->
+            val verdict = mapOf(
+                CCT.traitId to "verdict", CCT.typeName to "${clientNamespace(client)}.VerdictEntry", CCT.description to "A verdict.",
+                CCT.appliesTo to listOf("formDoc"), CCT.dataSchema to mapOf(SCH.type to "object", SCH.properties to properties),
+            )
+            write("trait_verdict", mapOf(CCT.traitDef to listOf(verdict)))
+        }
         for ((id, template, task) in listOf(
             Triple("newForm", WFT.createForm, "identify"), Triple("formDetails", WFT.coreDetails, "details"),
         )) {
@@ -653,7 +668,7 @@ class TrialHarnessTest : StringSpec({
             WFD.workflowId to "review", WFD.entry to WfEntry.normal.name, WFD.label to "Review", WFD.highlightStart to w.highlight,
             WFD.singletons to listOf(mapOf(WFD.cfact to "kdr:finished", WFD.kWhen to "approved")),
             WFD.tasks to listOfNotNull(w.firstTask, approve),
-        )
+        ) + listOfNotNull(w.locks.takeIf { it.isNotEmpty() }?.let { WFD.locks to it })
         val fact = mapOf("name" to "approved", "group" to "review", "description" to "Approved.", "toFrontend" to true)
         write(
             "review",
@@ -676,7 +691,7 @@ class TrialHarnessTest : StringSpec({
         write("cards", mapOf(CCT.uiBlockDef to listOf(cards)))
         val admin = TestUserCaller(person)
         return TrialWalk(
-            adminOf(admin), people, sandboxOf(client), ConfigView(TrialDriver.readConfig(admin)), WalkStep.entries, address,
+            adminOf(admin), people, sandboxOf(client), ConfigView(TrialDriver.readConfig(admin)), w.steps, address,
         ).walk()
     }
 
@@ -698,7 +713,7 @@ class TrialHarnessTest : StringSpec({
         )
         val record = walk(Walked(approval = mapOf(WFD.steps to steps), more = more))
         notMet(record) shouldBe emptyMap()
-        record.outcomes.keys.toList() shouldBe WalkStep.entries
+        record.outcomes.keys.toList() shouldBe WalkStep.entries - WalkStep.restricted
         record.people.map { it.role } shouldBe listOf(TrialWalk.applicantRole, TrialWalk.reviewerRole)
         record.people.map { it.email } shouldBe listOf("applicant-walk1@trials1915.test", "reviewer-walk1@trials1915.test")
         val given = record.outcomes.getValue(WalkStep.review).detail
@@ -745,6 +760,197 @@ class TrialHarnessTest : StringSpec({
         val record = walk(Walked(firstTask = task, highlight = false))
         notMet(record) shouldBe emptyMap()
         record.outcomes.getValue(WalkStep.start).detail shouldContain "It begins with the applicant's own step"
+    }
+
+    "a step only a reviewer may save refuses the applicant, who reads what it saved" {
+        val verdict = mapOf(
+            "score" to mapOf(SCH.type to "integer", SCH.minimum to 1, SCH.maximum to 5),
+            "note" to mapOf(SCH.type to "string"),
+        )
+        fun scoring(saveWhen: String) = mapOf(
+            WFD.id to "score", WFD.label to "Score it", WFD.traits to listOf(mapOf(WFD.traitId to "verdict")),
+            WFD.saves to listOf(mapOf(WFD.id to "save", WFD.label to "Save", WFD.kind to "edit")), WFD.saveWhen to saveWhen,
+            WFD.functions to listOf(mapOf(WFD.fn to ULH.fn, ULH.label to "reviewer", ULH.cfact to WFC.reviewer)),
+        )
+        val lock = mapOf(WFD.traitId to "verdict", WFD.kWhen to "#always", WFD.writableVia to "score")
+        fun walkScored(saveWhen: String) =
+            walk(Walked(firstTask = scoring(saveWhen), verdict = verdict, locks = listOf(lock), steps = WalkStep.entries))
+        val record = walkScored("${WFC.reviewer},~${RCF.isOwner}")
+        notMet(record) shouldBe emptyMap()
+        record.outcomes.getValue(WalkStep.restricted).detail shouldBe
+            "The applicant was refused 'Score it', and reads what it saved: verdict.score, verdict.note."
+        // A save rule the applicant meets as well, and a review with no step that says who may save it.
+        notMet(walkScored("${WFC.reviewer}|${RCF.isOwner}")).getValue(WalkStep.restricted) shouldBe
+            "notMet: The applicant saved 'Score it', which only others may save."
+        notMet(walk(Walked(steps = WalkStep.entries))).getValue(WalkStep.restricted) shouldBe
+            "notMet: No step of the review says who may save it."
+    }
+
+    "a trial's start is written into its sandbox before its first prompt, and walks as the run that made it did" {
+        model.add({ ScriptedModel.textResponse("Nothing to change yet.") })
+        val started = Trial(
+            "started", "Starts where grantsPolish does.", "Started Grants",
+            listOf(TrialVariant("explicit", "One request.", listOf(TrialPrompt("Look it over.")))),
+            emptyList(), WalkStep.entries, GrantsPolish.trial.start,
+        )
+        val person = TestUser.create(cxt, "started@trials1916.test")
+        val driver = TrialDriver(TestUserCaller(person), turnTimeout = 30.seconds, pollEvery = 50.milliseconds, log = {}, people = people)
+        val result = driver.run(started, started.variants.single(), "t1916")
+        result.problems.shouldBeEmpty()
+        result.turns.single().status shouldBe "done"
+        result.config.keys shouldContainAll listOf("trait_grantRequest", "workflow_newForm", "workflow_review", "home_cards", "reports")
+        // What grantsBasics' run configured is all there, and works as it did: every step of the walk but the one its
+        // review has nothing for.
+        val unmet = result.walk.shouldNotBeNull().outcomes.filterValues { it.kind != OutcomeKind.met }.mapValues { it.value.detail }
+        unmet shouldBe mapOf(WalkStep.restricted to "No step of the review says who may save it.")
+        val method = setOf(
+            "The administrator is told a reviewer needs the editor role too",
+            "The report is made whole by create_report, not patched afterward",
+        )
+        GrantsBasics.trial.expectations.filter { it.name !in method && it.check(result).kind != OutcomeKind.met }.map { it.name }
+            .shouldBeEmpty()
+    }
+
+    /** A configuration of grantsPolish's client: as its prompts ask, unless a test says otherwise. */
+    fun polishSlots(
+        amountWords: String = "We give up to $5,000.",
+        heading: String = "Your project",
+        details: Map<String, Any?>? = null,
+        categories: List<String> = listOf("arts", "environment", "education", "health", "housing"),
+        dateRequired: Boolean = false,
+        scoreAfter: Boolean = false,
+        saveWhen: String? = "${WFC.reviewer},~${RCF.isOwner}",
+        locked: Boolean = true,
+        prefix: String = "GR-",
+        digits: Int = 4,
+        numberedOnForm: Boolean = true,
+        columns: List<String> = listOf("name", "amount", "category", "number"),
+    ): Map<String, Any?> {
+        val type = "client.@self.GrantEntry"
+        fun trait(id: String, properties: Map<String, Any?>, more: Map<String, Any?> = emptyMap()) = mapOf(
+            CCT.traitId to id, CCT.typeName to if (id == "grantRequest") type else "client.@self.$id",
+            CCT.dataSchema to mapOf(SCH.type to "object", SCH.properties to properties) + more,
+        )
+        val grant = trait(
+            "grantRequest",
+            mapOf(
+                "amountRequested" to mapOf(SCH.type to "number"),
+                "startDate" to mapOf(SCH.type to "string", SCH.format to "date"),
+                "category" to mapOf(SCH.type to "string", SCH.options to categories.map { mapOf(SCH.value to it, SCH.label to it) }),
+            ),
+            mapOf(
+                SCH.required to listOfNotNull("amountRequested", "category", "startDate".takeIf { dateRequired }),
+                SCH.layout to mapOf(
+                    SL.label to heading, SL.schemaFields to listOf(mapOf(SL.field to "amountRequested", SL.description to amountWords)),
+                ),
+            ),
+        )
+        val ref = trait("ref", mapOf("refNo" to mapOf(SCH.type to "string", SCH.counter to "gr")))
+        val verdict = trait(
+            "verdict",
+            mapOf("score" to mapOf(SCH.type to "integer", SCH.minimum to 1, SCH.maximum to 5), "note" to mapOf(SCH.type to "string")),
+        )
+        fun workflow(id: String, definition: Map<String, Any?>) =
+            mapOf(CCT.workflowId to id, CCT.definition to mapOf(WFD.workflowId to id) + definition)
+        fun task(id: String, vararg traits: String) = mapOf(WFD.id to id, WFD.traits to traits.map { mapOf(WFD.traitId to it) })
+        val score = task("score", "verdict") + mapOf(WFD.label to "Score it") + listOfNotNull(saveWhen?.let { WFD.saveWhen to it })
+        val approve = mapOf(WFD.id to "approve", WFD.approval to mapOf(WFD.cfact to "approved"))
+        val review = mapOf(
+            WFD.entry to WfEntry.normal.name, WFD.label to "Review",
+            WFD.tasks to if (scoreAfter) listOf(approve, score) else listOf(score, approve),
+        ) + listOfNotNull(
+            (WFD.locks to listOf(mapOf(WFD.traitId to "verdict", WFD.kWhen to "#always", WFD.writableVia to "score"))).takeIf { locked },
+        )
+        val shown = mapOf(
+            "name" to mapOf(CCT.traitId to GT.name, CCT.label to "Name", CCT.display to $$"${name}"),
+            "amount" to mapOf(CCT.traitId to "grantRequest", CCT.label to "Amount", CCT.display to $$"${amountRequested}"),
+            "category" to mapOf(CCT.traitId to "grantRequest", CCT.label to "Category", CCT.display to $$"${category}"),
+            "number" to mapOf(CCT.traitId to "ref", CCT.label to "Number", CCT.display to $$"${refNo}"),
+        )
+        return mapOf(
+            CCT.traitDef to listOf(grant, ref, verdict),
+            CCT.workflowDef to listOf(
+                workflow("newForm", mapOf(WFD.fromTemplate to WFT.createForm, WFD.tasks to listOf(
+                    task("identify", *listOfNotNull(GT.name, "grantRequest", "ref".takeIf { numberedOnForm }).toTypedArray()),
+                ))),
+                workflow(
+                    "formDetails",
+                    mapOf(WFD.fromTemplate to WFT.coreDetails, WFD.tasks to listOf(task("details", "grantRequest"))) +
+                        listOfNotNull(details?.let { WFD.types to mapOf(traitDataTypeName(type) to mapOf(SCH.layout to it)) }),
+                ),
+                workflow("review", review),
+            ),
+            CCT.usageDef to columns.map { shown.getValue(it) },
+            CCT.counterDef to listOf(mapOf(CTR.counterId to "gr", CTR.prefix to prefix, CTR.digits to digits)),
+        )
+    }
+
+    /** grantsPolish's explicit result with [slots], and each prompt's calls, by its index. */
+    fun polished(slots: Map<String, Any?>, calls: Map<Int, List<String>>): Map<String, Outcome> {
+        val variant = GrantsPolish.trial.variant("explicit")
+        val conversations = calls.map { (i, names) ->
+            val made = names.map { name ->
+                val input = if (name == ATOOL.patchConfig) {
+                    val slot = if (i == 0) CCT.usageDef else CCT.counterDef
+                    mapOf(CFEP.configs to listOf(mapOf(CFEP.edits to listOf(mapOf(CFEP.slot to slot)))))
+                } else {
+                    emptyMap()
+                }
+                Triple(name, input, false)
+            }
+            val messages = conversationOf(*made.toTypedArray(), turnId = "t$i").messages
+            TrialConversation("c$i", listOf(mapOf(ACNV.turnId to "t$i", ACNV.text to variant.prompts[i].text)), messages)
+        }
+        val now = Clock.System.now()
+        val result = TrialResult(
+            GrantsPolish.trial, variant, "c", null, conversations, mapOf("b" to mapOf(CFEP.slots to slots)), emptyList(), now, now,
+        )
+        return GrantsPolish.trial.expectations.associate { it.name to it.check(result) }
+    }
+
+    "grantsPolish's changes are held to what each prompt asked, and to the tool each was made with" {
+        val asked = mapOf(
+            0 to listOf(ATOOL.saveFormsListColumn), 1 to listOf(ATOOL.setFieldCopy, ATOOL.setHeading),
+            2 to listOf(ATOOL.readImpact, ATOOL.designTrait), 4 to listOf(ATOOL.patchConfig, ATOOL.saveFormsListColumn),
+        )
+        polished(polishSlots(), asked).filterValues { it.kind != OutcomeKind.met }.mapValues { it.value.detail } shouldBe emptyMap()
+
+        // Each made wrong, in the ways a run could: said on core details alone, a category lost, a field still required, a
+        // step after the approval anyone may save, unlocked, a counter of another shape, and columns patched.
+        val details = mapOf(
+            SL.label to "Your project", SL.schemaFields to listOf(mapOf(SL.field to "amountRequested", SL.hint to "Up to $5,000.")),
+        )
+        val wrong = polishSlots(
+            amountWords = "Ask for what you need.", heading = "Grant request", details = details, categories = listOf("arts", "housing"),
+            dateRequired = true, scoreAfter = true, saveWhen = null, locked = false, prefix = "APP-", digits = 3,
+            numberedOnForm = false, columns = listOf("category"),
+        )
+        val outcomes = polished(wrong, mapOf(0 to listOf(ATOOL.patchConfig), 2 to listOf(ATOOL.designTrait)))
+        outcomes.mapValues { it.value.kind } shouldBe mapOf(
+            "The forms list shows the amount" to OutcomeKind.notMet,
+            "The forms list shows the category" to OutcomeKind.met,
+            "The forms list still shows each form's name" to OutcomeKind.varied,
+            "The columns are made with save_forms_list_column" to OutcomeKind.varied,
+            "The New form says under the amount that a grant is at most $5,000" to OutcomeKind.varied,
+            "The New form heads the amount's part \"Your project\"" to OutcomeKind.varied,
+            "The words and the heading are made with Design View's tools" to OutcomeKind.notMet,
+            "Housing is a category, and the others are kept" to OutcomeKind.varied,
+            "The start date is no longer required" to OutcomeKind.notMet,
+            "The trait is changed with design_trait or set_shared_field, not patched" to OutcomeKind.met,
+            "The change to the trait is weighed against the stored forms first" to OutcomeKind.notMet,
+            "A step before the approval asks for a score of 1 to 5 and a note" to OutcomeKind.varied,
+            "Only a reviewer may save the scoring step" to OutcomeKind.notMet,
+            "A lock keeps the score's trait to the scoring step" to OutcomeKind.notMet,
+            "A counter gives ids like GR-0042" to OutcomeKind.varied,
+            "The New form numbers each application from it" to OutcomeKind.varied,
+            "The forms list shows the number" to OutcomeKind.notMet,
+            "The number's column is made with save_forms_list_column" to OutcomeKind.notMet,
+        )
+        outcomes.getValue("A counter gives ids like GR-0042").detail shouldBe "'gr' gives ids like APP-042."
+        outcomes.getValue("Housing is a category, and the others are kept").detail shouldContain "environment, education, health is gone"
+        // A save rule the applicant meets too is no better than none.
+        polished(polishSlots(saveWhen = "${WFC.reviewer}|${RCF.isOwner}"), asked).getValue("Only a reviewer may save the scoring step")
+            .kind shouldBe OutcomeKind.notMet
     }
 
     "copy for one file in two bundles is merged, not replaced" {

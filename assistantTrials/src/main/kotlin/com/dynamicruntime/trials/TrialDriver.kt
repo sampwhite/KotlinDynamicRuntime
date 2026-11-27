@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.PORT
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -65,7 +66,8 @@ class ProbePeople(private val url: String) : TrialPeople, AutoCloseable {
 
 /**
  * Runs one trial as one person (issue #1859): creates their self-serve client, switches the assistant on for it, opens
- * its sandbox, sends the variant's prompts there one after another, each waiting for its turn to end, and reads back the
+ * its sandbox, writes the trial's start there (issue #1916), sends the variant's prompts one after another, each waiting
+ * for its turn to end, and reads back the
  * conversations and the client's configuration. Then, given [people], it walks through what was configured ([TrialWalk],
  * issue #1915). What goes wrong is recorded in the result's problems, and the run goes on as far as it can: a report of a
  * partial run says more than an exception.
@@ -87,13 +89,17 @@ class TrialDriver(
         var sandbox: String? = null
         val conversationIds = mutableListOf<String>()
         try {
-            val created = caller.postData(AEP.createOwnClient, mapOf(CLD.name to trial.clientName))
+            val created = caller.postData(AEP.createOwnClient, mapOf(CLD.name to trial.clientNameFor(variant)))
             client = created[CLD.client].toOptStr()
             if (created[CLD.switched] != true) error("Creating the client did not move the session into it: $created")
             caller.postData(ACNV.switchOnPath, mapOf(ASST.acknowledgeDataNotice to true))
             caller.postData(AEP.openSandbox, emptyMap())
             sandbox = caller.getData(AEP.selfInfo)[UPF.client].toOptStr()
             log("  ${trial.name}/${variant.name}: client $client, sandbox $sandbox")
+            trial.start?.let {
+                log("  ${trial.name}/${variant.name}: writing its start")
+                writeStart(it)
+            }
             var conversationId: String? = null
             variant.prompts.forEachIndexed { i, prompt ->
                 if (prompt.newConversation) conversationId = null
@@ -131,6 +137,24 @@ class TrialDriver(
             null
         }
         return TrialResult(trial, variant, client, sandbox, conversations, config, problems, startedAt, Clock.System.now(), walk)
+    }
+
+    /**
+     * Writes [start] into the sandbox the session is in: the client's definition first, since a bundle may name what it
+     * sets (a label a review takes), then each bundle whole, reloading the sandbox after each. A write refused stops the
+     * trial before its first prompt, since what the prompts change would not be there.
+     */
+    private fun writeStart(start: TrialStart) {
+        if (start.definition.isNotEmpty()) caller.postData(UADEP.clientDefinitionSet, start.definition)
+        for (bundle in start.bundles) {
+            caller.postData(
+                CFEP.bundleWrite,
+                mapOf(
+                    CFEP.name to bundle[CFEP.name], CFEP.namespaceField to PORT.namespace, CFEP.slots to bundle[CFEP.slots],
+                    CFEP.reloadField to true,
+                ),
+            )
+        }
     }
 
     /** Waits for [turnId] to end; answers why it did not, or null when it did. */

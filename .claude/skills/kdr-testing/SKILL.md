@@ -512,6 +512,8 @@ that configure a fresh client through prompts alone and report what came of it.
   applicant, and a reviewer given the review's label and the `editor` role -- make a form through the New form, take it
   through its review from "Waiting on you", and look at Home, and the administrator runs the report. Each step a trial
   names in its `walk` is an expectation, saying what stopped it, and the report gives the people's addresses, to become.
+  A review step that only others may save is also tried as the applicant, who must be refused, and then must read what
+  it saved (issue #1916).
   `walkTrials` walks a saved run again, as its client is now, writing `walk.md`. A form is filled from the workflow's view
   by the kernel's own form rules, so nothing depends on the names the model chose.
 - **A trial** is a Kotlin object (`GrantsBasics` is the first): a goal, its variants -- the same requests phrased
@@ -519,6 +521,12 @@ that configure a fresh client through prompts alone and report what came of it.
   about an amount, typed as a number) because the model chooses its own names. A variant that names something exactly has
   expectations of its own for it. Add the trial to `Trials.all`. A new capability
   extends one trial or starts another, so each stays small enough to run alone.
+- **A trial may start from a configured client** (`start`, issue #1916): a resource under `trialStarts/` of bundles in
+  portable form and the settings of the client's definition they need, which the driver writes into the sandbox before
+  the first prompt. `grantsPolish` starts from what `grantsBasics`' explicit variant made in a run that met every
+  expectation, and asks for changes to it: forms list columns, Design View's words and heading, a trait changed, a
+  reviewer's step with its lock, and a counter. Its checks also ask which tool made each change, from the calls of
+  that prompt's own turn (`TrialResult.callsOf`).
 - **The harness's own test** (`TrialHarnessTest`) runs a trial in-process against a `ScriptedModel`, through the same
   calls, and is in the gate.
 

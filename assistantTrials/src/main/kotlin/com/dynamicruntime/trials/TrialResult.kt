@@ -3,6 +3,7 @@ package com.dynamicruntime.trials
 import com.dynamicruntime.common.assistant.ABLK
 import com.dynamicruntime.common.assistant.ACNV
 import com.dynamicruntime.common.assistant.ASST
+import com.dynamicruntime.common.assistant.ATOOL
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -18,6 +19,9 @@ class ToolCall(val turnId: String, val name: String, val input: Map<String, Any?
 
     /** Whether the call asked for a dry run; null when its input says nothing of one. */
     val dryRun: Boolean? get() = input[CFEP.dryRun] as? Boolean
+
+    /** Whether the call changed the client: it is not a read, a dry run, or refused. */
+    val isChange: Boolean get() = !isRead && name != ATOOL.readDoc && dryRun != true && !isError
 
     /** The call in one line: its name and input. */
     val summary: String get() = "$name ${input.toJsonStr(compact = true).take(summaryChars)}"
@@ -107,6 +111,16 @@ class TrialResult(
     val calls: List<ToolCall> by lazy { conversations.flatMap { it.calls } }
     val turns: List<TurnInfo> by lazy { conversations.flatMap { c -> c.turns.map { TurnInfo(it) } } }
     val weighted: Long get() = turns.sumOf { it.weighted }
+
+    /**
+     * The calls of the turn that the variant's prompt [index] (from 0) began (issue #1916), so a check can ask how one
+     * request was met when a conversation holds several.
+     */
+    fun callsOf(index: Int): List<ToolCall> {
+        val text = variant.prompts.getOrNull(index)?.text ?: return emptyList()
+        val turnIds = turns.filter { it.text == text }.map { it.turnId }.toSet()
+        return calls.filter { it.turnId in turnIds }
+    }
 
     /** The models that answered, each once. */
     val models: List<String> get() = turns.mapNotNull { it.model }.distinct()
