@@ -54,7 +54,7 @@ class ConfigSlotGuardsTest : StringSpec({
         fileRef("logo", "ab".repeat(32), "The logo.")
         listing(ListingDef(WorkflowLayout.combined))
         counter("receipt", "R")
-        formType("visit", "Visit", setWhen = "acmeReady", mayLeave = true) { trait("acmeNote", required = false) }
+        ftype("visit", "Visit", setWhen = "acmeReady", mayLeave = true) { trait("acmeNote", required = false) }
     }
 
     /**

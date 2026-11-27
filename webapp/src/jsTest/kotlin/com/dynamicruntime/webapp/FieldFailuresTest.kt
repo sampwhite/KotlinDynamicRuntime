@@ -193,7 +193,7 @@ class FieldFailuresTest {
         SCH.properties to mapOf(GE.traitId to mapOf(SCH.const to traitId), GE.data to mapOf(SCH.dRef to $$"#/$defs/$$type")),
     )
 
-    private val formType = entryTypes.getValue("c.Form")
+    private val ftype = entryTypes.getValue("c.Form")
     private val form = mapOf(
         GDF.entries to listOf(
             mapOf(GE.traitId to "yearly", GE.data to mapOf("year" to "2023", "lines" to listOf(mapOf("cost" to "1")))),
@@ -207,7 +207,7 @@ class FieldFailuresTest {
 
     @Test
     fun anEntryIsNamedAsTheFormHeadsIt() {
-        fun told(f: Map<String, Any?>, opts: FormOpts = opts()) = entryFailureText(formType, form, GDF.entries, one(f), opts)
+        fun told(f: Map<String, Any?>, opts: FormOpts = opts()) = entryFailureText(ftype, form, GDF.entries, one(f), opts)
         assertEquals(
             "Talk, Title: Value must be at least 3 characters.",
             told(
@@ -228,10 +228,10 @@ class FieldFailuresTest {
 
     @Test
     fun aFieldIsPointedAtOnlyWhereTheFormDrawsIt() {
-        fun path(field: String, opts: FormOpts = opts()) = drawnEntryField(formType, form, GDF.entries, "talk", field, opts)
+        fun path(field: String, opts: FormOpts = opts()) = drawnEntryField(ftype, form, GDF.entries, "talk", field, opts)
         assertEquals("${GDF.entries}[2].data.talkTitle", path("talkTitle"))
         assertNull(path("gone"))
-        assertNull(drawnEntryField(formType, form, GDF.entries, "absent", "talkTitle", opts()))
+        assertNull(drawnEntryField(ftype, form, GDF.entries, "absent", "talkTitle", opts()))
         // A layout that chooses the fields leaves this one out, and so there is no field to mark.
         val layout = SchLayout(
             fragmentFileId = null, label = null, fields = listOf(field("venue", null)), mode = SchLayoutMode.authoritative,

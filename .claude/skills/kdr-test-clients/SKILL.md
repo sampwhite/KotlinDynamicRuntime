@@ -167,11 +167,12 @@ later schema rejects" test.
     to the code by `ConfDemoDocsTest`. (`docs/history/gedra-workflow.md` is a superseded design; do not follow it.) An
     optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
     template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
-  - **A task that collects its form's type's traits** (issue #1903): `formTypeTraits = true` in a creation or core details
-    task's block, beside `trait(…)`; one task of a workflow, and refused on a normal workflow. The client's types are
-    `formType("lead", "Lead") { trait("ask") }` (issue #1902). In code, a definition is resolved for a form before it is
-    judged -- `WfDeclared.forForm(cxt, client, entries)` -- and `def.traitIdsOverTypes(types)` answers what asks without a
-    form; `WfTask.traits` of the definition as written holds only what the task lists. `FormTypeTraitsTest` is the example.
+  - **A task that collects its form's type's traits** (issue #1903): `ftypeTraits = true` in a creation or core details
+    task's block, beside `trait(…)`; one task of a workflow, and refused on a normal workflow. The client's form types
+    ("ftypes") are `ftype("lead", "Lead") { trait("ask") }` (issue #1902). In code, a definition is resolved for a form
+    before it is judged -- `WfDeclared.forForm(cxt, client, entries)` -- and `def.traitIdsOverFtypes(types)` answers what
+    asks without a form; `WfTask.traits` of the definition as written holds only what the task lists. `FTypeTraitsTest`
+    is the example.
   - **What a task's call to action carries** (issue #1594): `keyword(CTAK.review)` in a task block declares its
     search keyword, and an approval task carries `review` without it. **`review` is the only way a form needs review**
     (issue #1596): while an engaged workflow's CTA carries it, the form has `kdr:needsReview` (the Status column's
@@ -291,7 +292,7 @@ id — downstream services can't tell a configured client from a code-defined on
 `"overrides": "code"` (`CCT.overrides`; in the DSL, `overridesCode("tplNote", "tplFlow")` in the `gedraConfig` block,
 or `columns = true` for the forms list's columns). Marked, it stands over the code's entry of the same key, whole, by
 the keys `ConfigKeys` states (the rule a client's own configuration already stands over its template's copies by): a
-trait, type, cfact, workflow, report, file ref, counter, or form type by key, a creation or core details workflow by its kind, the columns
+trait, type, cfact, workflow, report, file ref, counter, or ftype by key, a creation or core details workflow by its kind, the columns
 as one set. The load cuts what it stands over out of the code (`CodeOverrides`, `GedraConfigLoadService.cutSource`), so
 a code-defined client such as acme can now be edited through stored configuration. **Unmarked**, a write's trial
 refuses it, saying what it would replace and where ("which template 'tplbase''s 'base' also declares"), and so does a

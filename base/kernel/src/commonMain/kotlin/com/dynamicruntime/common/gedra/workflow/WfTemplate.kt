@@ -112,7 +112,7 @@ private val workflowOverlayKeys = setOf(
 )
 
 /** What an overlay may say of one of the template's tasks. */
-private val taskOverlayKeys = setOf(WFD.id, WFD.label, WFD.traits, WFD.formTypeTraits, WFD.saves, SCH.dComment, WFD.merge)
+private val taskOverlayKeys = setOf(WFD.id, WFD.label, WFD.traits, WFD.ftypeTraits, WFD.saves, SCH.dComment, WFD.merge)
 
 /** What an overlay may say of one of a task's saves: what its button is called. */
 private val saveOverlayKeys = setOf(WFD.id, WFD.label)
@@ -199,7 +199,7 @@ class UnreadWorkflow(val workflowId: String, val definition: Map<String, Any?>, 
  * whether it also collects the traits of its form's type (issue #1903) -- null, as a caller who does not say sends it, to
  * leave that as it is.
  */
-class WfTaskSlot(val taskId: String, val label: String, val traits: List<WfTraitRef>, val formTypeTraits: Boolean? = null)
+class WfTaskSlot(val taskId: String, val label: String, val traits: List<WfTraitRef>, val ftypeTraits: Boolean? = null)
 
 /**
  * What a client chooses of a workflow made from a template (issue #1120) -- its **slots**: the workflow's name, and per
@@ -223,7 +223,7 @@ class WfTemplateSlots(val workflowId: String?, val templateId: String, val label
                     WFD.id to t.taskId,
                     WFD.label to t.label,
                     WFD.traits to t.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) },
-                ).apply { t.formTypeTraits?.let { put(WFD.formTypeTraits, it) } }
+                ).apply { t.ftypeTraits?.let { put(WFD.ftypeTraits, it) } }
             },
         )
     }
@@ -239,7 +239,7 @@ fun templateSlotsFromInfo(raw: Map<String, Any?>): WfTemplateSlots = WfTemplateS
             taskId = t[WFD.id].toOptStr().orEmpty(),
             label = t[WFD.label].toOptStr()?.trim().orEmpty(),
             traits = t[WFD.traits].toJsonListOfMaps().map { WfTraitRef(it[WFD.traitId].toOptStr().orEmpty(), it[WFD.required] as? Boolean ?: true) },
-            formTypeTraits = t[WFD.formTypeTraits] as? Boolean,
+            ftypeTraits = t[WFD.ftypeTraits] as? Boolean,
         )
     },
 )
@@ -252,7 +252,7 @@ fun templateSlotsOf(def: WfDef): WfTemplateSlots = WfTemplateSlots(
     workflowId = def.workflowId.takeIf { def.fromTemplate != null },
     templateId = def.fromTemplate ?: def.workflowId,
     label = def.label,
-    tasks = def.tasks.filter { it.isDataEntry }.map { WfTaskSlot(it.id, it.label, it.traits, it.formTypeTraits) },
+    tasks = def.tasks.filter { it.isDataEntry }.map { WfTaskSlot(it.id, it.label, it.traits, it.ftypeTraits) },
 )
 
 /**
@@ -272,10 +272,10 @@ fun withTemplateSlots(cxt: KdrCxtBase, base: WfDef, slots: WfTemplateSlots, work
             WFD.traits to slot.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) },
         )
         // As a definition states it: there when it is so, and absent when it is not.
-        when (slot.formTypeTraits) {
+        when (slot.ftypeTraits) {
             null -> filled
-            true -> filled + (WFD.formTypeTraits to true)
-            false -> filled - WFD.formTypeTraits
+            true -> filled + (WFD.ftypeTraits to true)
+            false -> filled - WFD.ftypeTraits
         }
     }
     return parseWfDef(cxt, json)
@@ -297,13 +297,13 @@ fun templateSlotProblems(template: WfDef, slots: WfTemplateSlots): List<String> 
             !task.isDataEntry -> add("Task '${slot.taskId}' is an approval, which collects nothing.")
             else -> {
                 if (slot.label.isBlank()) add("Task '${slot.taskId}' needs a label.")
-                if (slot.formTypeTraits == true && template.entry == WfEntry.normal) {
+                if (slot.ftypeTraits == true && template.entry == WfEntry.normal) {
                     add(
                         "Task '${slot.label.ifBlank { slot.taskId }}' of a normal workflow lists its traits; only a creation or " +
                             "core details workflow collects its form's type's.",
                     )
                 }
-                if (slot.traits.isEmpty() && slot.formTypeTraits != true) {
+                if (slot.traits.isEmpty() && slot.ftypeTraits != true) {
                     add("Task '${slot.label.ifBlank { slot.taskId }}' collects at least one trait.")
                 }
                 slot.traits.groupBy { it.traitId }.filterValues { it.size > 1 }.keys.forEach {
@@ -312,5 +312,5 @@ fun templateSlotProblems(template: WfDef, slots: WfTemplateSlots): List<String> 
             }
         }
     }
-    if (slots.tasks.count { it.formTypeTraits == true } > 1) add("Only one task of a workflow collects the traits of its form's type.")
+    if (slots.tasks.count { it.ftypeTraits == true } > 1) add("Only one task of a workflow collects the traits of its form's type.")
 }

@@ -101,21 +101,21 @@ class ClientWorkflowsTest {
     }
 
     @Test
-    fun aStepMayCollectItsFormTypesTraits() {
+    fun aStepMayCollectItsFtypesTraits() {
         // Issue #1903: the types come with the catalog, and each is listed with what it brings to the step.
         val typed = parseWorkflowCatalog(
             mapOf(
                 CWF.traits to listOf(mapOf(CCT.traitId to "ask", CWF.name to "The ask"), mapOf(CCT.traitId to "clip", CWF.name to "Clip")),
-                CWF.formTypes to listOf(
+                CWF.ftypes to listOf(
                     mapOf(
-                        FTYPE.formTypeId to "lead", FTYPE.label to "Lead",
+                        FTYPE.ftypeId to "lead", FTYPE.label to "Lead",
                         FTYPE.traits to listOf(mapOf(WFD.traitId to "ask"), mapOf(WFD.traitId to "notes", WFD.required to false)),
                     ),
                     mapOf(
-                        FTYPE.formTypeId to "video", FTYPE.label to "Video",
+                        FTYPE.ftypeId to "video", FTYPE.label to "Video",
                         FTYPE.traits to listOf(mapOf(WFD.traitId to "clip", WFD.required to false)),
                     ),
-                    mapOf(FTYPE.formTypeId to "memo", FTYPE.label to "Memo"),
+                    mapOf(FTYPE.ftypeId to "memo", FTYPE.label to "Memo"),
                 ),
             ),
         )
@@ -126,27 +126,27 @@ class ClientWorkflowsTest {
                 task("more", "More") { trait("notes"); save("more", "Save", WfSaveKind.edit) }
             }.build(),
         )
-        val slots = newWorkflowSlots(details).withFormTypeTraits("basics", true)
+        val slots = newWorkflowSlots(details).withFtypeTraits("basics", true)
         // Required where the type says so, and left out where another step lists it.
         assertEquals(
             listOf("Lead" to "The ask (required)", "Video" to "Clip", "Memo" to "nothing more"),
-            formTypeTraitLines(typed, slots, slots.task("basics")!!),
+            ftypeTraitLines(typed, slots, slots.task("basics")!!),
         )
         val unlisted = newWorkflowSlots(details).withTaskTraits("more", emptyList())
-        assertEquals("Lead" to "The ask (required), notes", formTypeTraitLines(typed, unlisted, slots.task("basics")!!).first())
+        assertEquals("Lead" to "The ask (required), notes", ftypeTraitLines(typed, unlisted, slots.task("basics")!!).first())
         // Every other edit of a step keeps the choice.
         val edited = slots.withTaskLabel("basics", "B").withTaskTraits("basics", listOf("ask", "clip")).withTraitMoved("basics", "clip", -1)
             .withTraitRequired("basics", "clip", false)
         assertEquals(listOf("clip", "ask"), edited.task("basics")!!.traits.map { it.traitId })
-        assertEquals(listOf<Boolean?>(true, false), edited.tasks.map { it.formTypeTraits })
+        assertEquals(listOf<Boolean?>(true, false), edited.tasks.map { it.ftypeTraits })
         // Offered on a creation or core details step, where the client has types or the step collects them already.
         val step = slots.task("more")!!
-        assertTrue(formTypeTraitsOffered(typed, details, step))
-        assertFalse(formTypeTraitsOffered(catalog, details, step))
-        assertTrue(formTypeTraitsOffered(catalog, details, slots.task("basics")!!))
-        assertTrue(formTypeTraitsHint(catalog).contains("adds nothing"))
+        assertTrue(ftypeTraitsOffered(typed, details, step))
+        assertFalse(ftypeTraitsOffered(catalog, details, step))
+        assertTrue(ftypeTraitsOffered(catalog, details, slots.task("basics")!!))
+        assertTrue(ftypeTraitsHint(catalog).contains("adds nothing"))
         val normal = parseWfDef(LiteCxt(), WfDefBuilder("kdr:n", WfEntry.normal).apply { task("t", "T") { trait("ask") } }.build())
-        assertFalse(formTypeTraitsOffered(typed, normal, newWorkflowSlots(normal).tasks.single()))
+        assertFalse(ftypeTraitsOffered(typed, normal, newWorkflowSlots(normal).tasks.single()))
         // A row says a step does.
         val made = withTemplateSlots(LiteCxt(), details, slots, "mine")
         val summary = workflowTaskSummary(ClientWorkflowView(made, null, null), emptyMap())

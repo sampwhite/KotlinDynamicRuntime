@@ -37,7 +37,7 @@ class GedraWriteContext(val sqlCxt: SqlCxt, val row: GedraDataRow, val priorEntr
  *
  * **Five hooks, all registered by `CommonComponent`, in this order:** `CounterClaimHook` (issue #1849), which holds a
  * counter's field to the ids issued to the **caller**, first so a refused claim fails before the rest is done;
- * `FormTypeHook` (issue #1902), which holds a form's type to those its client defines and the **caller** may set;
+ * `FTypeHook` (issue #1902), which holds a form's type to those its client defines and the **caller** may set;
  * [UniqueClaimHook] (issue #1851), which refuses a value another of the owner's forms holds;
  * `DataFileLinkHook` (issue #1838), which links a form to the data files its fields name and judges a newly linked file
  * against the **caller's** read scope; then [DerivedStateWriteHook]. The order matters: all hooks in one firing are

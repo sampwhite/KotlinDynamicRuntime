@@ -1246,7 +1246,7 @@ class GedraDataService : ServiceInitializer {
             checkEntryKeys(survivors, pkFieldsOf(cxt, kind))
             // Its type (issue #1902), which the write hook holds too: here so that a later document's refusal leaves no
             // earlier one stored. A permission, so no option forgives it.
-            formTypeOf(survivors)?.let { FormTypeService.get(cxt).requireAllowed(cxt, cxt.client, null, it) }
+            ftypeOf(survivors)?.let { FTypeService.get(cxt).requireAllowed(cxt, cxt.client, null, it) }
             plans.add(survivors to excluded.toList())
         }
 

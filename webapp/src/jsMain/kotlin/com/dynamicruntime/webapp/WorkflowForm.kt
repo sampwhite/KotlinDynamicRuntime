@@ -143,10 +143,10 @@ external interface WorkflowFormProps : Props {
     var onDesignToggle: (() -> Unit)?
 
     /**
-     * Draws the page for a form type in Design View (issue #1903): told the type's id, `DSV.noFormType`, or empty for the
+     * Draws the page for an ftype in Design View (issue #1903): told the type's id, `DSV.noFtype`, or empty for the
      * form's own. The page re-reads the view in place. Unset, the choice is not offered.
      */
-    var onDrawnFormType: ((String) -> Unit)?
+    var onDrawnFtype: ((String) -> Unit)?
 }
 
 /**
@@ -982,7 +982,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // there is nothing here to save, and asking for its save would find none.
             val save = saveFor(task)
             // Not while it is drawn for a type that is not the form's (issue #1903): the save would be refused its traits.
-            val drawnFor = drawnFormTypeNote(wf.design)
+            val drawnFor = drawnFtypeNote(wf.design)
             val savesHere = editing && wf.isEditable(task, isEdit) && save != null && drawnFor == null
             if (drawnFor != null && editing && save != null) {
                 p {
@@ -1157,10 +1157,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             props.onDesignToggle?.takeIf { designSwitchOffered(shellFacts) }?.let { designSwitch(it) }
         }
 
-        // Which form type the page is drawn for, in Design View (issue #1903): a task that collects its form's type's traits
+        // Which ftype the page is drawn for, in Design View (issue #1903): a task that collects its form's type's traits
         // draws one type's at a time, so laying out another's needs it said.
-        props.onDrawnFormType?.let { onDrawn ->
-            val design = designSession?.design?.takeIf { it.formTypes.isNotEmpty() } ?: return@let
+        props.onDrawnFtype?.let { onDrawn ->
+            val design = designSession?.design?.takeIf { it.ftypes.isNotEmpty() } ?: return@let
             div {
                 className = ClassName("row dv-drawn-for")
                 span {
@@ -1168,8 +1168,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     +"Drawn for"
                 }
                 Select {
-                    value = design.drawnFormType ?: ""
-                    options = choiceOptions(drawnFormTypeChoices(design, isEdit))
+                    value = design.drawnFtype ?: ""
+                    options = choiceOptions(drawnFtypeChoices(design, isEdit))
                     asDynamic()["aria-label"] = "The form type this page is drawn for"
                     style = js("({ minWidth: 260 })")
                     onChange = { v -> onDrawn(v?.toString().orEmpty()) }

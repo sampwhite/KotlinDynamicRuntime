@@ -1402,9 +1402,9 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
 .collects-name { font-weight: 600; }
 .collects-actions { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
 .collects-actions .ant-checkbox-wrapper { margin-right: 6px; }
-/* What each form type brings to a step that collects its form's type's traits (issue #1903). */
+/* What each ftype brings to a step that collects its form's type's traits (issue #1903). */
 .collects-by-type { margin: 4px 0 0; padding-left: 18px; }
-/* Design View's choice of the form type the page is drawn for (issue #1903). */
+/* Design View's choice of the ftype the page is drawn for (issue #1903). */
 .dv-drawn-for { margin: 8px 0; }
 .trait-field {
     margin: 10px 0;

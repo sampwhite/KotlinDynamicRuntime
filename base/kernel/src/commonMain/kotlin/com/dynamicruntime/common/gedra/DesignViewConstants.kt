@@ -253,23 +253,23 @@ object DSV {
     const val sourcedFields = "sourcedFields"
 
     /**
-     * In the block of a workflow with a task that collects its form's type's traits (issue #1903): the client's form types,
-     * each its `formTypeId` and `label`, any of which the page may be drawn for. Absent for any other workflow.
+     * In the block of a workflow with a task that collects its form's type's traits (issue #1903): the client's ftypes,
+     * each its `ftypeId` and `label`, any of which the page may be drawn for. Absent for any other workflow.
      */
-    const val formTypes = "formTypes"
+    const val ftypes = "ftypes"
 
-    /** Beside [formTypes]: the form's own type, by id; absent for a form with none, and for a new form. */
-    const val ownFormType = "ownFormType"
+    /** Beside [ftypes]: the form's own type, by id; absent for a form with none, and for a new form. */
+    const val ownFtype = "ownFtype"
 
     /**
-     * On the workflow view's request, honored in Design View only (issue #1903): the form type to draw the page for, by id,
-     * or [noFormType]; absent, the form's own. And beside [formTypes]: the one it was drawn for, when that is not the
+     * On the workflow view's request, honored in Design View only (issue #1903): the ftype to draw the page for, by id,
+     * or [noFtype]; absent, the form's own. And beside [ftypes]: the one it was drawn for, when that is not the
      * form's own. It changes what is drawn and stores nothing.
      */
-    const val drawnFormType = "drawnFormType"
+    const val drawnFtype = "drawnFtype"
 
-    /** [drawnFormType] for a form with no type. Not a type's id, which starts with a letter. */
-    const val noFormType = "#none"
+    /** [drawnFtype] for a form with no type. Not a type's id, which starts with a letter. */
+    const val noFtype = "#none"
 
     /**
      * In the block: by approval task id, what each approval lays out its own way for what it shows (issue #1875) --

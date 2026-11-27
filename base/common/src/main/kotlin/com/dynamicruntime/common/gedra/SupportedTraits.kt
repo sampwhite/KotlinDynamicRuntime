@@ -17,8 +17,8 @@ package com.dynamicruntime.common.gedra
  * nothing supports nothing, however much it can see.
  *
  * The computed set is the declared list with its groups expanded, **plus everything the client customized**:
- * a trait it altered, extended, or defined is supported without a second mention, and so is the form type trait by a
- * client that defines form types (issue #1902). That is why the declared
+ * a trait it altered, extended, or defined is supported without a second mention, and so is the ftype trait by a
+ * client that defines ftypes (issue #1902). That is why the declared
  * attribute is called `includedTraits` and not `supportedTraits` -- an attribute claiming to list what a
  * client supports, which does not list all of it, is the kind of near-truth somebody eventually relies on.
  */
@@ -46,12 +46,12 @@ fun supportedTraits(
         // `#allGlobal` is functional: membership computed here from what is global, never written down, so it
         // cannot fall out of step the way a hand-applied tag would.
         val byGroup = CLD.allGlobal in def.includedGroups && trait.joinsGroups && trait !in configs.traitsOwnedBy(client)
-        // A client that defines form types has the trait a form says its type in (issue #1902), with no second mention.
-        val byFormTypes = trait.traitId == GT.formType && configs.definesFormTypes(client)
+        // A client that defines ftypes has the trait a form says its type in (issue #1902), with no second mention.
+        val byFtypes = trait.traitId == GT.ftype && configs.definesFtypes(client)
         // Customized without a second mention: altering a trait's entry type is as clear a statement of intent
         // as naming it, and requiring both would make the list a place to forget.
         val customized = trait.typeName in overlaidTypes
-        if (byId || byGroup || byFormTypes || customized) {
+        if (byId || byGroup || byFtypes || customized) {
             included[trait.traitId] = trait
         }
     }

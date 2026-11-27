@@ -80,12 +80,12 @@ class FormErrorStringsTest {
     )
 
     @Test
-    fun reachesTraitLayoutsThroughTheFormType() {
-        val formType = parseSchemaTypes(formDocDefs()).getValue("t.FormDoc")
+    fun reachesTraitLayoutsThroughTheFtype() {
+        val ftype = parseSchemaTypes(formDocDefs()).getValue("t.FormDoc")
         // A client set the hint on their expense trait's data-type layout; nothing on the name trait.
         val fieldLayouts =
             mapOf("t.ExpenseData" to layoutWith(mapOf(LAYSTR.formErrorHint to "Check the expense fields.")))
-        val reached = formTraitLayouts(formType, fieldLayouts)
+        val reached = formTraitLayouts(ftype, fieldLayouts)
         // Both branches' data types are visited, in union order; only the expense one has a layout.
         assertEquals(1, reached.size)
         val (_, hint) = formErrorStrings(reached, "S-default", "H-default")
@@ -94,8 +94,8 @@ class FormErrorStringsTest {
 
     @Test
     fun noTraitLayoutMeansTheDefault() {
-        val formType = parseSchemaTypes(formDocDefs()).getValue("t.FormDoc")
-        val reached = formTraitLayouts(formType, emptyMap())
+        val ftype = parseSchemaTypes(formDocDefs()).getValue("t.FormDoc")
+        val reached = formTraitLayouts(ftype, emptyMap())
         assertEquals(emptyList(), reached)
         assertEquals("H-default", formErrorStrings(reached, "S-default", "H-default").second)
     }

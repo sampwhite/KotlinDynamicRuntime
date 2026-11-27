@@ -31,7 +31,7 @@ object CEXT {
  * `ConfigKeys` states -- the same rule a stored entry marked to stand over the client's code is cut by (issue #1634):
  *
  * - **Traits** by trait id, **types** by qualified name, **cfacts** by name, **workflows** by workflow id,
- *   **reports** by report id (issue #979), **counters** and **form types** by theirs (issues #1849, #1902).
+ *   **reports** by report id (issue #979), **counters** and **ftypes** by theirs (issues #1849, #1902).
  * - A **creation or core details** workflow of the client's own replaces the template's of that kind, whatever its id
  *   -- a client has one answer to how a form is created or how its core details are kept, which is the rule a client
  *   already has against the global workflows.

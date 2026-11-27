@@ -43,9 +43,9 @@ val CreationPage = FC<Props> {
     // Design View switched while the form is open (issue #972): the view is read again in place, so the form keeps
     // what has been typed and gains (or loses) the explanation.
     // The same in-place read after a Design View edit has saved (issue #984), so the new copy shows.
-    // The form type Design View draws the page for (issue #1903); empty for the form's own.
-    var drawnFormType by useState("")
-    suspend fun reread(type: String = drawnFormType) {
+    // The ftype Design View draws the page for (issue #1903); empty for the form's own.
+    var drawnFtype by useState("")
+    suspend fun reread(type: String = drawnFtype) {
         if (workflow != null) apiResult { WorkflowApi.fetchCreationView(type) }.designRereadValue()?.let { workflow = it }
     }
     val toggleDesign = useDesignViewSwitch { reread() }
@@ -65,8 +65,8 @@ val CreationPage = FC<Props> {
             allowCreateForUser = createsForOthers
             onDesignEdited = { creationScope.launch { reread() } }
             onDesignToggle = toggleDesign
-            onDrawnFormType = { type ->
-                drawnFormType = type
+            onDrawnFtype = { type ->
+                drawnFtype = type
                 creationScope.launch { reread(type) }
             }
         }

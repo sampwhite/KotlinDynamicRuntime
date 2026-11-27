@@ -3,7 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.workflow.traitIdsOverTypes
+import com.dynamicruntime.common.gedra.workflow.traitIdsOverFtypes
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.schema.SCH
@@ -130,10 +130,10 @@ object DesignSharedEdit {
         val schema = SchemaService.get(cxt)
         val traits = schema.gedraTraitsFor(cxt.client).associateBy { it.traitId }
         val store = cxt.getClientSchema()
-        val formTypes = FormTypeService.getOrNull(cxt)?.forClient(cxt.client)?.values.orEmpty()
+        val ftypes = FTypeService.getOrNull(cxt)?.forClient(cxt.client)?.values.orEmpty()
         return WorkflowService.get(cxt).forClient(cxt.client).workflows.values.filter { declared ->
-            // Over every form type (issue #1903), since the page drawing one for some form is a use of it.
-            val seeds = declared.def.traitIdsOverTypes(formTypes).flatMap { traitId ->
+            // Over every ftype (issue #1903), since the page drawing one for some form is a use of it.
+            val seeds = declared.def.traitIdsOverFtypes(ftypes).flatMap { traitId ->
                 val trait = traits[traitId] ?: return@flatMap emptyList()
                 listOfNotNull(trait.typeName, trait.dataSchema[SCH.dRef].toOptStr()?.let { refName(it) })
             }

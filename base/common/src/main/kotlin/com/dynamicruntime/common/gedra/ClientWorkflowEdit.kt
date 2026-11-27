@@ -86,9 +86,9 @@ object ClientWorkflowEdit {
             // definition as drafts, which only the sandbox runs, and a workflow made now may collect a draft trait, be
             // seen by a draft label, and show its windows in a draft time zone.
             put(CWF.traits, usableTraits(cxt, view))
-            // The form types (issue #1903) whose traits a task may collect, as [view] has them.
-            FormTypeService.getOrNull(cxt)?.forClient(view)?.values?.takeIf { it.isNotEmpty() }?.let { types ->
-                put(CWF.formTypes, types.map { formTypeInfo(it) })
+            // The ftypes (issue #1903) whose traits a task may collect, as [view] has them.
+            FTypeService.getOrNull(cxt)?.forClient(view)?.values?.takeIf { it.isNotEmpty() }?.let { types ->
+                put(CWF.ftypes, types.map { ftypeInfo(it) })
             }
             ClientService.get(cxt).displayZoneOf(view)?.let { put(CWF.timeZone, it) }
             // The labels a workflow's visibility may name, as the Users page offers them (issue #1384).
@@ -151,9 +151,9 @@ object ClientWorkflowEdit {
         put(CWF.params, paramsInfo(WorkflowParamsService.get(cxt).resolve(cxt, scope, def.workflowId), names))
     }
 
-    /** One form type for the catalog (issue #1903): what it is called and the traits a form of it collects. */
-    private fun formTypeInfo(type: FormTypeDef): Map<String, Any?> = linkedMapOf(
-        FTYPE.formTypeId to type.formTypeId,
+    /** One ftype for the catalog (issue #1903): what it is called and the traits a form of it collects. */
+    private fun ftypeInfo(type: FTypeDef): Map<String, Any?> = linkedMapOf(
+        FTYPE.ftypeId to type.ftypeId,
         FTYPE.label to type.label,
         FTYPE.traits to type.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) },
     )
@@ -282,12 +282,12 @@ object ClientWorkflowEdit {
         // Only a template the deployment's checks admitted.
         val template = WorkflowService.get(cxt).forClient(null).workflow(templateId)?.def
             ?: throw KdrException("There is no workflow template '$templateId'.", code = EXC.notFound)
-        // What the slots are filled into, and where a task not said to collect its form type's traits, or not to, keeps what
+        // What the slots are filled into, and where a task not said to collect its ftype's traits, or not to, keeps what
         // it does now (issue #1903): a caller who does not know of the choice must not undo it.
         val base = stored?.let { WorkflowTemplates.readStored(bound, it.second) } ?: template
         val chosen = WfTemplateSlots(
             workflowId, templateId, slots.label,
-            slots.tasks.map { WfTaskSlot(it.taskId, it.label, it.traits, it.formTypeTraits ?: base.task(it.taskId)?.formTypeTraits) },
+            slots.tasks.map { WfTaskSlot(it.taskId, it.label, it.traits, it.ftypeTraits ?: base.task(it.taskId)?.ftypeTraits) },
         )
         templateSlotProblems(template, chosen).takeIf { it.isNotEmpty() }?.let { throw KdrException.mkInput(it.joinToString(" ")) }
         val written: GedraConfigRow

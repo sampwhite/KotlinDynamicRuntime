@@ -122,18 +122,18 @@ fun useDesignViewSwitch(reread: suspend () -> Unit): () -> Unit {
  * What the "Drawn for" choice offers (issue #1903), `label to value`: the form's own type first, as the empty value, then no
  * type, then every other type. [isEdit] is whether there is a form, rather than one about to be made.
  */
-fun drawnFormTypeChoices(design: WfDesign, isEdit: Boolean): List<Pair<String, String>> = buildList {
-    val own = design.ownFormType
-    val ownLabel = design.formTypes.firstOrNull { it.first == own }?.second ?: own ?: "no type"
+fun drawnFtypeChoices(design: WfDesign, isEdit: Boolean): List<Pair<String, String>> = buildList {
+    val own = design.ownFtype
+    val ownLabel = design.ftypes.firstOrNull { it.first == own }?.second ?: own ?: "no type"
     add((if (isEdit) "This form's type ($ownLabel)" else "A new form ($ownLabel)") to "")
-    if (own != null) add("No type" to DSV.noFormType)
-    design.formTypes.filter { it.first != own }.forEach { (id, label) -> add(label to id) }
+    if (own != null) add("No type" to DSV.noFtype)
+    design.ftypes.filter { it.first != own }.forEach { (id, label) -> add(label to id) }
 }
 
 /** What the page says while it is drawn for a type that is not the form's (issue #1903), or null when it is the form's. */
-fun drawnFormTypeNote(design: WfDesign?): String? {
-    val drawn = design?.drawnFormType ?: return null
-    val label = design.formTypes.firstOrNull { it.first == drawn }?.second
+fun drawnFtypeNote(design: WfDesign?): String? {
+    val drawn = design?.drawnFtype ?: return null
+    val label = design.ftypes.firstOrNull { it.first == drawn }?.second
     return "Drawn " + (label?.let { "as a form of the type $it" } ?: "as a form with no type") + ", so nothing is saved from here."
 }
 
@@ -191,14 +191,14 @@ class WfDesign(
     /** By type name, the fields whose choices are sourced, which no form restates (issue #1902); see `DSV.sourcedFields`. */
     val sourcedFields: Map<String, List<String>> = emptyMap(),
     /**
-     * The client's form types (issue #1903), `id to label`, where a task collects its form's type's traits and so the page
+     * The client's ftypes (issue #1903), `id to label`, where a task collects its form's type's traits and so the page
      * may be drawn for any of them; empty for any other workflow.
      */
-    val formTypes: List<Pair<String, String>> = emptyList(),
-    /** Beside [formTypes]: the form's own type, by id; null for none, or a new form. */
-    val ownFormType: String? = null,
-    /** Beside [formTypes]: the type the page is drawn for when that is not the form's own, or `DSV.noFormType`. */
-    val drawnFormType: String? = null,
+    val ftypes: List<Pair<String, String>> = emptyList(),
+    /** Beside [ftypes]: the form's own type, by id; null for none, or a new form. */
+    val ownFtype: String? = null,
+    /** Beside [ftypes]: the type the page is drawn for when that is not the form's own, or `DSV.noFtype`. */
+    val drawnFtype: String? = null,
 ) {
     /** Whether the choices of [field] of [typeName] are sourced, so a form may not restate them. */
     fun isSourced(typeName: String, field: String): Boolean = field in sourcedFields[typeName].orEmpty()
@@ -216,7 +216,7 @@ class WfDesign(
         return WfDesign(
             workflow, types, canEdit, editRefusal, basedOn,
             own?.layoutEdits.orEmpty(), own?.headingEdits.orEmpty(), own?.shownFields.orEmpty(), approvals, sourcedFields,
-            formTypes, ownFormType, drawnFormType,
+            ftypes, ownFtype, drawnFtype,
         )
     }
 }
@@ -270,11 +270,11 @@ fun parseWfDesign(raw: Any?): WfDesign? {
         shownFields = layouts.shownFields,
         approvals = block[DSV.approvals].toJsonMapOrEmpty().mapValues { (_, a) -> parseDesignLayouts(a.toJsonMapOrEmpty()) },
         sourcedFields = block[DSV.sourcedFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
-        formTypes = block[DSV.formTypes].toJsonListOfMaps().mapNotNull { t ->
-            t[FTYPE.formTypeId].toOptStr()?.let { it to (t[FTYPE.label].toOptStr() ?: it) }
+        ftypes = block[DSV.ftypes].toJsonListOfMaps().mapNotNull { t ->
+            t[FTYPE.ftypeId].toOptStr()?.let { it to (t[FTYPE.label].toOptStr() ?: it) }
         },
-        ownFormType = block[DSV.ownFormType].toOptStr(),
-        drawnFormType = block[DSV.drawnFormType].toOptStr(),
+        ownFtype = block[DSV.ownFtype].toOptStr(),
+        drawnFtype = block[DSV.drawnFtype].toOptStr(),
     )
 }
 

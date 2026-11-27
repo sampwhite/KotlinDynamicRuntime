@@ -19,7 +19,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.FTYPE
-import com.dynamicruntime.common.gedra.FormTypeService
+import com.dynamicruntime.common.gedra.FTypeService
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -65,12 +65,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Form types (issue #1902): a client's kinds of form, what a form's type may be, and who may set it. Over the shared
+ * Ftypes (issue #1902): a client's kinds of form, what a form's type may be, and who may set it. Over the shared
  * instance, a client per scenario.
  */
-class FormTypesTest : StringSpec({
-    val cxt = TestInstances.default("formTypes1902")
-    fun asClient(client: String, on: KdrCxt = cxt): KdrCxt = on.mkSubContext("formTypes", client).also { it.userId = 19020L }
+class FTypesTest : StringSpec({
+    val cxt = TestInstances.default("ftypes1902")
+    fun asClient(client: String, on: KdrCxt = cxt): KdrCxt = on.mkSubContext("ftypes", client).also { it.userId = 19020L }
 
     fun clientDef(client: String) = ClientDef(
         clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
@@ -79,17 +79,17 @@ class FormTypesTest : StringSpec({
 
     /** A site's client: leads anyone may make, videos only an administrator may, and notes whose type may be changed. */
     fun siteConfig(client: String, on: KdrCxt = cxt, types: GedraConfigBuilder.() -> Unit = {
-        formType("lead", "Lead") { trait("ask") }
-        formType("video", "Video", setWhen = CFACTS.hasAdminLevel) { trait("clip"); trait(GT.name, required = false) }
-        formType("note", "Note", description = "Only a category.", mayLeave = true)
-        formType("memo", "Memo", mayLeave = true)
+        ftype("lead", "Lead") { trait("ask") }
+        ftype("video", "Video", setWhen = CFACTS.hasAdminLevel) { trait("clip"); trait(GT.name, required = false) }
+        ftype("note", "Note", description = "Only a category.", mayLeave = true)
+        ftype("memo", "Memo", mayLeave = true)
     }): GedraConfig = gedraConfig(on, "main", clientNamespace(client), client) {
         defineClient(clientDef(client))
         trait("AskEntry", "ask", setOf(GedraDataType.formDoc), "What they ask.") { property("text", "The ask.") }
         trait("ClipEntry", "clip", setOf(GedraDataType.formDoc), "A clip.") { property("title", "Its title.") }
         workflow("make", WfEntry.creation) {
             task("start", "Start") {
-                trait(GT.formType)
+                trait(GT.ftype)
                 save("create", "Create", WfSaveKind.create)
             }
         }
@@ -111,7 +111,7 @@ class FormTypesTest : StringSpec({
         )
     }
 
-    fun typed(type: String) = mapOf(GE.traitId to GT.formType, GE.data to mapOf(GT.formTypeField to type))
+    fun typed(type: String) = mapOf(GE.traitId to GT.ftype, GE.data to mapOf(GT.ftypeField to type))
     fun ask(text: String) = mapOf(GE.traitId to "ask", GE.data to mapOf("text" to text))
     fun body(vararg entries: Map<String, Any?>) = mapOf(GDF.entries to entries.toList())
 
@@ -135,7 +135,7 @@ class FormTypesTest : StringSpec({
     )
 
     fun setType(gedraId: String, type: String) =
-        edit(gedraId, GedraEditAction.addOrReplace, GT.formType, mapOf(GT.formTypeField to type))
+        edit(gedraId, GedraEditAction.addOrReplace, GT.ftype, mapOf(GT.ftypeField to type))
 
     fun importOf(vararg entries: Map<String, Any?>) = mapOf(GIF.data to body(*entries))
 
@@ -143,7 +143,7 @@ class FormTypesTest : StringSpec({
         expectError(code, path, data)[EP.errorMessage].toString()
 
     fun TestUser.typeOf(gedraId: String): String? = getItem(GEP.formDoc, mapOf(GDF.gedraId to gedraId))[GDF.entries]
-        .toJsonListOfMaps().firstOrNull { it[GE.traitId] == GT.formType }?.get(GE.data).toJsonMapOrEmpty()[GT.formTypeField].toOptStr()
+        .toJsonListOfMaps().firstOrNull { it[GE.traitId] == GT.ftype }?.get(GE.data).toJsonMapOrEmpty()[GT.ftypeField].toOptStr()
 
     "a form is of one of its client's types, and of no other" {
         val site = createSite("site1902a")
@@ -192,7 +192,7 @@ class FormTypesTest : StringSpec({
         val fixed = site.lead.make(typed("lead"))
         val message = "This form's type, 'Lead', was settled when it was stored"
         site.lead.refused(EXC.badInput, GEP.patch, setType(fixed, "note")) shouldContain message
-        site.lead.refused(EXC.badInput, GEP.patch, edit(fixed, GedraEditAction.deleteOrNoOp, GT.formType)) shouldContain message
+        site.lead.refused(EXC.badInput, GEP.patch, edit(fixed, GedraEditAction.deleteOrNoOp, GT.ftype)) shouldContain message
         // Not an administrator's to change either.
         site.admin.refused(EXC.badInput, GEP.patch, setType(fixed, "video")) shouldContain message
         // Resending the type it has is no change.
@@ -201,7 +201,7 @@ class FormTypesTest : StringSpec({
         val loose = site.lead.make(typed("note"), ask("Kept."))
         site.lead.postItems(GEP.patch, setType(loose, "memo"))
         site.lead.typeOf(loose) shouldBe "memo"
-        site.lead.postItems(GEP.patch, edit(loose, GedraEditAction.deleteOrNoOp, GT.formType))
+        site.lead.postItems(GEP.patch, edit(loose, GedraEditAction.deleteOrNoOp, GT.ftype))
         site.lead.typeOf(loose) shouldBe null
         site.lead.getItem(GEP.formDoc, mapOf(GDF.gedraId to loose))[GDF.entries].toJsonListOfMaps()
             .map { it[GE.traitId] } shouldContainExactly listOf("ask")
@@ -210,7 +210,7 @@ class FormTypesTest : StringSpec({
     "a form of a type no longer defined is still written, and may leave it" {
         val site = createSite("site1902d")
         val form = site.lead.make(typed("lead"), ask("Before."))
-        write(siteConfig(site.client) { formType("note", "Note", mayLeave = true) }, site.client)
+        write(siteConfig(site.client) { ftype("note", "Note", mayLeave = true) }, site.client)
         site.lead.postItems(GEP.patch, edit(form, GedraEditAction.addOrReplace, "ask", mapOf("text" to "After.")))
         site.lead.typeOf(form) shouldBe "lead"
         site.lead.refused(EXC.badInput, GEP.formDocCreate, body(typed("lead"))) shouldContain "has no form type 'lead'"
@@ -220,7 +220,7 @@ class FormTypesTest : StringSpec({
 
     /** The choices of a form's type among [defs], as a page reads them. */
     fun choicesIn(defs: Any?): List<String> = defs.toJsonMapOrEmpty().values.map { it.toJsonMapOrEmpty() }
-        .mapNotNull { it[SCH.properties].toJsonMapOrEmpty()[GT.formTypeField]?.toJsonMapOrEmpty() }
+        .mapNotNull { it[SCH.properties].toJsonMapOrEmpty()[GT.ftypeField]?.toJsonMapOrEmpty() }
         .first { SCH.options in it }[SCH.options].toJsonListOfMaps().map { it[SCH.value].toString() }
 
     "a form's page offers the types the caller may set and the form's own, and the catalog lists them all" {
@@ -233,9 +233,9 @@ class FormTypesTest : StringSpec({
         val create = site.lead.catalogLookup(clientPath(GEP.formDocCreate, site.client), HttpMethod.POST)
         choicesIn(create[SCH.dDefs]) shouldContainExactly listOf("lead", "video", "note", "memo")
         // Another client's, for an administrator of every client looking at it.
-        val chief = TestUser.createFullAdmin(cxt, "chief@formtypes1902.test")
+        val chief = TestUser.createFullAdmin(cxt, "chief@ftypes1902.test")
         choicesIn(chief.catalog(mapOf(EI.client to site.client))[SCH.dDefs]) shouldContainExactly listOf("lead", "video", "note", "memo")
-        val service = FormTypeService.get(cxt)
+        val service = FTypeService.get(cxt)
         val caller = cxt.mkSubContext("choices", site.client)
         // The form's own though the caller may not set it, and, when the form may not leave it, no other.
         service.choicesFor(caller, site.client, "video").map { it.value } shouldContainExactly listOf("video")
@@ -245,9 +245,9 @@ class FormTypesTest : StringSpec({
     "a form of a type no longer defined is still offered it, so its page does not refuse it" {
         val site = createSite("site1902k")
         val form = site.lead.make(typed("lead"))
-        write(siteConfig(site.client) { formType("note", "Note", mayLeave = true) }, site.client)
+        write(siteConfig(site.client) { ftype("note", "Note", mayLeave = true) }, site.client)
         val caller = cxt.mkSubContext("choices", site.client)
-        FormTypeService.get(cxt).choicesFor(caller, site.client, "lead") shouldContainExactly
+        FTypeService.get(cxt).choicesFor(caller, site.client, "lead") shouldContainExactly
             listOf(SchOption("lead", "lead"), SchOption("note", "Note"))
         site.lead.typeOf(form) shouldBe "lead"
     }
@@ -259,14 +259,14 @@ class FormTypesTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, site.client)
         val block = site.admin.getData(clientPath(GEP.workflowView, site.client), mapOf(EP.view to DSV.design))[DSV.designBlock]
             .toJsonMapOrEmpty()
-        val typeName = block[DSV.types].toJsonMapOrEmpty().keys.single { it.endsWith("FormTypeData") }
+        val typeName = block[DSV.types].toJsonMapOrEmpty().keys.single { it.endsWith("FTypeData") }
         fun setEntry(entry: Map<String, Any?>) = mapOf(
-            DSV.workflowId to "make", DSV.typeName to typeName, DSV.field to GT.formTypeField, DSV.entry to entry,
+            DSV.workflowId to "make", DSV.typeName to typeName, DSV.field to GT.ftypeField, DSV.entry to entry,
             DSV.basedOn to block[DSV.basedOn],
         )
         val restated = setEntry(mapOf(SL.choices to listOf(mapOf(SL.value to "lead", SL.label to "Prospect"))))
         site.admin.refused(EXC.badInput, DSV.layoutEntryEdit, restated) shouldContain "no closed list of choices"
-        block[DSV.sourcedFields] shouldBe mapOf(typeName to listOf(GT.formTypeField))
+        block[DSV.sourcedFields] shouldBe mapOf(typeName to listOf(GT.ftypeField))
         // Its copy is a workflow's to change, as any field's is.
         site.admin.postData(DSV.layoutEntryEdit, setEntry(mapOf(SL.label to "What is this?")))
     }
@@ -276,28 +276,28 @@ class FormTypesTest : StringSpec({
         val schema = SchemaService.get(cxt)
         fun traitsOf(client: String) =
             schema.supportedGedraTraitsFor(client, ClientService.get(cxt).present(client).shouldNotBeNull()).map { it.traitId }
-        traitsOf(site.client) shouldContain GT.formType
+        traitsOf(site.client) shouldContain GT.ftype
         // The public client includes every global trait, and runs the global schema itself.
-        traitsOf(CL.public) shouldNotContain GT.formType
+        traitsOf(CL.public) shouldNotContain GT.ftype
         ClientService.get(cxt).known(CL.public).shouldNotBeNull().includedTraits shouldContain CLD.allGlobal
         val visitor = TestUser.create(cxt, "visitor@public1902.test", userClient = CL.public)
-        visitor.refused(EXC.badInput, GEP.formDocCreate, body(typed("lead"))) shouldContain "does not support '${GT.formType}'"
+        visitor.refused(EXC.badInput, GEP.formDocCreate, body(typed("lead"))) shouldContain "does not support '${GT.ftype}'"
         // Nor by asking to store a trait the client does not support.
         visitor.refused(EXC.badInput, GEP.formDocCreate, body(typed("lead")) + (GDF.allowAdditionalTraits to true)) shouldContain
             "has no form type 'lead'"
         // And it is none of the traits a client may narrow.
         globalTraitBases(cxt).keys.let {
             it shouldContain GT.name
-            it shouldNotContain GT.formType
+            it shouldNotContain GT.ftype
         }
     }
 
     "types declared in code are a client's, its sandbox's, and its template's children's, and a marked entry stands over one" {
         val on = Startup.mkTestBootCxt(
-            "formTypesCode", "formTypesCode", additionalComponents = listOf(FormTypesComponent()),
+            "ftypesCode", "ftypesCode", additionalComponents = listOf(FTypesComponent()),
         )
-        val code = FormTypesComponent.client
-        fun labels(client: String) = FormTypeService.get(on).forClient(client).mapValues { it.value.label }
+        val code = FTypesComponent.client
+        fun labels(client: String) = FTypeService.get(on).forClient(client).mapValues { it.value.label }
         labels(code) shouldBe mapOf("lead" to "Lead", "note" to "Note")
         labels(sandboxOf(code)) shouldBe labels(code)
         val child = "child1902"
@@ -317,13 +317,13 @@ class FormTypesTest : StringSpec({
         writeChild()
         labels(child) shouldBe labels(code)
         // Unmarked, one of the template's ids is refused; marked, the child's stands over it, whole.
-        shouldThrow<KdrException> { writeChild { formType("lead", "Prospect") } }.message.orEmpty() shouldContain "form type 'lead'"
+        shouldThrow<KdrException> { writeChild { ftype("lead", "Prospect") } }.message.orEmpty() shouldContain "form type 'lead'"
         writeChild {
-            formType("lead", "Prospect", setWhen = CFACTS.hasAdminLevel)
+            ftype("lead", "Prospect", setWhen = CFACTS.hasAdminLevel)
             overridesCode("lead")
         }
         labels(child) shouldBe mapOf("lead" to "Prospect", "note" to "Note")
-        FormTypeService.get(on).forClient(child).getValue("lead").traits.size shouldBe 0
+        FTypeService.get(on).forClient(child).getValue("lead").traits.size shouldBe 0
         // The template is as it was.
         labels(code) shouldBe mapOf("lead" to "Lead", "note" to "Note")
     }
@@ -335,56 +335,56 @@ class FormTypesTest : StringSpec({
             CFEP.slots to gedraConfigToEntries(gedraConfig(cxt, "extra", clientNamespace(site.client), site.client, build = more)),
         )
         fun refusal(more: GedraConfigBuilder.() -> Unit) = site.admin.expectError(EXC.badInput, CFEP.bundleWrite, bundle(more)).toString()
-        refusal { formType("bad id", "Bad") } shouldContain FTYPE.formTypeId
-        refusal { formType("blank", "  ") } shouldContain "label: A value is required."
-        refusal { formType("lead", "Again") } shouldContain "declared more than once"
-        refusal { formType("a", "A") { trait("nosuch") } } shouldContain "which the client's forms cannot hold"
-        refusal { formType("a", "A") { trait("ask"); trait("ask") } } shouldContain "lists the trait 'ask' twice"
-        refusal { formType("a", "A") { trait(GT.formType) } } shouldContain "where a form says its type"
-        refusal { formType("a", "A", setWhen = "noSuchFact") } shouldContain "has a setWhen that does not parse"
-        refusal { formType("a", "A", setWhen = "kdr:isOwner") } shouldContain "relation to the form"
+        refusal { ftype("bad id", "Bad") } shouldContain FTYPE.ftypeId
+        refusal { ftype("blank", "  ") } shouldContain "label: A value is required."
+        refusal { ftype("lead", "Again") } shouldContain "declared more than once"
+        refusal { ftype("a", "A") { trait("nosuch") } } shouldContain "which the client's forms cannot hold"
+        refusal { ftype("a", "A") { trait("ask"); trait("ask") } } shouldContain "lists the trait 'ask' twice"
+        refusal { ftype("a", "A") { trait(GT.ftype) } } shouldContain "where a form says its type"
+        refusal { ftype("a", "A", setWhen = "noSuchFact") } shouldContain "has a setWhen that does not parse"
+        refusal { ftype("a", "A", setWhen = "kdr:isOwner") } shouldContain "relation to the form"
         // A sound one is taken, and is the client's at once.
-        site.admin.postData(CFEP.bundleWrite, bundle { formType("a", "A") { trait("ask") } })
+        site.admin.postData(CFEP.bundleWrite, bundle { ftype("a", "A") { trait("ask") } })
         GedraConfigReload.reloadClient(cxt, site.client)
-        FormTypeService.get(cxt).forClient(site.client).keys shouldBe setOf("lead", "video", "note", "memo", "a")
+        FTypeService.get(cxt).forClient(site.client).keys shouldBe setOf("lead", "video", "note", "memo", "a")
     }
 
     "a load keeps what it can: a trait left out, and a rule that does not parse met by nobody" {
         // Its own instance: stored configuration is judged forgivingly, as outside the unit tests.
         val forgiving = Startup.mkTestBootCxt(
-            "formTypesWarn", "formTypesForgiving", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
+            "ftypesWarn", "ftypesForgiving", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
         )
         val client = "site1902h"
         write(
             siteConfig(client, forgiving) {
-                formType("lead", "Lead", setWhen = "noSuchFact") { trait("ask"); trait("nosuch") }
+                ftype("lead", "Lead", setWhen = "noSuchFact") { trait("ask"); trait("nosuch") }
             },
             client, forgiving,
         )
-        FormTypeService.get(forgiving).forClient(client).getValue("lead").traits.map { it.traitId } shouldBe listOf("ask")
+        FTypeService.get(forgiving).forClient(client).getValue("lead").traits.map { it.traitId } shouldBe listOf("ask")
         val admin = TestUser.create(forgiving, "admin@$client.test", level = ROLE.admin, userClient = client)
         admin.refused(EXC.notAuthorized, GEP.formDocCreate, body(typed("lead"))) shouldContain "You may not make"
     }
 
-    "a form type's entry round-trips through its stored slot" {
-        val entries = gedraConfigToEntries(siteConfig("site1902i"))[CCT.formTypeDef].orEmpty()
-        entries.map { it[FTYPE.formTypeId] } shouldBe listOf("lead", "video", "note", "memo")
+    "an ftype's entry round-trips through its stored slot" {
+        val entries = gedraConfigToEntries(siteConfig("site1902i"))[CCT.ftypeDef].orEmpty()
+        entries.map { it[FTYPE.ftypeId] } shouldBe listOf("lead", "video", "note", "memo")
         entries[1] shouldBe mapOf(
-            FTYPE.formTypeId to "video", FTYPE.label to "Video",
+            FTYPE.ftypeId to "video", FTYPE.label to "Video",
             FTYPE.traits to listOf(
                 mapOf(WFD.traitId to "clip", WFD.required to true), mapOf(WFD.traitId to GT.name, WFD.required to false),
             ),
             FTYPE.setWhen to CFACTS.hasAdminLevel,
         )
         entries[2] shouldBe mapOf(
-            FTYPE.formTypeId to "note", FTYPE.label to "Note", FTYPE.description to "Only a category.", FTYPE.mayLeave to true,
+            FTYPE.ftypeId to "note", FTYPE.label to "Note", FTYPE.description to "Only a category.", FTYPE.mayLeave to true,
         )
     }
 })
 
-/** A component declaring one client in code, with form types and a sandbox. */
-class FormTypesComponent : ComponentDefinition {
-    override val providerName: String = "formTypesFixture"
+/** A component declaring one client in code, with ftypes and a sandbox. */
+class FTypesComponent : ComponentDefinition {
+    override val providerName: String = "ftypesFixture"
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
         gedraConfig(cxt, "base", clientNamespace(client), client) {
@@ -394,8 +394,8 @@ class FormTypesComponent : ComponentDefinition {
                     enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true, includedTraits = listOf(GT.name),
                 ),
             )
-            formType("lead", "Lead") { trait(GT.name) }
-            formType("note", "Note", mayLeave = true)
+            ftype("lead", "Lead") { trait(GT.name) }
+            ftype("note", "Note", mayLeave = true)
         },
     )
 

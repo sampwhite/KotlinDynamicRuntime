@@ -44,7 +44,7 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  *   [RDEF.namespace] (issue #979). Its columns travel inside it, as a workflow's tasks do.
  * - **[CCT.counterDef]** -- a counter (issue #1849), by counter id: what numbers a field whose schema names it with
  *   `g-counter`. Its fields are declared inline from [CTR].
- * - **[CCT.formTypeDef]** -- a form type (issue #1902), by its id: what a kind of form is called, the traits it collects,
+ * - **[CCT.ftypeDef]** -- an ftype (issue #1902), by its id: what a kind of form is called, the traits it collects,
  *   and who may set it. Its trait refs are a task's, by **reference** to the definition schema under [WFD.namespace].
  * - **[CCT.cfactDef]** -- a cfact **name declaration**, by name. **Declaration only**: a component is what
  *   makes a cfact *true* (that needs Kotlin), so a config authored from data may only declare that a name
@@ -299,12 +299,12 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         overridesCodeProperty()
     }
     configTrait(
-        "FormTypeDefEntry", CCT.formTypeDef, setOf(GedraConfigType.configDoc),
-        "One form type of this client -- a kind of form, and the traits it collects -- keyed by its id. A form says which " +
-            "type it is in its `${GT.formType}` entry, a trait the client has once it defines a form type.",
+        "FTypeDefEntry", CCT.ftypeDef, setOf(GedraConfigType.configDoc),
+        "One form type of this client (an \"ftype\", in stored keys and code) -- a kind of form, and the traits it collects -- " +
+            "keyed by its id. A form says which type it is in its `${GT.ftype}` entry, a trait the client has once it defines a form type.",
     ) {
-        primaryKey(FTYPE.formTypeId)
-        property(FTYPE.formTypeId, "The type's id within its client: ${FTYPE.idRule}.", required = true) {
+        primaryKey(FTYPE.ftypeId)
+        property(FTYPE.ftypeId, "The type's id within its client: ${FTYPE.idRule}.", required = true) {
             pattern = FTYPE.idPattern
         }
         property(FTYPE.label, "What the type is called, in the choices of a form's type.", required = true)

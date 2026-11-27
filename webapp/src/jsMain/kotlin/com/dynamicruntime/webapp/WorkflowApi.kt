@@ -20,15 +20,15 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 object WorkflowApi {
     /**
      * The client's creation workflow, resolved and self-contained ([WorkflowView]), or **null** when the client
-     * has none (`found=false`) — the page's signal to fall back to the trait picker. [drawnFormType] is the form type
+     * has none (`found=false`) — the page's signal to fall back to the trait picker. [drawnFtype] is the ftype
      * Design View asks for it to be drawn for (issue #1903).
      */
-    suspend fun fetchCreationView(drawnFormType: String? = null): WorkflowView? =
-        parseWorkflowView(Http.getApi(GEP.workflowView + queryString(drawnFor(drawnFormType)))[EP.results].toJsonMapOrEmpty())
+    suspend fun fetchCreationView(drawnFtype: String? = null): WorkflowView? =
+        parseWorkflowView(Http.getApi(GEP.workflowView + queryString(drawnFor(drawnFtype)))[EP.results].toJsonMapOrEmpty())
 
-    /** The form type Design View asks a page to be drawn for (issue #1903), as the query; nothing while it is off. */
-    private fun drawnFor(drawnFormType: String?): Map<String, Any?> =
-        if (drawnFormType.isNullOrEmpty() || !designViewRequested()) emptyMap() else mapOf(DSV.drawnFormType to drawnFormType)
+    /** The ftype Design View asks a page to be drawn for (issue #1903), as the query; nothing while it is off. */
+    private fun drawnFor(drawnFtype: String?): Map<String, Any?> =
+        if (drawnFtype.isNullOrEmpty() || !designViewRequested()) emptyMap() else mapOf(DSV.drawnFtype to drawnFtype)
 
     /**
      * The **core details workflow** resolved against the form [gedraId] (issue #659), each task seeded from the form's
@@ -36,10 +36,10 @@ object WorkflowApi {
      * is what makes the endpoint resolve the core details workflow rather than the creation workflow. [client] is the
      * form's client when its copy of the path exists (issue #714), else null for the caller's own.
      */
-    suspend fun fetchCoreDetailsView(gedraId: String, client: String? = null, drawnFormType: String? = null): WorkflowView? =
+    suspend fun fetchCoreDetailsView(gedraId: String, client: String? = null, drawnFtype: String? = null): WorkflowView? =
         parseWorkflowView(
             Http.getApi(
-                pathFor(GEP.workflowView, client) + queryString(mapOf<String, Any?>(GDF.gedraId to gedraId) + drawnFor(drawnFormType)),
+                pathFor(GEP.workflowView, client) + queryString(mapOf<String, Any?>(GDF.gedraId to gedraId) + drawnFor(drawnFtype)),
             )[EP.results].toJsonMapOrEmpty(),
         )
 
